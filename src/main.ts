@@ -39,7 +39,7 @@ scene.add(playerModel);
 const pip = makePalModel();
 scene.add(pip);
 let pipHop = 0; // seconds into the happy hop; 0 = not hopping
-const BUBBLE_WORDS: Partial<Record<LineKey, string>> = { hello: 'Hi!', welcomeBack: 'Hi!', crafted: 'Yay!', collectedFirst: 'Yay!' };
+const BUBBLE_WORDS: Partial<Record<LineKey, string>> = { hello: 'Hi!', welcomeBack: 'Hi!', crafted: 'Yay!', collectedFirst: 'Yay!', upYouCome: 'Up!' };
 let bubbleTimer = 0;
 const voice = new Voice();
 const sayLine = (key: LineKey): void => {
@@ -77,6 +77,7 @@ game.setOccupied(occupied);
 game.on(e => {
   if (e.type === 'collected') sfx.pop();
   else if (e.type === 'placed') sfx.place();
+  else if (e.type === 'walking') { sfx.walk(); scene.showMarker(e.to); }
 });
 
 function renderHud(): void {
@@ -232,6 +233,7 @@ function frame(now: number): void {
   pip.position.set(pal.pos.x, pal.pos.y + hopY, pal.pos.z);
   pip.rotation.y = pal.heading;
   scene.followTarget(playerModel.position, 0, dt);
+  scene.updateMarker(dt);
   scene.render();
 
   const key = JSON.stringify([game.inventory.toJSON(), game.effectiveSelected()]);

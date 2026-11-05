@@ -18,7 +18,8 @@ const occupied: Cell[] = [feet, [2, 2, 2], [3, 1, 2]];
 const up: Cell = [0, 1, 0];
 
 describe('resolveTap', () => {
-  it('hand tap near collectable gives collect without changing the world', () => {
+  // "Tap to go, tap next to you to dig." (Task 7 amendment, final review)
+  it('hand tap on the ground next to the player gives collect without changing the world', () => {
     const world = flatWorld();
     expect(resolveTap({ cell: [3, 0, 3], normal: up }, 'hand', feet, world, occupied))
       .toEqual({ kind: 'collect', cell: [3, 0, 3] });
@@ -26,20 +27,55 @@ describe('resolveTap', () => {
     expect(world.isDirty()).toBe(false);
   });
 
-  it('hand tap far gives walk above the tapped column', () => {
+  it('hand tap on the ground beyond arm\'s length walks, even within reach', () => {
     const world = flatWorld();
-    world.set(8, 2, 8, BlockId.Stone);
-    expect(resolveTap({ cell: [8, 0, 8], normal: up }, 'hand', feet, world, occupied))
-      .toEqual({ kind: 'walk', to: [8, 3, 8] });
+    expect(resolveTap({ cell: [4, 0, 2], normal: up }, 'hand', feet, world, occupied))
+      .toEqual({ kind: 'walk', to: [4, 1, 2] });
+    expect(resolveTap({ cell: [5, 0, 5], normal: up }, 'hand', feet, world, occupied))
+      .toEqual({ kind: 'walk', to: [5, 1, 5] });
   });
 
-  it('uses the inclusive Chebyshev reach of three blocks', () => {
+  it('hand tap far gives walk to the cell in front of the tapped face', () => {
     const world = flatWorld();
-    world.set(5, 4, 5, BlockId.Stone);
-    expect(resolveTap({ cell: [5, 4, 5], normal: up }, 'hand', feet, world, occupied).kind)
-      .toBe('collect');
-    expect(resolveTap({ cell: [6, 0, 2], normal: up }, 'hand', feet, world, occupied))
-      .toEqual({ kind: 'walk', to: [6, 1, 2] });
+    expect(resolveTap({ cell: [8, 0, 8], normal: up }, 'hand', feet, world, occupied))
+      .toEqual({ kind: 'walk', to: [8, 1, 8] });
+  });
+
+  it('hand top-face tap on an adjacent block at feet level walks up onto it', () => {
+    const world = flatWorld();
+    world.set(3, 1, 2, BlockId.Stone);
+    expect(resolveTap({ cell: [3, 1, 2], normal: up }, 'hand', feet, world, occupied))
+      .toEqual({ kind: 'walk', to: [3, 2, 2] });
+  });
+
+  it('hand tap on a side or bottom face within reach collects', () => {
+    const world = flatWorld();
+    world.set(5, 1, 2, BlockId.Stone);
+    world.set(4, 4, 4, BlockId.Dirt);
+    expect(resolveTap({ cell: [5, 1, 2], normal: [-1, 0, 0] }, 'hand', feet, world, occupied))
+      .toEqual({ kind: 'collect', cell: [5, 1, 2] });
+    expect(resolveTap({ cell: [4, 4, 4], normal: [0, -1, 0] }, 'hand', feet, world, occupied))
+      .toEqual({ kind: 'collect', cell: [4, 4, 4] });
+  });
+
+  it('hand tap on a tree within reach collects whatever face is hit', () => {
+    const world = flatWorld();
+    world.set(5, 1, 5, BlockId.Wood);
+    world.set(5, 4, 5, BlockId.Leaves);
+    expect(resolveTap({ cell: [5, 1, 5], normal: up }, 'hand', feet, world, occupied))
+      .toEqual({ kind: 'collect', cell: [5, 1, 5] });
+    expect(resolveTap({ cell: [5, 4, 5], normal: up }, 'hand', feet, world, occupied))
+      .toEqual({ kind: 'collect', cell: [5, 4, 5] });
+  });
+
+  it('hand tap on anything collectable beyond reach walks near it', () => {
+    const world = flatWorld();
+    world.set(8, 1, 8, BlockId.Wood);
+    expect(resolveTap({ cell: [8, 1, 8], normal: [-1, 0, 0] }, 'hand', feet, world, occupied))
+      .toEqual({ kind: 'walk', to: [7, 1, 8] });
+    world.set(6, 1, 2, BlockId.Stone);
+    expect(resolveTap({ cell: [6, 1, 2], normal: [-1, 0, 0] }, 'hand', feet, world, occupied))
+      .toEqual({ kind: 'walk', to: [5, 1, 2] });
   });
 
   it.each<Cell>([[1, 0, 0], [-1, 0, 0], [0, 1, 0], [0, -1, 0], [0, 0, 1], [0, 0, -1]])(
@@ -56,7 +92,7 @@ describe('resolveTap', () => {
     const world = flatWorld();
     world.set(x, y, z - 1, BlockId.Stone);
     expect(resolveTap({ cell: [x, y, z - 1], normal: [0, 0, 1] }, BlockId.Wood, feet, world, occupied))
-      .toEqual({ kind: 'walk', to: [x, y + 1, z - 1] });
+      .toEqual({ kind: 'walk', to: [x, y, z] });
   });
 
   it('passes the supplied occupancy through without adding cells', () => {
@@ -70,17 +106,17 @@ describe('resolveTap', () => {
       .toEqual({ kind: 'walk', to: [8, 1, 8] });
     world.set(4, 1, 4, BlockId.Stone);
     expect(resolveTap({ cell: [4, 0, 4], normal: up }, BlockId.Wood, feet, world, occupied))
-      .toEqual({ kind: 'walk', to: [4, 2, 4] });
-  });
-
-  it('does not collect bedrock and walks to its standable column', () => {
-    const world = flatWorld();
-    world.set(4, 0, 4, BlockId.Bedrock);
-    expect(resolveTap({ cell: [4, 0, 4], normal: up }, 'hand', feet, world, occupied))
       .toEqual({ kind: 'walk', to: [4, 1, 4] });
   });
 
-  it('walks to the tapped column even when it cannot be stood on (water)', () => {
+  it('does not collect bedrock next to the player and walks instead', () => {
+    const world = flatWorld();
+    world.set(3, 0, 2, BlockId.Bedrock);
+    expect(resolveTap({ cell: [3, 0, 2], normal: up }, 'hand', feet, world, occupied))
+      .toEqual({ kind: 'walk', to: [3, 1, 2] });
+  });
+
+  it('a tap on a pond bed walks to the water cell above it (the game finds the shore)', () => {
     const world = flatWorld();
     world.set(8, 1, 8, BlockId.Water);
     for (const selected of ['hand', BlockId.Wood] as const) {

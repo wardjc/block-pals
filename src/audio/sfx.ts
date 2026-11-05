@@ -57,6 +57,8 @@ export const sfx = {
   craft: () => play(() => [523, 659, 784].forEach((f, i) => blip(f, i * 0.09, 0.18, 'triangle', 0.3))),
   cheer: () => play(() => [523, 659, 784, 1047].forEach((f, i) => blip(f, i * 0.08, 0.22, 'sine', 0.3))),
   tap: () => play(() => blip(660, 0, 0.06, 'sine', 0.25)),
+  /** A quiet "off we go" for walk taps. */
+  walk: () => play(() => blip(440, 0, 0.09, 'sine', 0.14, 560)),
   /** Call on the first user gesture (browsers keep audio suspended until then). */
   unlock: () => {
     const c = ensure();

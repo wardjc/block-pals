@@ -7,7 +7,8 @@ import { buildChunkGeometry, CHUNK_SIZE, type MeshArrays } from './mesher';
 const FOLLOW_K = 4; // exponential smoothing rate, per second
 const BACK = 6;
 const UP = 4.5;
-const PICK_RANGE = 12;
+const PICK_RANGE = 40;
+const MARKER_SECONDS = 0.9;
 // Three r155+ no longer pre-multiplies light intensity by PI, so scale to get the classic bright look.
 const LIGHT_SCALE = Math.PI;
 
@@ -39,6 +40,8 @@ export class GameScene {
   private smoothHeading = 0;
   private followed = false;
   private readonly raycaster = new THREE.Raycaster();
+  private readonly marker: THREE.Mesh<THREE.RingGeometry, THREE.MeshBasicMaterial>;
+  private markerAge = Infinity;
 
   constructor(private readonly host: HTMLElement, private readonly world: World) {
     this.renderer = new THREE.WebGLRenderer({ antialias: false, powerPreference: 'high-performance' });
@@ -60,6 +63,16 @@ export class GameScene {
       transparent: true,
       alphaTest: 0.05,
     });
+
+    // A soft ring on the ground where a walk tap is heading.
+    this.marker = new THREE.Mesh(
+      new THREE.RingGeometry(0.22, 0.42, 24),
+      new THREE.MeshBasicMaterial({ color: 0xffffff, transparent: true, opacity: 0, depthWrite: false }),
+    );
+    this.marker.rotation.x = -Math.PI / 2;
+    this.marker.renderOrder = 2;
+    this.marker.visible = false;
+    this.scene.add(this.marker);
 
     const cxs = Math.ceil(world.sizeX / CHUNK_SIZE);
     const czs = Math.ceil(world.sizeZ / CHUNK_SIZE);
@@ -184,6 +197,25 @@ export class GameScene {
       if (t > PICK_RANGE) break;
     }
     return null;
+  }
+
+  /** Shows the walk marker on the floor of a feet cell; it fades out by itself. */
+  showMarker([x, y, z]: [number, number, number]): void {
+    this.marker.position.set(x + 0.5, y + 0.03, z + 0.5);
+    this.markerAge = 0;
+    this.marker.visible = true;
+  }
+
+  updateMarker(dt: number): void {
+    if (!this.marker.visible) return;
+    this.markerAge += dt;
+    const t = this.markerAge / MARKER_SECONDS;
+    if (t >= 1) {
+      this.marker.visible = false;
+      return;
+    }
+    this.marker.material.opacity = 0.85 * (1 - t);
+    this.marker.scale.setScalar(0.8 + 0.4 * t);
   }
 
   add(obj: THREE.Object3D): void {

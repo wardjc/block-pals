@@ -1,5 +1,5 @@
 import { BlockId } from '../core/blocks';
-import { nearestStandable, type Cell } from '../core/pathfind';
+import type { Cell } from '../core/pathfind';
 import { canCollect, canPlace, withinReach } from '../core/placement';
 import type { World } from '../core/world';
 
@@ -9,6 +9,16 @@ export type TapIntent =
   | { kind: 'place'; cell: Cell }
   | { kind: 'none' };
 
+/**
+ * "Tap to go, tap next to you to dig" (Task 7 amendment, final review).
+ * With the hand selected a hit is collected when it is
+ *   - the top of a block right next to the feet (Chebyshev <= 1 from the feet column, one level down), or
+ *   - a tree block (wood or leaves) within reach, or
+ *   - a side or bottom face within reach;
+ * every other hit walks. A walk goes to the cell in front of the tapped face; the
+ * game then picks the reachable standable cell nearest to it (so trees, water and
+ * walls still walk to a spot beside them).
+ */
 export function resolveTap(
   hit: { cell: Cell; normal: Cell } | null,
   selected: BlockId | 'hand',
@@ -17,23 +27,23 @@ export function resolveTap(
   occupied: Cell[],
 ): TapIntent {
   if (!hit) return { kind: 'none' };
-  const isWater = world.get(hit.cell[0], hit.cell[1], hit.cell[2]) === BlockId.Water;
-  if (!isWater && withinReach(playerFeet, hit.cell)) {
-    if (selected === 'hand') {
-      if (canCollect(world, hit.cell)) return { kind: 'collect', cell: hit.cell };
-    } else {
-      const cell: Cell = [
-        hit.cell[0] + hit.normal[0],
-        hit.cell[1] + hit.normal[1],
-        hit.cell[2] + hit.normal[2],
-      ];
-      if (canPlace(world, cell, occupied)) return { kind: 'place', cell };
-    }
+  const { cell: c, normal: n } = hit;
+  const front: Cell = [c[0] + n[0], c[1] + n[1], c[2] + n[2]];
+  const inReach = withinReach(playerFeet, c);
+  if (selected === 'hand') {
+    if (inReach && canCollect(world, c) && handCollects(hit, playerFeet, world)) return { kind: 'collect', cell: c };
+  } else if (inReach && canPlace(world, front, occupied)) {
+    return { kind: 'place', cell: front };
   }
-  // Trees and water have no standable top: still walk, and let the game find a cell beside it.
-  const [x, , z] = hit.cell;
-  const to = nearestStandable(world, x, z) ?? [x, world.topSolidY(x, z) + 1, z] as Cell;
-  return { kind: 'walk', to };
+  return { kind: 'walk', to: front };
+}
+
+function handCollects({ cell, normal }: { cell: Cell; normal: Cell }, feet: Cell, world: World): boolean {
+  const id = world.get(...cell);
+  if (id === BlockId.Wood || id === BlockId.Leaves) return true;
+  const topFace = normal[0] === 0 && normal[1] === 1 && normal[2] === 0;
+  if (!topFace) return true;
+  return Math.max(Math.abs(cell[0] - feet[0]), Math.abs(cell[2] - feet[2])) <= 1 && cell[1] === feet[1] - 1;
 }
 
 export function createDebouncer(ms = 150): (key: string, now: number) => boolean {
