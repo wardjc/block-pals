@@ -12,6 +12,9 @@ import { makePalModel, makePlayerModel } from './render/characters';
 import { GameScene } from './render/scene';
 import { sfx } from './audio/sfx';
 import { Hud } from './ui/hud';
+import { Voice } from './audio/voice';
+import { LINES, LINE_ICONS, type LineKey } from './content/lines';
+import { Pal } from './game/pal';
 
 let storage: Storage | null = null;
 try { storage = window.localStorage; } catch { /* Storage may be blocked. */ }
@@ -28,16 +31,38 @@ world.onChange((x, _y, z) => scene.rebuildChunkAt(x, z));
 const playerModel = makePlayerModel();
 scene.add(playerModel);
 
-// Pip is static until Task 10.
-const pipCell: Cell = [Math.floor(spawn.x + 1.8), spawn.y, Math.floor(spawn.z + 1.2)];
+// Pip follows the player; Pal holds the logic, main.ts only voices and draws it.
 const pip = makePalModel();
-pip.position.set(pipCell[0] + 0.5, pipCell[1], pipCell[2] + 0.5);
-pip.rotation.y = -0.6;
 scene.add(pip);
+let pipHop = 0; // seconds into the happy hop; 0 = not hopping
+const sayLine = (key: LineKey): void => {
+  const variants = LINES[key];
+  const text = variants[Math.floor(Math.random() * variants.length)];
+  voice.say(text);
+  hud.showBubble(LINE_ICONS[key], BUBBLE_WORDS[key]);
+  clearTimeout(bubbleTimer);
+  bubbleTimer = window.setTimeout(() => hud.hideBubble(), 3000);
+};
+const BUBBLE_WORDS: Partial<Record<LineKey, string>> = { hello: 'Hi!', welcomeBack: 'Hi!', crafted: 'Yay!', collectedFirst: 'Yay!' };
+let bubbleTimer = 0;
+const voice = new Voice();
+const pal = new Pal(
+  { x: Math.floor(spawn.x + 1.8) + 0.5, y: spawn.y, z: Math.floor(spawn.z + 1.2) + 0.5 },
+  sayLine,
+);
+pal.setHasWood(() => game.inventory.count(BlockId.Wood) > 0);
+game.on(e => pal.handle(e));
+let greeted = false;
+const greetOnce = (): void => {
+  if (greeted) return;
+  greeted = true;
+  pal.greet(hadSave);
+};
 
 const occupied = (): Cell[] => {
   const [x, y, z] = game.player.feetCell();
-  return [[x, y, z], [x, y + 1, z], pipCell, [pipCell[0], pipCell[1] + 1, pipCell[2]]];
+  const [px, py, pz] = pal.feetCell();
+  return [[x, y, z], [x, y + 1, z], [px, py, pz], [px, py + 1, pz]];
 };
 game.setOccupied(occupied);
 
@@ -68,11 +93,12 @@ const hud = new Hud(document.getElementById('ui')!, scene.atlas.iconDataUrl, {
 const allowTap = createDebouncer();
 scene.renderer.domElement.addEventListener('pointerup', e => {
   sfx.unlock();
+  greetOnce();
   if (hud.blockingOverlayOpen || !allowTap('tap', performance.now())) return;
   const hit = scene.pick(e.clientX, e.clientY);
   game.applyIntent(resolveTap(hit, game.effectiveSelected(), game.player.feetCell(), world, occupied()));
 });
-window.addEventListener('pointerdown', () => sfx.unlock(), { once: true });
+window.addEventListener('pointerdown', () => { sfx.unlock(); greetOnce(); }, { once: true });
 
 const pad = new GamepadInput(loadMapping(storage));
 const camDir = { x: 0, z: 1 };
@@ -107,6 +133,7 @@ if (debugOn) {
     playerPos: () => ({ ...game.player.pos }),
     giveItem: (id: BlockId, n: number) => { game.inventory.add(id, n); renderHud(); },
     fps: () => fpsValue,
+    pipPos: () => ({ ...pal.pos }),
     game,
   };
   (window as unknown as { __triangles: () => number }).__triangles = () => scene.triangleCount();
@@ -136,6 +163,16 @@ function frame(now: number): void {
   const p = game.player.pos;
   playerModel.position.set(p.x, p.y, p.z);
   playerModel.rotation.y = game.player.heading;
+  pal.update(world, game.player, dt);
+  if (pal.takeHop()) pipHop = 0.0001;
+  let hopY = 0;
+  if (pipHop > 0) {
+    pipHop += dt;
+    hopY = Math.abs(Math.sin(pipHop * 8)) * 0.6;
+    if (pipHop > 0.8) pipHop = 0;
+  }
+  pip.position.set(pal.pos.x, pal.pos.y + hopY, pal.pos.z);
+  pip.rotation.y = pal.heading;
   scene.followTarget(playerModel.position, 0, dt);
   scene.render();
 
@@ -152,4 +189,6 @@ function frame(now: number): void {
   requestAnimationFrame(frame);
 }
 renderHud();
+// Show Pip's greeting picture straight away; the voice follows the first tap (mobile needs a gesture).
+hud.showBubble(LINE_ICONS[hadSave ? 'welcomeBack' : 'hello'], 'Hi!');
 requestAnimationFrame(frame);
