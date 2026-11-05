@@ -1,4 +1,5 @@
 import type { LineKey } from '../content/lines';
+import { BLOCKS } from '../core/blocks';
 import { findPath, isStandable, type Cell } from '../core/pathfind';
 import type { World } from '../core/world';
 import type { GameEvent } from './game';
@@ -23,6 +24,7 @@ export class Pal {
   private path: Cell[] = [];
   private waypoint = 0;
   private stuckFor = 0;
+  private repathCooldown = 0;
   private lastSpoke = -Infinity;
   private collectCount = 0;
   private hop = false;
@@ -89,30 +91,34 @@ export class Pal {
 
   update(world: World, player: Player, dt: number): void {
     if (!Number.isFinite(dt) || dt <= 0) return;
+    this.repathCooldown = Math.max(0, this.repathCooldown - dt);
     const dist = Math.hypot(player.pos.x - this.pos.x, player.pos.z - this.pos.z);
     const playerCell = player.feetCell();
     const here = this.feetCell();
     const inPlayer = here[0] === playerCell[0] && here[2] === playerCell[2];
-    const inSolid = !isStandable(world, here);
+    const inSolid = BLOCKS[world.get(here[0], here[1], here[2])].solid
+      || BLOCKS[world.get(here[0], here[1] + 1, here[2])].solid;
 
     if (dist > TELEPORT_DIST || inPlayer || inSolid || Math.abs(player.pos.y - this.pos.y) > 4) {
       this.teleport(world, player);
       return;
     }
 
-    if (dist > REPATH_DIST) {
-      this.stuckFor += dt;
-      if (this.stuckFor >= STUCK_SECONDS) {
-        this.teleport(world, player);
-        return;
-      }
-      if (!this.pathLeadsNear(player)) this.repath(world, player);
-    } else {
+    if (dist <= REPATH_DIST) {
       this.stuckFor = 0;
       if (dist <= 2.2) this.path = [];
+      this.follow(world, player, dt);
+      return;
     }
 
-    this.follow(dt);
+    if (!this.pathLeadsNear(player) && this.repathCooldown <= 0) this.repath(world, player);
+    const before = { ...this.pos };
+    this.follow(world, player, dt);
+    // Stuck means "trying to follow but not moving", not merely "far away".
+    const moved = Math.hypot(this.pos.x - before.x, this.pos.z - before.z);
+    if (moved > SPEED * dt * 0.2) this.stuckFor = 0;
+    else this.stuckFor += dt;
+    if (this.stuckFor >= STUCK_SECONDS) this.teleport(world, player);
   }
 
   private pathLeadsNear(player: Player): boolean {
@@ -151,6 +157,7 @@ export class Pal {
   private repath(world: World, player: Player): void {
     this.path = [];
     this.waypoint = 0;
+    this.repathCooldown = 1;
     const from = this.feetCell();
     for (const goal of this.spots(world, player, [2, 1], this.pos).slice(0, 6)) {
       const p = findPath(world, from, goal, 1500);
@@ -159,12 +166,20 @@ export class Pal {
         return;
       }
     }
+    this.speak('noPath');
   }
 
-  private follow(dt: number): void {
+  private follow(world: World, player: Player, dt: number): void {
     let remaining = SPEED * dt;
     while (remaining > 1e-6 && this.waypoint < this.path.length) {
       const [cx, cy, cz] = this.path[this.waypoint];
+      if (!isStandable(world, [cx, cy, cz])) {
+        // The world changed under the cached path (e.g. a block was placed).
+        this.repath(world, player);
+        return;
+      }
+      // Step up first (the column above is clear); step down on entering the lower cell.
+      if (cy > this.pos.y) this.pos.y = cy;
       const tx = cx + 0.5;
       const tz = cz + 0.5;
       const dx = tx - this.pos.x;
@@ -178,7 +193,7 @@ export class Pal {
       } else {
         this.pos.x += (dx / d) * remaining;
         this.pos.z += (dz / d) * remaining;
-        this.pos.y = cy;
+        if (Math.floor(this.pos.x) === cx && Math.floor(this.pos.z) === cz) this.pos.y = cy;
         remaining = 0;
       }
     }

@@ -35,6 +35,9 @@ scene.add(playerModel);
 const pip = makePalModel();
 scene.add(pip);
 let pipHop = 0; // seconds into the happy hop; 0 = not hopping
+const BUBBLE_WORDS: Partial<Record<LineKey, string>> = { hello: 'Hi!', welcomeBack: 'Hi!', crafted: 'Yay!', collectedFirst: 'Yay!' };
+let bubbleTimer = 0;
+const voice = new Voice();
 const sayLine = (key: LineKey): void => {
   const variants = LINES[key];
   const text = variants[Math.floor(Math.random() * variants.length)];
@@ -43,9 +46,6 @@ const sayLine = (key: LineKey): void => {
   clearTimeout(bubbleTimer);
   bubbleTimer = window.setTimeout(() => hud.hideBubble(), 3000);
 };
-const BUBBLE_WORDS: Partial<Record<LineKey, string>> = { hello: 'Hi!', welcomeBack: 'Hi!', crafted: 'Yay!', collectedFirst: 'Yay!' };
-let bubbleTimer = 0;
-const voice = new Voice();
 const pal = new Pal(
   { x: Math.floor(spawn.x + 1.8) + 0.5, y: spawn.y, z: Math.floor(spawn.z + 1.2) + 0.5 },
   sayLine,
