@@ -25,6 +25,8 @@ export class Game {
   readonly player: Player;
   selected: BlockId | 'hand' = 'hand';
   /** Hook for the HUD craft screen (Task 11). */
+  /** While true (overlay open) the player does not move. */
+  paused = false;
   onCraftRequest: () => void = () => {};
 
   private readonly listeners: Array<(e: GameEvent) => void> = [];
@@ -196,7 +198,7 @@ export class Game {
   }
 
   update(dt: number): void {
-    this.player.update(this.world, dt);
+    if (!this.paused) this.player.update(this.world, dt);
     this.normaliseSelection();
     this.idleFor += dt;
     if (this.idleFor >= IDLE_SECONDS) {
