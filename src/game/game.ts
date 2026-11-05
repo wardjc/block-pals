@@ -1,0 +1,247 @@
+import { BlockId } from '../core/blocks';
+import { canCraft, craft } from '../core/crafting';
+import { Inventory } from '../core/inventory';
+import { isStandable, pathTowards, type Cell } from '../core/pathfind';
+
+import { canCollect, canPlace, withinReach } from '../core/placement';
+import { RECIPES } from '../core/recipes';
+import type { World } from '../core/world';
+import type { Action } from '../input/mapping';
+import type { TapIntent } from '../input/tap';
+import { Player } from './player';
+
+export type GameEvent =
+  | { type: 'collected'; id: BlockId }
+  | { type: 'placed'; id: BlockId }
+  | { type: 'crafted'; recipe: string }
+  | { type: 'full'; id: BlockId }
+  | { type: 'noPath' }
+  | { type: 'walking'; to: Cell }
+  | { type: 'lifted' }
+  | { type: 'idle' };
+
+/** Seconds of quiet before each idle hint; after the last one Pip waits for the next action. */
+const IDLE_SECONDS = [20, 60];
+/** A reachable region this small (cells) with no way nearer the tap counts as a pit. */
+const PIT_CELLS = 30;
+const LIFT_RADIUS = 8;
+
+export class Game {
+  readonly world: World;
+  readonly inventory: Inventory;
+  readonly player: Player;
+  selected: BlockId | 'hand' = 'hand';
+  /** Hook for the HUD craft screen (Task 11). */
+  /** While true (overlay open) the player does not move. */
+  paused = false;
+  onCraftRequest: () => void = () => {};
+
+  private readonly listeners: Array<(e: GameEvent) => void> = [];
+  private occupiedFn: () => Cell[];
+  private idleFor = 0;
+  private idleHints = 0;
+
+  constructor(opts: { world: World; spawn: { x: number; y: number; z: number }; inventory?: Inventory }) {
+    this.world = opts.world;
+    this.inventory = opts.inventory ?? new Inventory();
+    this.player = new Player(opts.spawn);
+    this.occupiedFn = () => {
+      const [x, y, z] = this.player.feetCell();
+      return [[x, y, z], [x, y + 1, z]];
+    };
+  }
+
+  on(cb: (e: GameEvent) => void): void {
+    this.listeners.push(cb);
+  }
+
+  setOccupied(fn: () => Cell[]): void {
+    this.occupiedFn = fn;
+  }
+
+  occupied(): Cell[] {
+    return this.occupiedFn();
+  }
+
+  /** The selection as the player experiences it: an empty stack is the hand. */
+  effectiveSelected(): BlockId | 'hand' {
+    this.normaliseSelection();
+    return this.selected;
+  }
+
+  private emit(e: GameEvent): void {
+    for (const cb of this.listeners) cb(e);
+  }
+
+  private normaliseSelection(): void {
+    if (this.selected !== 'hand' && this.inventory.count(this.selected) <= 0) this.selected = 'hand';
+  }
+
+  applyIntent(intent: TapIntent): void {
+    switch (intent.kind) {
+      case 'walk':
+        this.active();
+        this.walk(intent.to);
+        return;
+      case 'collect':
+        this.active();
+        this.collect(intent.cell);
+        return;
+      case 'place':
+        this.active();
+        this.place(intent.cell);
+        return;
+      default:
+    }
+  }
+
+  /** Same bounds as the player's soft wall. */
+  private insideWall = ([x, , z]: Cell): boolean =>
+    x >= 1 && x <= Math.min(46, this.world.sizeX - 2) && z >= 1 && z <= Math.min(46, this.world.sizeZ - 2);
+
+  /**
+   * One BFS from the player to the reachable standable cell nearest the goal
+   * (pathTowards). If he can get no nearer and is in a small enclosed pit, lift him to
+   * the nearest surface cell outside it and carry on; otherwise Pip gives the noPath hint.
+   */
+  private walk(goal: Cell, mayLift = true): void {
+    const approach = pathTowards(this.world, this.player.feetCell(), goal, this.insideWall);
+    if (approach && approach.distance < approach.startDistance) {
+      this.player.setPath(approach.path);
+      this.emit({ type: 'walking', to: approach.end });
+      return;
+    }
+    if (approach && approach.distance === 0) return; // already there
+    if (mayLift && approach && approach.visited <= PIT_CELLS && this.liftOut(approach.reached)) {
+      this.emit({ type: 'lifted' });
+      this.walk(goal, false);
+      return;
+    }
+    this.emit({ type: 'noPath' });
+  }
+
+  /** Puts the player on the nearest open surface (not a tree top) outside his pit. */
+  private liftOut(inPit: (cell: Cell) => boolean): boolean {
+    const [px, py, pz] = this.player.feetCell();
+    let best: Cell | null = null;
+    let bestScore = Infinity;
+    for (let x = px - LIFT_RADIUS; x <= px + LIFT_RADIUS; x++) {
+      for (let z = pz - LIFT_RADIUS; z <= pz + LIFT_RADIUS; z++) {
+        const top = this.world.topSolidY(x, z);
+        const cell: Cell = [x, top + 1, z];
+        if (top < 0 || !this.insideWall(cell) || inPit(cell) || !isStandable(this.world, cell)) continue;
+        const ground = this.world.get(x, top, z);
+        if (ground === BlockId.Wood || ground === BlockId.Leaves) continue;
+        const score = Math.hypot(x - px, z - pz) + Math.abs(cell[1] - py) * 0.1;
+        if (score < bestScore) {
+          best = cell;
+          bestScore = score;
+        }
+      }
+    }
+    if (!best) return false;
+    this.player.pos = { x: best[0] + 0.5, y: best[1], z: best[2] + 0.5 };
+    this.player.setPath(null);
+    return true;
+  }
+
+  /** The cells directly under the player's and Pip's feet hold them up, so they stay. */
+  private holdsSomeoneUp([x, y, z]: Cell): boolean {
+    const [fx, fy, fz] = this.player.feetCell();
+    if (x === fx && y === fy - 1 && z === fz) return true;
+    return this.occupied().some(([ox, oy, oz]) => x === ox && y === oy - 1 && z === oz);
+  }
+
+  private collect(cell: Cell): void {
+    if (!canCollect(this.world, cell) || !withinReach(this.player.feetCell(), cell) || this.holdsSomeoneUp(cell)) return;
+    const id = this.world.get(...cell);
+    if (this.inventory.add(id, 1) === 0) {
+      this.emit({ type: 'full', id });
+      return;
+    }
+    this.world.set(...cell, BlockId.Air);
+    this.emit({ type: 'collected', id });
+  }
+
+  private place(cell: Cell): void {
+    const id = this.effectiveSelected();
+    if (id === 'hand') return;
+    if (!withinReach(this.player.feetCell(), cell) || !canPlace(this.world, cell, this.occupied())) return;
+    if (!this.inventory.remove(id, 1)) return;
+    this.world.set(...cell, id);
+    this.normaliseSelection();
+    this.emit({ type: 'placed', id });
+  }
+
+  /** The cell the player faces (nearest of 8 directions) at the given height offset. */
+  private frontCell(dy: number): Cell {
+    const [x, y, z] = this.player.feetCell();
+    const h = this.player.heading;
+    return [x + Math.round(Math.sin(h)), y + dy, z + Math.round(Math.cos(h))];
+  }
+
+  padAction(action: Action): void {
+    switch (action) {
+      case 'collect':
+        for (const dy of [0, 1]) {
+          const cell = this.frontCell(dy);
+          if (canCollect(this.world, cell)) {
+            this.applyIntent({ kind: 'collect', cell });
+            return;
+          }
+        }
+        return;
+      case 'place':
+        this.applyIntent({ kind: 'place', cell: this.frontCell(0) });
+        return;
+      case 'nextSlot':
+        this.active();
+        this.selectNext();
+        return;
+      case 'craft':
+        this.active();
+        this.onCraftRequest();
+        return;
+    }
+  }
+
+  selectNext(): void {
+    const items = this.inventory.hotbar();
+    const order: Array<BlockId | 'hand'> = ['hand', ...items];
+    const i = order.indexOf(this.selected);
+    this.selected = order[(i + 1) % order.length];
+  }
+
+  tryCraft(recipeId: string): boolean {
+    const recipe = RECIPES.find(r => r.id === recipeId);
+    if (!recipe || !canCraft(this.inventory, recipe) || !craft(this.inventory, recipe)) return false;
+    this.active();
+    this.selected = recipe.output.id; // ready to place straight away
+    this.emit({ type: 'crafted', recipe: recipeId });
+    return true;
+  }
+
+  /** Called by input code when the pad stick is held. */
+  noteActivity(): void {
+    this.active();
+  }
+
+  /** Any action restarts the idle hints from the first one. */
+  private active(): void {
+    this.idleFor = 0;
+    this.idleHints = 0;
+  }
+
+  update(dt: number): void {
+    if (!this.paused) this.player.update(this.world, dt);
+    this.normaliseSelection();
+    if (this.paused) return;
+    if (this.idleHints >= IDLE_SECONDS.length) return;
+    this.idleFor += dt;
+    if (this.idleFor >= IDLE_SECONDS[this.idleHints]) {
+      this.idleFor = 0;
+      this.idleHints++;
+      this.emit({ type: 'idle' });
+    }
+  }
+}

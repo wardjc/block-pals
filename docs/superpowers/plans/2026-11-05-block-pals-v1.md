@@ -346,6 +346,14 @@ Rendering details:
 - [ ] **Step 2:** Run, and expect FAIL. **Step 3:** Implement. **Step 4:** Run, and expect PASS.
 - [ ] **Step 5:** Commit with `feat: tap intents, debounce and mapped gamepad`.
 
+**Amendment (final review):** the first tap rule ("collect anything collectable within reach 3") made most ground taps dig instead of walk, and the pick ray stopped 12 units from the camera (about 5 blocks ahead). New rule — *tap to go, tap next to you to dig*:
+- The pick ray now reaches 40 units.
+- With the hand selected, a hit is **collected** only when it is the top of a block right next to the player (Chebyshev ≤ 1 from the feet column, one level below the feet), a tree block (Wood or Leaves) within reach 3, or a side or bottom face within reach 3. Every other hit **walks**, including collectable blocks beyond reach.
+- A walk goes to the cell in front of the tapped face (`hit.cell + normal`). The game runs one BFS from the player and walks to the reachable standable cell nearest that goal (Chebyshev x/z + |dy|; ties → fewest steps from the player), so trees, water and walls walk to a spot beside them. `noPath` only when the player cannot get any nearer; if he is in a small pit he is lifted out instead (Pip: "Up you come!").
+- The block under the player's or Pip's feet is never collected.
+- Each walk tap gives a soft sound and a brief ring on the ground at the destination.
+- Placing with a block selected is unchanged.
+
 ### Task 8: Game Wiring and HUD
 
 **Files:** Create `src/game/game.ts`, `src/ui/hud.ts`. Modify `src/main.ts`, `src/ui/styles.css`. Test `tests/game/game.test.ts`.
