@@ -1,7 +1,6 @@
 import { BLOCKS, BlockId } from './blocks';
+import type { Cell } from './pathfind';
 import type { World } from './world';
-
-type Cell = [number, number, number];
 
 const FACE_OFFSETS: Cell[] = [
   [-1, 0, 0], [1, 0, 0],
