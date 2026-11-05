@@ -1,3 +1,4 @@
+import { BLOCKS } from '../core/blocks';
 import { canStep, isStandable, type Cell } from '../core/pathfind';
 import type { World } from '../core/world';
 
@@ -39,7 +40,8 @@ export class Player {
   }
 
   update(world: World, dt: number): void {
-    if (!Number.isFinite(dt) || dt <= 0 || !isStandable(world, this.feetCell())) return;
+    if (!Number.isFinite(dt) || dt <= 0) return;
+    if (!isStandable(world, this.feetCell()) && !this.recover(world)) return;
     let remaining = SPEED * dt;
     if (this.stick.x !== 0 || this.stick.z !== 0) {
       const magnitude = Math.hypot(this.stick.x, this.stick.z);
@@ -80,6 +82,52 @@ export class Player {
         this.waypoint++;
       }
     }
+  }
+
+  /**
+   * Called when the feet cell is no longer standable (support removed, or a
+   * solid placed in feet/head). Search the same column upward, then downward,
+   * then nearby columns (BFS radius <= 3). Never leaves the player in a solid.
+   */
+  private recover(world: World): boolean {
+    const [cx, cy, cz] = this.feetCell();
+    const feetSolid = BLOCKS[world.get(cx, cy, cz)].solid || BLOCKS[world.get(cx, cy + 1, cz)].solid;
+    const column = (x: number, z: number, from: number, up: boolean): number | null => {
+      for (let y = from; y >= 0 && y < world.sizeY; y += up ? 1 : -1) {
+        if (isStandable(world, [x, y, z])) return y;
+      }
+      return null;
+    };
+    let target: Cell | null = null;
+    const first = column(cx, cz, cy, feetSolid) ?? column(cx, cz, cy, !feetSolid);
+    if (first !== null) target = [cx, first, cz];
+    for (let r = 1; r <= 3 && !target; r++) {
+      let best = Infinity;
+      for (let dx = -r; dx <= r; dx++) {
+        for (let dz = -r; dz <= r; dz++) {
+          if (Math.max(Math.abs(dx), Math.abs(dz)) !== r) continue;
+          const x = cx + dx;
+          const z = cz + dz;
+          if (!this.insideWall(world, [x, 0, z])) continue;
+          for (const y of [column(x, z, cy, true), column(x, z, cy, false)]) {
+            if (y === null) continue;
+            const d = dx * dx + dz * dz + Math.abs(y - cy) * 4;
+            if (d < best) {
+              best = d;
+              target = [x, y, z];
+            }
+          }
+        }
+      }
+    }
+    if (!target) return false;
+    const sameColumn = target[0] === cx && target[2] === cz;
+    this.pos = sameColumn
+      ? { x: this.pos.x, y: target[1], z: this.pos.z }
+      : { x: target[0] + 0.5, y: target[1], z: target[2] + 0.5 };
+    this.path = [];
+    this.waypoint = 0;
+    return true;
   }
 
   private insideWall(world: World, [x, , z]: Cell): boolean {

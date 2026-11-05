@@ -171,4 +171,31 @@ describe('Player', () => {
     player.update(flatWorld(), 1);
     expect(player.pos.x).toBe(4.5);
   });
+
+  it('recovers after the block under the feet is removed', () => {
+    const world = flatWorld();
+    world.set(10, 1, 10, BlockId.Stone);
+    const player = playerAt(10.5, 2, 10.5);
+    world.set(10, 1, 10, BlockId.Air);
+    player.update(world, 0.02);
+    expect(player.pos.y).toBe(1);
+    expect(isStandable(world, player.feetCell())).toBe(true);
+    player.setStick(1, 0);
+    const x = player.pos.x;
+    player.update(world, 0.5);
+    expect(player.pos.x).toBeGreaterThan(x);
+  });
+
+  it('recovers when a solid is placed in the feet cell', () => {
+    const world = flatWorld();
+    const player = playerAt(10.5, 1, 10.5);
+    world.set(10, 1, 10, BlockId.Stone);
+    player.update(world, 0.02);
+    expect(isStandable(world, player.feetCell())).toBe(true);
+    expect(player.pos.y).toBe(2);
+    player.setStick(0, 1);
+    const z = player.pos.z;
+    player.update(world, 0.3);
+    expect(player.pos.z).toBeGreaterThan(z);
+  });
 });
