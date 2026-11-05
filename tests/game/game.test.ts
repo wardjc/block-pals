@@ -74,14 +74,12 @@ describe('Game', () => {
     expect(game.selected).toBe('hand');
   });
 
-  it('walk intent sets a path, or emits noPath', () => {
+  it('walk intent sets a path', () => {
     const { world, game, events } = setup();
     game.applyIntent({ kind: 'walk', to: [9, 1, 5] });
     for (let i = 0; i < 60; i++) game.update(0.05);
     expect(game.player.pos.x).toBeGreaterThan(8);
-    world.set(20, 0, 20, BlockId.Air);
-    game.applyIntent({ kind: 'walk', to: [20, 1, 20] });
-    expect(events).toContainEqual({ type: 'noPath' });
+    expect(events.some(e => e.type === 'noPath')).toBe(false);
   });
 
   it('craft consumes inputs and emits crafted', () => {
@@ -121,5 +119,41 @@ describe('Game', () => {
     game.padAction('place');
     expect(world.get(6, 1, 5)).toBe(BlockId.Dirt);
     expect(game.inventory.count(BlockId.Dirt)).toBe(2);
+  });
+
+  it('tapping a far tree walks to a cell next to it', () => {
+    const { world, game, events } = setup();
+    for (let y = 1; y <= 4; y++) world.set(15, y, 5, BlockId.Wood);
+    game.applyIntent({ kind: 'walk', to: [15, 5, 5] });
+    for (let i = 0; i < 200; i++) game.update(0.05);
+    const [x, , z] = game.player.feetCell();
+    expect(Math.max(Math.abs(x - 15), Math.abs(z - 5))).toBe(1);
+    expect(events.some(e => e.type === 'noPath')).toBe(false);
+  });
+
+  it('tapping the pond walks to the shore', () => {
+    const { world, game, events } = setup();
+    for (let x = 13; x <= 15; x++) for (let z = 4; z <= 6; z++) world.set(x, 1, z, BlockId.Water);
+    game.applyIntent({ kind: 'walk', to: [14, 1, 5] });
+    for (let i = 0; i < 200; i++) game.update(0.05);
+    const [x, y, z] = game.player.feetCell();
+    expect(world.get(x, y, z)).not.toBe(BlockId.Water);
+    expect(Math.max(Math.abs(x - 14), Math.abs(z - 5))).toBe(2);
+    expect(events.some(e => e.type === 'noPath')).toBe(false);
+  });
+
+  it('unreachable tap emits noPath', () => {
+    const { world, game, events } = setup();
+    for (let x = 18; x <= 22; x++) for (let z = 18; z <= 22; z++) {
+      for (let y = 1; y <= 3; y++) world.set(x, y, z, BlockId.Stone);
+    }
+    game.applyIntent({ kind: 'walk', to: [20, 4, 20] });
+    expect(events).toContainEqual({ type: 'noPath' });
+  });
+
+  it('noteActivity resets idle', () => {
+    const { game, events } = setup();
+    for (let i = 0; i < 3; i++) { game.update(15); game.noteActivity(); }
+    expect(events.filter(e => e.type === 'idle')).toHaveLength(0);
   });
 });

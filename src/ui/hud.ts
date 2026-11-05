@@ -1,4 +1,5 @@
 import type { BlockId } from '../core/blocks';
+import { createDebouncer } from '../input/tap';
 
 export interface HudHandlers {
   onSelect(i: number): void;
@@ -21,6 +22,7 @@ export class Hud {
   private readonly bubblePicture = document.createElement('span');
   private readonly bubbleWord = document.createElement('span');
   private bubbleTimer = 0;
+  private readonly allow = createDebouncer(150);
 
   constructor(
     root: HTMLElement,
@@ -54,7 +56,7 @@ export class Hud {
     this.guard(b);
     b.addEventListener('click', e => {
       e.stopPropagation();
-      onTap();
+      if (this.allow(cls, performance.now())) onTap();
     });
     return b;
   }
@@ -91,7 +93,7 @@ export class Hud {
       this.guard(el);
       el.addEventListener('click', e => {
         e.stopPropagation();
-        this.handlers.onSelect(i);
+        if (this.allow(`slot${i}`, performance.now())) this.handlers.onSelect(i);
       });
       this.bar.appendChild(el);
     });

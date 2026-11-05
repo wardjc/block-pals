@@ -1,7 +1,7 @@
 import { BlockId } from '../core/blocks';
 import { canCraft, craft } from '../core/crafting';
 import { Inventory } from '../core/inventory';
-import { findPath, type Cell } from '../core/pathfind';
+import { findPath, isStandable, type Cell } from '../core/pathfind';
 import { canCollect, canPlace, withinReach } from '../core/placement';
 import { RECIPES } from '../core/recipes';
 import type { World } from '../core/world';
@@ -71,7 +71,7 @@ export class Game {
     switch (intent.kind) {
       case 'walk': {
         this.idleFor = 0;
-        const path = findPath(this.world, this.player.feetCell(), intent.to);
+        const path = this.pathNear(intent.to);
         if (!path) {
           this.emit({ type: 'noPath' });
           return;
@@ -89,6 +89,37 @@ export class Game {
         return;
       default:
     }
+  }
+
+  /** Path to the goal, else to the nearest reachable standable cell in the surrounding ring (radius 1, then 2). */
+  private pathNear(goal: Cell): Cell[] | null {
+    const from = this.player.feetCell();
+    const direct = findPath(this.world, from, goal);
+    if (direct) return direct;
+    for (const r of [1, 2]) {
+      const candidates: Array<{ cell: Cell; dGoal: number; dPlayer: number }> = [];
+      for (let dx = -r; dx <= r; dx++) {
+        for (let dz = -r; dz <= r; dz++) {
+          if (Math.max(Math.abs(dx), Math.abs(dz)) !== r) continue;
+          const x = goal[0] + dx;
+          const z = goal[2] + dz;
+          if (!this.world.inBounds(x, 0, z)) continue;
+          const cell: Cell = [x, this.world.topSolidY(x, z) + 1, z];
+          if (!isStandable(this.world, cell)) continue;
+          candidates.push({
+            cell,
+            dGoal: dx * dx + dz * dz,
+            dPlayer: (x - from[0]) ** 2 + (z - from[2]) ** 2,
+          });
+        }
+      }
+      candidates.sort((a, b) => a.dGoal - b.dGoal || a.dPlayer - b.dPlayer);
+      for (const c of candidates) {
+        const path = findPath(this.world, from, c.cell);
+        if (path) return path;
+      }
+    }
+    return null;
   }
 
   private collect(cell: Cell): void {
@@ -157,6 +188,11 @@ export class Game {
     this.idleFor = 0;
     this.emit({ type: 'crafted', recipe: recipeId });
     return true;
+  }
+
+  /** Called by input code when the pad stick is held. */
+  noteActivity(): void {
+    this.idleFor = 0;
   }
 
   update(dt: number): void {

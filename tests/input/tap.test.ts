@@ -80,12 +80,12 @@ describe('resolveTap', () => {
       .toEqual({ kind: 'walk', to: [4, 1, 4] });
   });
 
-  it('gives none when the fallback column cannot be stood on', () => {
+  it('walks to the tapped column even when it cannot be stood on (water)', () => {
     const world = flatWorld();
     world.set(8, 1, 8, BlockId.Water);
     for (const selected of ['hand', BlockId.Wood] as const) {
       expect(resolveTap({ cell: [8, 0, 8], normal: up }, selected, feet, world, occupied))
-        .toEqual({ kind: 'none' });
+        .toEqual({ kind: 'walk', to: [8, 1, 8] });
     }
   });
 

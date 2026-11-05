@@ -66,7 +66,14 @@ scene.renderer.domElement.addEventListener('pointerup', e => {
 });
 window.addEventListener('pointerdown', () => sfx.unlock(), { once: true });
 
-const pad = new GamepadInput(loadMapping(typeof localStorage === 'undefined' ? null : localStorage));
+function safeStorage(): Storage | null {
+  try {
+    return window.localStorage;
+  } catch {
+    return null;
+  }
+}
+const pad = new GamepadInput(loadMapping(safeStorage()));
 const camDir = { x: 0, z: 1 };
 const camera3 = new THREE.Vector3();
 
@@ -111,13 +118,18 @@ function frame(now: number): void {
   last = now;
 
   const { stick, pressed } = pad.poll(now);
-  if (stick[0] !== 0 || stick[1] !== 0) {
-    const [sx, sz] = padStick(stick);
-    game.player.setStick(sx, sz);
-  } else {
+  if (hud.blockingOverlayOpen) {
     game.player.setStick(0, 0);
+  } else {
+    if (stick[0] !== 0 || stick[1] !== 0) {
+      const [sx, sz] = padStick(stick);
+      game.player.setStick(sx, sz);
+      game.noteActivity();
+    } else {
+      game.player.setStick(0, 0);
+    }
+    for (const action of pressed) game.padAction(action);
   }
-  for (const action of pressed) game.padAction(action);
 
   game.update(dt);
   const p = game.player.pos;

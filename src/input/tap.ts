@@ -30,8 +30,10 @@ export function resolveTap(
       if (canPlace(world, cell, occupied)) return { kind: 'place', cell };
     }
   }
-  const to = nearestStandable(world, hit.cell[0], hit.cell[2]);
-  return to ? { kind: 'walk', to } : { kind: 'none' };
+  // Trees and water have no standable top: still walk, and let the game find a cell beside it.
+  const [x, , z] = hit.cell;
+  const to = nearestStandable(world, x, z) ?? [x, world.topSolidY(x, z) + 1, z] as Cell;
+  return { kind: 'walk', to };
 }
 
 export function createDebouncer(ms = 150): (key: string, now: number) => boolean {
