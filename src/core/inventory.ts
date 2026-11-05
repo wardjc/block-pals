@@ -3,7 +3,7 @@ import { BLOCKS, BlockId } from './blocks';
 export const MAX_STACK = 20;
 
 function validId(id: number): id is BlockId {
-  return Number.isInteger(id) && Object.hasOwn(BLOCKS, id);
+  return Number.isInteger(id) && Object.hasOwn(BLOCKS, id) && id !== BlockId.Air && id !== BlockId.Bedrock;
 }
 
 function validQuantity(n: number): boolean {
