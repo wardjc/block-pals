@@ -2,6 +2,7 @@ import './ui/styles.css';
 import * as THREE from 'three';
 import { BlockId } from './core/blocks';
 import type { Cell } from './core/pathfind';
+import { applySave, readSave, startAutosave } from './core/save';
 import { generateWorld } from './core/worldgen';
 import { Game } from './game/game';
 import { GamepadInput } from './input/gamepad';
@@ -12,9 +13,16 @@ import { GameScene } from './render/scene';
 import { sfx } from './audio/sfx';
 import { Hud } from './ui/hud';
 
-const { world, spawn } = generateWorld();
+let storage: Storage | null = null;
+try { storage = window.localStorage; } catch { /* Storage may be blocked. */ }
+const saved = readSave(storage);
+export const hadSave: boolean = saved !== null; // for Pip's welcome-back line (Task 10)
+const seed = saved?.seed ?? 2026;
+const initial = saved ? applySave(saved) : generateWorld(seed);
+const { world, spawn } = initial;
 const scene = new GameScene(document.getElementById('game')!, world);
-const game = new Game({ world, spawn });
+const game = new Game(initial);
+startAutosave(game, seed, storage);
 world.onChange((x, _y, z) => scene.rebuildChunkAt(x, z));
 
 const playerModel = makePlayerModel();
@@ -66,7 +74,7 @@ scene.renderer.domElement.addEventListener('pointerup', e => {
 });
 window.addEventListener('pointerdown', () => sfx.unlock(), { once: true });
 
-const pad = new GamepadInput(loadMapping(typeof localStorage === 'undefined' ? null : localStorage));
+const pad = new GamepadInput(loadMapping(storage));
 const camDir = { x: 0, z: 1 };
 const camera3 = new THREE.Vector3();
 
