@@ -124,6 +124,11 @@ html, body {
   pointer-events: none;
 }
 
+/* `#ui > *` would otherwise win: Pip's speech bubble is only a picture, so taps on it reach the world. */
+#ui > .bubble {
+  pointer-events: none;
+}
+
 .bubble[hidden] {
   display: none;
 }

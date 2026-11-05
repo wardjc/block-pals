@@ -9,7 +9,7 @@ type Dbg = {
   giveItem(id: number, n: number): void;
   game: {
     tryCraft(id: string): boolean;
-    inventory: { count(id: number): number };
+    inventory: { count(id: number): number; hotbar(): number[] };
   };
 };
 declare global { interface Window { __debug: Dbg } }
@@ -35,6 +35,8 @@ test('tap on ground moves the player', async ({ page }) => {
   await page.waitForTimeout(3000);
   const after = await page.evaluate(() => window.__debug.playerPos());
   expect(Math.hypot(after.x - before.x, after.z - before.z)).toBeGreaterThan(0.5);
+  // Tap to go, tap next to you to dig: a ground tap ahead walks and digs nothing.
+  expect(await page.evaluate(() => window.__debug.game.inventory.hotbar().length)).toBe(0);
 });
 
 test('craft planks via debug inventory', async ({ page }) => {

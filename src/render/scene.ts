@@ -67,7 +67,7 @@ export class GameScene {
     // A soft ring on the ground where a walk tap is heading.
     this.marker = new THREE.Mesh(
       new THREE.RingGeometry(0.22, 0.42, 24),
-      new THREE.MeshBasicMaterial({ color: 0xffffff, transparent: true, opacity: 0, depthWrite: false }),
+      new THREE.MeshBasicMaterial({ color: 0xffd23f, transparent: true, opacity: 0, depthWrite: false }),
     );
     this.marker.rotation.x = -Math.PI / 2;
     this.marker.renderOrder = 2;
@@ -214,7 +214,7 @@ export class GameScene {
       this.marker.visible = false;
       return;
     }
-    this.marker.material.opacity = 0.85 * (1 - t);
+    this.marker.material.opacity = 0.95 * (1 - t * t);
     this.marker.scale.setScalar(0.8 + 0.4 * t);
   }
 
