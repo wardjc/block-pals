@@ -92,6 +92,16 @@ describe('Game', () => {
     expect(game.tryCraft('nope')).toBe(false);
   });
 
+  it('idle does not accumulate while paused', () => {
+    const { game, events } = setup();
+    game.paused = true;
+    for (let i = 0; i < 60; i++) game.update(1);
+    expect(events.filter(e => e.type === 'idle')).toHaveLength(0);
+    game.paused = false;
+    for (let i = 0; i < 19; i++) game.update(1);
+    expect(events.filter(e => e.type === 'idle')).toHaveLength(0);
+  });
+
   it('idle fires after 20s without actions', () => {
     const { game, events } = setup();
     for (let i = 0; i < 19; i++) game.update(1);

@@ -5,6 +5,8 @@ export interface HudHandlers {
   onSelect(i: number): void;
   onCraft(): void;
   onGrownUps(): void;
+  /** Hotspot press and release, for the 3 second hold. */
+  onGrownUpsHold?(down: boolean): void;
 }
 
 export interface HudState {
@@ -42,6 +44,8 @@ export class Hud {
 
     const grownUps = this.button('grownups-hotspot', '', () => handlers.onGrownUps());
     grownUps.setAttribute('aria-label', 'Grown-ups');
+    grownUps.addEventListener('pointerdown', () => handlers.onGrownUpsHold?.(true));
+    for (const t of ['pointerup', 'pointercancel']) window.addEventListener(t, () => handlers.onGrownUpsHold?.(false), true);
     root.appendChild(grownUps);
 
     this.bubble.className = 'bubble';
@@ -50,6 +54,29 @@ export class Hud {
     this.bubbleWord.className = 'bubble-word';
     this.bubble.append(this.bubblePicture, this.bubbleWord);
     root.appendChild(this.bubble);
+
+    this.breakBubble.className = 'break-bubble';
+    this.breakBubble.hidden = true;
+    const pic = document.createElement('span');
+    pic.className = 'break-picture';
+    pic.textContent = '🤸';
+    const ok = this.button('break-ok', '✔', () => { this.hideBreak(); this.onBreakDone?.(); });
+    ok.setAttribute('aria-label', 'Carry on');
+    this.breakBubble.append(pic, ok);
+    root.appendChild(this.breakBubble);
+  }
+
+  private readonly breakBubble = document.createElement('div');
+  private onBreakDone: (() => void) | undefined;
+
+  /** Stays until the big tick is tapped; never blocks play. */
+  showBreak(onDone: () => void): void {
+    this.onBreakDone = onDone;
+    this.breakBubble.hidden = false;
+  }
+
+  hideBreak(): void {
+    this.breakBubble.hidden = true;
   }
 
   private button(cls: string, text: string, onTap: () => void): HTMLButtonElement {

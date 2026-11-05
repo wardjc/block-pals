@@ -58,6 +58,11 @@ export class Pal {
     this.speak(hadSave ? 'welcomeBack' : 'hello', true);
   }
 
+  /** The gentle break suggestion; never held back by the chatter gap. */
+  remindBreak(): void {
+    this.speak('breakTime', true);
+  }
+
   handle(e: GameEvent): void {
     switch (e.type) {
       case 'collected':

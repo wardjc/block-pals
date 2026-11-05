@@ -16,6 +16,8 @@ import { Hud } from './ui/hud';
 import { Voice } from './audio/voice';
 import { LINES, LINE_ICONS, type LineKey } from './content/lines';
 import { Pal } from './game/pal';
+import { UsageTracker } from './core/usage';
+import { GrownUps } from './ui/grownups';
 
 let storage: Storage | null = null;
 try { storage = window.localStorage; } catch { /* Storage may be blocked. */ }
@@ -26,7 +28,8 @@ const initial = saved ? applySave(saved) : generateWorld(seed);
 const { world, spawn } = initial;
 const scene = new GameScene(document.getElementById('game')!, world);
 const game = new Game(initial);
-startAutosave(game, seed, storage);
+const stopAutosave = startAutosave(game, seed, storage);
+const usage = new UsageTracker(storage);
 world.onChange((x, _y, z) => scene.rebuildChunkAt(x, z));
 
 const playerModel = makePlayerModel();
@@ -43,6 +46,10 @@ const sayLine = (key: LineKey): void => {
   const variants = LINES[key];
   const text = variants[Math.floor(Math.random() * variants.length)];
   voice.say(text);
+  if (key === 'breakTime') {
+    hud.showBreak(() => usage.resetSessionTimer());
+    return;
+  }
   hud.showBubble(LINE_ICONS[key], BUBBLE_WORDS[key]);
   clearTimeout(bubbleTimer);
   bubbleTimer = window.setTimeout(() => hud.hideBubble(), 3000);
@@ -88,6 +95,7 @@ const hud = new Hud(document.getElementById('ui')!, scene.atlas.iconDataUrl, {
   },
   onCraft: () => craftScreen.open(),
   onGrownUps: () => {},
+  onGrownUpsHold: down => (down ? grownUps.holdStart() : grownUps.holdEnd()),
 });
 
 const craftScreen = new CraftScreen(document.getElementById('ui')!, {
@@ -107,6 +115,26 @@ const craftScreen = new CraftScreen(document.getElementById('ui')!, {
 });
 game.onCraftRequest = () => craftScreen.open();
 
+let pad = new GamepadInput(loadMapping(storage));
+const grownUps = new GrownUps(document.getElementById('ui')!, {
+  usage,
+  storage,
+  captureButton: () => pad.captureNextButton(),
+  getMapping: () => loadMapping(storage),
+  onMappingSaved: m => { pad = new GamepadInput(m); },
+  stopAutosave,
+  onOpenChange: open => {
+    hud.setOverlayOpen(open);
+    game.paused = open;
+    if (open) { game.player.setPath(null); game.player.setStick(0, 0); }
+  },
+});
+
+const flushUsage = (): void => usage.flush();
+setInterval(flushUsage, 15_000);
+document.addEventListener('visibilitychange', () => { if (document.visibilityState === 'hidden') flushUsage(); });
+window.addEventListener('pagehide', flushUsage);
+
 // Taps on the canvas: pick, resolve, debounce, apply.
 const allowTap = createDebouncer();
 scene.renderer.domElement.addEventListener('pointerup', e => {
@@ -118,7 +146,6 @@ scene.renderer.domElement.addEventListener('pointerup', e => {
 });
 window.addEventListener('pointerdown', () => { sfx.unlock(); greetOnce(); }, { once: true });
 
-const pad = new GamepadInput(loadMapping(storage));
 const camDir = { x: 0, z: 1 };
 const camera3 = new THREE.Vector3();
 
@@ -153,6 +180,8 @@ if (debugOn) {
     fps: () => fpsValue,
     pipPos: () => ({ ...pal.pos }),
     game,
+    usage,
+    pal,
   };
   (window as unknown as { __triangles: () => number }).__triangles = () => scene.triangleCount();
 }
@@ -160,7 +189,8 @@ if (debugOn) {
 let lastHotbar = '';
 let last = performance.now();
 function frame(now: number): void {
-  const dt = Math.min(0.1, (now - last) / 1000);
+  const rawMs = now - last;
+  const dt = Math.min(0.1, rawMs / 1000);
   last = now;
 
   const { stick, pressed } = pad.poll(now);
@@ -181,6 +211,7 @@ function frame(now: number): void {
   }
 
   game.update(dt);
+  if (usage.tick(rawMs, document.visibilityState === 'visible').remind) pal.remindBreak();
   const p = game.player.pos;
   playerModel.position.set(p.x, p.y, p.z);
   playerModel.rotation.y = game.player.heading;

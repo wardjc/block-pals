@@ -158,4 +158,13 @@ describe('Pal', () => {
     }
     expect(pal.pos.y).toBe(1);
   });
+
+  it('remindBreak speaks breakTime even inside the chatter gap', () => {
+    const { pal, said, time } = setup();
+    time(1000);
+    pal.handle({ type: 'noPath' });
+    time(1500);
+    pal.remindBreak();
+    expect(said).toEqual(['noPath', 'breakTime']);
+  });
 });

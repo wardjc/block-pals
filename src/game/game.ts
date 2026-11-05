@@ -200,6 +200,7 @@ export class Game {
   update(dt: number): void {
     if (!this.paused) this.player.update(this.world, dt);
     this.normaliseSelection();
+    if (this.paused) return;
     this.idleFor += dt;
     if (this.idleFor >= IDLE_SECONDS) {
       this.idleFor = 0;
