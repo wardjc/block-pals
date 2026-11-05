@@ -18,6 +18,9 @@ export interface GrownUpsDeps {
   now?: () => number;
 }
 
+/** The sum gate closes by itself after this long without a tap, so a child is never stuck on it. */
+const GATE_IDLE_MS = 20_000;
+
 const STEPS: Array<{ key: 'collect' | 'place' | 'nextSlot'; label: string }> = [
   { key: 'collect', label: 'Collect' },
   { key: 'place', label: 'Place' },
@@ -44,6 +47,7 @@ export class GrownUps {
   private holdPointer: number | null = null;
   private open_ = false;
   private captureRun = 0;
+  private gateTimer = 0;
 
   constructor(root: HTMLElement, private readonly deps: GrownUpsDeps) {
     this.ring.hidden = true;
@@ -97,6 +101,7 @@ export class GrownUps {
   }
 
   close(): void {
+    this.stopGateTimer();
     this.captureRun++;
     this.deps.cancelCapture();
     this.overlay.hidden = true;
@@ -107,8 +112,19 @@ export class GrownUps {
     }
   }
 
+  private stopGateTimer(): void {
+    clearTimeout(this.gateTimer);
+    this.gateTimer = 0;
+  }
+
+  private restartGateTimer = (): void => {
+    clearTimeout(this.gateTimer);
+    this.gateTimer = window.setTimeout(() => this.close(), GATE_IDLE_MS);
+  };
+
   private showGate(): void {
     this.show();
+    this.restartGateTimer();
     const sum = makeSum();
     let input = '';
     const card = el('div', 'gu-card gu-gate');
@@ -130,10 +146,19 @@ export class GrownUps {
       else this.close(); // wrong answer closes quietly
     });
     card.append(question, display, pad);
-    this.overlay.appendChild(card);
+    // Only while this gate is still up: the OK click bubbles here after it opened the panel.
+    const poke = (): void => { if (this.gateTimer !== 0 && card.isConnected) this.restartGateTimer(); };
+    card.addEventListener('pointerdown', poke);
+    card.addEventListener('click', poke);
+    // A big way out for a child who got here by accident.
+    const x = el('button', 'gu-x', '✖');
+    x.setAttribute('aria-label', 'Close');
+    x.addEventListener('click', () => this.close());
+    this.overlay.append(card, x);
   }
 
   private showPanel(): void {
+    this.stopGateTimer();
     this.show();
     const { usage } = this.deps;
     const card = el('div', 'gu-card gu-panel');

@@ -292,6 +292,11 @@ html, body {
 .gu-confirm .gu-action { display: inline-block; }
 .gu-danger { background: #f3c3be; }
 .gu-warn, .gu-status { margin: 8px 0 0; }
+.gu-x {
+  position: fixed; top: 16px; right: 16px; width: 104px; height: 104px; border: 0; border-radius: 50%;
+  background: #fff; color: #c33; font: 900 52px/1 system-ui, sans-serif; cursor: pointer;
+  box-shadow: 0 4px 0 rgba(0, 0, 0, 0.25);
+}
 .gu-close { display: block; width: 100%; height: 88px; margin-top: 18px; border: 0; border-radius: 20px; background: #2fb34a; color: #fff; font: 900 32px system-ui, sans-serif; cursor: pointer; }
 
 /* Break reminder */
