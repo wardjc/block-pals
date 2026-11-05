@@ -1,6 +1,6 @@
 import { describe, expect, it } from 'vitest';
 import { BlockId } from '../../src/core/blocks';
-import { findPath, isStandable, nearestStandable, type Cell } from '../../src/core/pathfind';
+import { findPath, isStandable, nearestStandable, pathTowards, type Cell } from '../../src/core/pathfind';
 import { World } from '../../src/core/world';
 
 function flatWorld(): World {
@@ -104,5 +104,36 @@ describe('nearestStandable', () => {
     expect(nearestStandable(world, 4, 3)).toBeNull();
     expect(nearestStandable(world, -1, 3)).toBeNull();
     expect(nearestStandable(world, 9, 3)).toBeNull();
+  });
+});
+
+describe('pathTowards', () => {
+  it('walks straight to a reachable goal', () => {
+    const a = pathTowards(flatWorld(), [1, 1, 1], [4, 1, 1])!;
+    expect(a.end).toEqual([4, 1, 1]);
+    expect(a.distance).toBe(0);
+    expect(a.path).toEqual([[2, 1, 1], [3, 1, 1], [4, 1, 1]]);
+  });
+
+  it('stops at the reachable cell nearest the goal, ties going to the one nearest the player', () => {
+    const world = flatWorld();
+    for (let x = 3; x <= 5; x++) for (let z = 3; z <= 5; z++) world.set(x, 1, z, BlockId.Water);
+    const a = pathTowards(world, [4, 1, 0], [4, 1, 4])!;
+    expect(a.end).toEqual([4, 1, 2]);
+    expect(a.distance).toBe(2);
+    expect(a.path).toHaveLength(2);
+  });
+
+  it('honours the allowed filter and reports the whole region when no nearer cell exists', () => {
+    const world = flatWorld();
+    const a = pathTowards(world, [1, 1, 1], [7, 1, 1], ([x]) => x <= 2)!;
+    expect(a.end).toEqual([2, 1, 1]);
+    expect(a.reached([2, 1, 5])).toBe(true);
+    expect(a.reached([3, 1, 1])).toBe(false);
+    expect(a.visited).toBe(27); // columns x 0..2, all nine z
+  });
+
+  it('returns null from a cell that cannot be stood on', () => {
+    expect(pathTowards(flatWorld(), [1, 0, 1], [4, 1, 1])).toBeNull();
   });
 });

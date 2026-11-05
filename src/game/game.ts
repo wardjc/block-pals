@@ -1,7 +1,8 @@
 import { BlockId } from '../core/blocks';
 import { canCraft, craft } from '../core/crafting';
 import { Inventory } from '../core/inventory';
-import { findPath, isStandable, type Cell } from '../core/pathfind';
+import { isStandable, pathTowards, type Cell } from '../core/pathfind';
+
 import { canCollect, canPlace, withinReach } from '../core/placement';
 import { RECIPES } from '../core/recipes';
 import type { World } from '../core/world';
@@ -15,9 +16,14 @@ export type GameEvent =
   | { type: 'crafted'; recipe: string }
   | { type: 'full'; id: BlockId }
   | { type: 'noPath' }
+  | { type: 'walking'; to: Cell }
+  | { type: 'lifted' }
   | { type: 'idle' };
 
 const IDLE_SECONDS = 20;
+/** A reachable region this small (cells) with no way nearer the tap counts as a pit. */
+const PIT_CELLS = 30;
+const LIFT_RADIUS = 8;
 
 export class Game {
   readonly world: World;
@@ -71,16 +77,10 @@ export class Game {
 
   applyIntent(intent: TapIntent): void {
     switch (intent.kind) {
-      case 'walk': {
+      case 'walk':
         this.idleFor = 0;
-        const path = this.pathNear(intent.to);
-        if (!path) {
-          this.emit({ type: 'noPath' });
-          return;
-        }
-        this.player.setPath(path);
+        this.walk(intent.to);
         return;
-      }
       case 'collect':
         this.idleFor = 0;
         this.collect(intent.cell);
@@ -93,39 +93,65 @@ export class Game {
     }
   }
 
-  /** Path to the goal, else to the nearest reachable standable cell in the surrounding ring (radius 1, then 2). */
-  private pathNear(goal: Cell): Cell[] | null {
-    const from = this.player.feetCell();
-    const direct = findPath(this.world, from, goal);
-    if (direct) return direct;
-    for (const r of [1, 2]) {
-      const candidates: Array<{ cell: Cell; dGoal: number; dPlayer: number }> = [];
-      for (let dx = -r; dx <= r; dx++) {
-        for (let dz = -r; dz <= r; dz++) {
-          if (Math.max(Math.abs(dx), Math.abs(dz)) !== r) continue;
-          const x = goal[0] + dx;
-          const z = goal[2] + dz;
-          if (!this.world.inBounds(x, 0, z)) continue;
-          const cell: Cell = [x, this.world.topSolidY(x, z) + 1, z];
-          if (!isStandable(this.world, cell)) continue;
-          candidates.push({
-            cell,
-            dGoal: dx * dx + dz * dz,
-            dPlayer: (x - from[0]) ** 2 + (z - from[2]) ** 2,
-          });
+  /** Same bounds as the player's soft wall. */
+  private insideWall = ([x, , z]: Cell): boolean =>
+    x >= 1 && x <= Math.min(46, this.world.sizeX - 2) && z >= 1 && z <= Math.min(46, this.world.sizeZ - 2);
+
+  /**
+   * One BFS from the player to the reachable standable cell nearest the goal
+   * (pathTowards). If he can get no nearer and is in a small enclosed pit, lift him to
+   * the nearest surface cell outside it and carry on; otherwise Pip gives the noPath hint.
+   */
+  private walk(goal: Cell, mayLift = true): void {
+    const approach = pathTowards(this.world, this.player.feetCell(), goal, this.insideWall);
+    if (approach && approach.distance < approach.startDistance) {
+      this.player.setPath(approach.path);
+      this.emit({ type: 'walking', to: approach.end });
+      return;
+    }
+    if (approach && approach.distance === 0) return; // already there
+    if (mayLift && approach && approach.visited <= PIT_CELLS && this.liftOut(approach.reached)) {
+      this.emit({ type: 'lifted' });
+      this.walk(goal, false);
+      return;
+    }
+    this.emit({ type: 'noPath' });
+  }
+
+  /** Puts the player on the nearest open surface (not a tree top) outside his pit. */
+  private liftOut(inPit: (cell: Cell) => boolean): boolean {
+    const [px, py, pz] = this.player.feetCell();
+    let best: Cell | null = null;
+    let bestScore = Infinity;
+    for (let x = px - LIFT_RADIUS; x <= px + LIFT_RADIUS; x++) {
+      for (let z = pz - LIFT_RADIUS; z <= pz + LIFT_RADIUS; z++) {
+        const top = this.world.topSolidY(x, z);
+        const cell: Cell = [x, top + 1, z];
+        if (top < 0 || !this.insideWall(cell) || inPit(cell) || !isStandable(this.world, cell)) continue;
+        const ground = this.world.get(x, top, z);
+        if (ground === BlockId.Wood || ground === BlockId.Leaves) continue;
+        const score = Math.hypot(x - px, z - pz) + Math.abs(cell[1] - py) * 0.1;
+        if (score < bestScore) {
+          best = cell;
+          bestScore = score;
         }
       }
-      candidates.sort((a, b) => a.dGoal - b.dGoal || a.dPlayer - b.dPlayer);
-      for (const c of candidates) {
-        const path = findPath(this.world, from, c.cell);
-        if (path) return path;
-      }
     }
-    return null;
+    if (!best) return false;
+    this.player.pos = { x: best[0] + 0.5, y: best[1], z: best[2] + 0.5 };
+    this.player.setPath(null);
+    return true;
+  }
+
+  /** The cells directly under the player's and Pip's feet hold them up, so they stay. */
+  private holdsSomeoneUp([x, y, z]: Cell): boolean {
+    const [fx, fy, fz] = this.player.feetCell();
+    if (x === fx && y === fy - 1 && z === fz) return true;
+    return this.occupied().some(([ox, oy, oz]) => x === ox && y === oy - 1 && z === oz);
   }
 
   private collect(cell: Cell): void {
-    if (!canCollect(this.world, cell) || !withinReach(this.player.feetCell(), cell)) return;
+    if (!canCollect(this.world, cell) || !withinReach(this.player.feetCell(), cell) || this.holdsSomeoneUp(cell)) return;
     const id = this.world.get(...cell);
     if (this.inventory.add(id, 1) === 0) {
       this.emit({ type: 'full', id });

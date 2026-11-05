@@ -10,7 +10,8 @@ export type LineKey =
   | 'idleHint'
   | 'craftNeedMore'
   | 'breakTime'
-  | 'welcomeBack';
+  | 'welcomeBack'
+  | 'upYouCome';
 
 /** Lines spoken by Pip. British English, short and warm. */
 export const LINES: Record<LineKey, string[]> = {
@@ -26,6 +27,7 @@ export const LINES: Record<LineKey, string[]> = {
   craftNeedMore: ['We need a few more blocks first.', 'Almost! Collect a few more.'],
   breakTime: ["Let's have a stretch! Wiggle your arms!", 'Time for a wiggle! Jump up and down!'],
   welcomeBack: ["You're back! I missed you!", 'Hiya! Yay, you came back!'],
+  upYouCome: ['Up you come! There we go!', 'Whoops-a-daisy! Up you come!'],
 };
 
 /** One picture per line, shown in the speech bubble so no reading is needed. */
@@ -42,4 +44,5 @@ export const LINE_ICONS: Record<LineKey, string> = {
   craftNeedMore: '➕',
   breakTime: '🤸',
   welcomeBack: '🥰',
+  upYouCome: '⬆️',
 };

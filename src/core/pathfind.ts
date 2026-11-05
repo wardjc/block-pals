@@ -103,3 +103,99 @@ export function findPath(world: World, from: Cell, to: Cell, maxNodes = 4000): C
   }
   return null;
 }
+
+export interface Approach {
+  /** Steps from `from` (exclusive) to `end`; empty when the player is already the closest. */
+  path: Cell[];
+  end: Cell;
+  /** goalDistance of `end`, and of the start cell. */
+  distance: number;
+  startDistance: number;
+  /** Cells explored; the whole reachable region unless the goal itself was reached or the cap hit. */
+  visited: number;
+  reached(cell: Cell): boolean;
+}
+
+/**
+ * How far a cell is from a tapped goal: Chebyshev distance in x/z plus the height
+ * difference, so a spot beside a tree trunk beats one under a far branch.
+ */
+export function goalDistance([x, y, z]: Cell, goal: Cell): number {
+  return Math.max(Math.abs(x - goal[0]), Math.abs(z - goal[2])) + Math.abs(y - goal[1]);
+}
+
+/**
+ * One breadth-first flood from the player, using the same steps as findPath.
+ * Picks the reachable standable cell nearest the goal (goalDistance); ties go to the
+ * cell fewest steps from the player, which BFS order gives for free. Stops early once
+ * the goal itself is reached. `allowed` keeps the flood inside the soft wall.
+ * Returns null when `from` is not standable.
+ */
+export function pathTowards(
+  world: World, from: Cell, goal: Cell,
+  allowed: (cell: Cell) => boolean = () => true, maxNodes = 8000,
+): Approach | null {
+  if (!isStandable(world, from)) return null;
+  const sx = world.sizeX;
+  const sxz = sx * world.sizeZ;
+  const key = ([x, y, z]: Cell): number => x + sx * z + sxz * y;
+  const decode = (k: number): Cell => [k % sx, Math.floor(k / sxz), Math.floor((k % sxz) / sx)];
+  // Typed arrays keep one flood well under a millisecond or two on the tablet.
+  const parent = new Int32Array(sxz * world.sizeY).fill(-2); // -2 unseen, -1 start
+  const queue = new Int32Array(Math.min(parent.length, maxNodes));
+  const start = key(from);
+  parent[start] = -1;
+  queue[0] = start;
+  let tail = 1;
+  let best = start;
+  let bestDistance = goalDistance(from, goal);
+  const startDistance = bestDistance;
+  // Standability is asked up to 12 times per cell, so remember it (0 unknown, 1 yes, 2 no).
+  const standCache = new Uint8Array(parent.length);
+  const cell: Cell = [0, 0, 0];
+  const standable = (k: number): boolean => {
+    if (standCache[k] === 0) {
+      cell[0] = k % sx; cell[1] = Math.floor(k / sxz); cell[2] = Math.floor((k % sxz) / sx);
+      standCache[k] = isStandable(world, cell) && allowed(cell) ? 1 : 2;
+    }
+    return standCache[k] === 1;
+  };
+  for (let head = 0; head < tail && bestDistance > 0; head++) {
+    const k = queue[head];
+    const x = k % sx;
+    const y = Math.floor(k / sxz);
+    const z = Math.floor((k % sxz) / sx);
+    for (const [dx, dz] of [[1, 0], [-1, 0], [0, 1], [0, -1]]) {
+      const nx = x + dx;
+      const nz = z + dz;
+      if (nx < 0 || nz < 0 || nx >= sx || nz >= world.sizeZ) continue;
+      for (const dy of [0, 1, -1]) {
+        const ny = y + dy;
+        if (ny < 0 || ny >= world.sizeY) continue;
+        const nk = nx + sx * nz + sxz * ny;
+        if (parent[nk] !== -2 || tail >= queue.length || !standable(nk)) continue;
+        // Same rule as canStep: a height change needs headroom over the lower end.
+        if (dy === 1 && BLOCKS[world.get(x, y + 2, z)].solid) continue;
+        if (dy === -1 && BLOCKS[world.get(nx, ny + 2, nz)].solid) continue;
+        parent[nk] = k;
+        queue[tail++] = nk;
+        const d = Math.max(Math.abs(nx - goal[0]), Math.abs(nz - goal[2])) + Math.abs(ny - goal[1]);
+        if (d < bestDistance) {
+          best = nk;
+          bestDistance = d;
+        }
+      }
+    }
+  }
+  const path: Cell[] = [];
+  for (let k = best; k !== start; k = parent[k]) path.push(decode(k));
+  path.reverse();
+  return {
+    path,
+    end: decode(best),
+    distance: bestDistance,
+    startDistance,
+    visited: tail,
+    reached: cell => world.inBounds(...cell) && parent[key(cell)] !== -2,
+  };
+}

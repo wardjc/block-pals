@@ -77,6 +77,9 @@ export class Pal {
       case 'full':
         this.speak('full');
         return;
+      case 'lifted':
+        this.speak('upYouCome', true);
+        return;
       case 'noPath':
         this.speak('noPath');
         return;

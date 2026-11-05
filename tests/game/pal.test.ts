@@ -136,6 +136,12 @@ describe('Pal', () => {
     expect(said).toContain('noPath');
   });
 
+  it('says a cheerful line when the player is lifted out of a pit', () => {
+    const { pal, said } = setup();
+    pal.handle({ type: 'lifted' });
+    expect(said).toEqual(['upYouCome']);
+  });
+
   it('placing a block on Pip\'s next waypoint never puts him inside a solid', () => {
     const { world, player, pal } = setup();
     player.pos = { x: 16.5, y: 1, z: 10.5 };

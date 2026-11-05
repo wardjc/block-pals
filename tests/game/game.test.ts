@@ -2,6 +2,7 @@ import { describe, expect, it } from 'vitest';
 import { BlockId } from '../../src/core/blocks';
 import { Inventory } from '../../src/core/inventory';
 import { World } from '../../src/core/world';
+import { generateWorld } from '../../src/core/worldgen';
 import { Game, type GameEvent } from '../../src/game/game';
 
 function flatWorld(): World {
@@ -152,13 +153,101 @@ describe('Game', () => {
     expect(events.some(e => e.type === 'noPath')).toBe(false);
   });
 
-  it('unreachable tap emits noPath', () => {
+  it('an unreachable tap walks as close as it can get', () => {
     const { world, game, events } = setup();
     for (let x = 18; x <= 22; x++) for (let z = 18; z <= 22; z++) {
       for (let y = 1; y <= 3; y++) world.set(x, y, z, BlockId.Stone);
     }
     game.applyIntent({ kind: 'walk', to: [20, 4, 20] });
+    expect(events.some(e => e.type === 'noPath')).toBe(false);
+    for (let i = 0; i < 400; i++) game.update(0.05);
+    const [x, , z] = game.player.feetCell();
+    expect(Math.max(Math.abs(x - 20), Math.abs(z - 20))).toBe(3);
+  });
+
+  it('emits noPath when the player is already as close as he can get', () => {
+    const { world, game, events } = setup();
+    for (let z = 0; z < 48; z++) for (let y = 1; y <= 3; y++) world.set(6, y, z, BlockId.Stone);
+    game.applyIntent({ kind: 'walk', to: [9, 1, 5] });
     expect(events).toContainEqual({ type: 'noPath' });
+  });
+
+  it('a walk tap reports where the player is heading', () => {
+    const { game, events } = setup();
+    game.applyIntent({ kind: 'walk', to: [9, 1, 5] });
+    expect(events).toContainEqual({ type: 'walking', to: [9, 1, 5] });
+  });
+
+  it('cannot collect the block under the player\'s feet', () => {
+    const { world, game, events } = setup();
+    game.applyIntent({ kind: 'collect', cell: [5, 0, 5] });
+    expect(world.get(5, 0, 5)).toBe(BlockId.Grass);
+    expect(game.inventory.count(BlockId.Grass)).toBe(0);
+    expect(events).toEqual([]);
+  });
+
+  it('cannot collect the block under Pip', () => {
+    const { world, game, events } = setup();
+    game.setOccupied(() => [[5, 1, 5], [5, 2, 5], [7, 1, 6], [7, 2, 6]]);
+    game.applyIntent({ kind: 'collect', cell: [7, 0, 6] });
+    expect(world.get(7, 0, 6)).toBe(BlockId.Grass);
+    expect(events).toEqual([]);
+    game.applyIntent({ kind: 'collect', cell: [6, 0, 6] });
+    expect(world.get(6, 0, 6)).toBe(BlockId.Air);
+  });
+
+  it('a player in a deep pit is lifted out on noPath', () => {
+    const world = new World(48, 16, 48);
+    for (let x = 0; x < 48; x++) for (let z = 0; z < 48; z++) for (let y = 0; y <= 4; y++) world.set(x, y, z, BlockId.Grass);
+    for (let y = 2; y <= 4; y++) world.set(10, y, 10, BlockId.Air);
+    const game = new Game({ world, spawn: { x: 10.5, y: 2, z: 10.5 } });
+    const events: GameEvent[] = [];
+    game.on(e => events.push(e));
+    game.applyIntent({ kind: 'walk', to: [20, 5, 10] });
+    expect(events).toContainEqual({ type: 'lifted' });
+    expect(events.some(e => e.type === 'noPath')).toBe(false);
+    const [x, y, z] = game.player.feetCell();
+    expect(y).toBe(5);
+    expect(Math.max(Math.abs(x - 10), Math.abs(z - 10))).toBe(1);
+    for (let i = 0; i < 200; i++) game.update(0.05);
+    expect(game.player.feetCell()).toEqual([20, 5, 10]);
+  });
+
+  it('tapping the middle of the pond walks to the nearest shore', () => {
+    const { world, game, events } = setup();
+    for (let x = 12; x <= 16; x++) for (let z = 3; z <= 7; z++) world.set(x, 1, z, BlockId.Water);
+    game.applyIntent({ kind: 'walk', to: [14, 1, 5] });
+    expect(events.some(e => e.type === 'noPath')).toBe(false);
+    for (let i = 0; i < 200; i++) game.update(0.05);
+    expect(game.player.feetCell()).toEqual([11, 1, 5]);
+  });
+
+  it('tapping a tree is fast', () => {
+    const { world, spawn } = generateWorld(2026);
+    const game = new Game({ world, spawn });
+    const trunks: Array<[number, number, number]> = [];
+    for (let x = 1; x < 47; x++) for (let z = 1; z < 47; z++) {
+      const y = world.topSolidY(x, z);
+      if (world.get(x, y, z) === BlockId.Leaves) {
+        for (let t = y; t > 0; t--) if (world.get(x, t, z) === BlockId.Wood) { trunks.push([x, t, z]); break; }
+      }
+    }
+    expect(trunks.length).toBeGreaterThan(5);
+    // Warm the JIT up first: this measures the steady cost of one tap (one BFS flood).
+    for (let i = 0; i < 5; i++) game.applyIntent({ kind: 'walk', to: [trunks[i][0] - 1, trunks[i][1], trunks[i][2]] });
+    let worst = 0;
+    for (const [x, y, z] of trunks) {
+      // Best of three per tree, so a GC pause or a busy CI core does not count as the tap's cost.
+      let best = Infinity;
+      for (let rep = 0; rep < 3; rep++) {
+        game.player.pos = { ...spawn };
+        const t0 = performance.now();
+        game.applyIntent({ kind: 'walk', to: [x - 1, y, z] });
+        best = Math.min(best, performance.now() - t0);
+      }
+      worst = Math.max(worst, best);
+    }
+    expect(worst).toBeLessThanOrEqual(10);
   });
 
   it('noteActivity resets idle', () => {
