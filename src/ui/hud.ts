@@ -17,6 +17,10 @@ export class Hud {
   /** Set by later tasks (craft screen, grown-ups gate) while a full-screen overlay is up. */
   blockingOverlayOpen = false;
 
+  setOverlayOpen(open: boolean): void {
+    this.blockingOverlayOpen = open;
+  }
+
   private readonly bar = document.createElement('div');
   private readonly bubble = document.createElement('div');
   private readonly bubblePicture = document.createElement('span');

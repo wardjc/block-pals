@@ -11,6 +11,9 @@ import { createDebouncer, resolveTap } from './input/tap';
 import { makePalModel, makePlayerModel } from './render/characters';
 import { GameScene } from './render/scene';
 import { sfx } from './audio/sfx';
+import { Voice } from './audio/voice';
+import { LINES } from './content/lines';
+import { CraftScreen } from './ui/craft';
 import { Hud } from './ui/hud';
 
 let storage: Storage | null = null;
@@ -60,9 +63,22 @@ const hud = new Hud(document.getElementById('ui')!, scene.atlas.iconDataUrl, {
     sfx.tap();
     renderHud();
   },
-  onCraft: () => game.onCraftRequest(),
+  onCraft: () => craftScreen.open(),
   onGrownUps: () => {},
 });
+
+const craftVoice = new Voice();
+const craftScreen = new CraftScreen(document.getElementById('ui')!, {
+  inventory: game.inventory,
+  tryCraft: id => game.tryCraft(id),
+  iconFor: scene.atlas.iconDataUrl,
+  say: text => craftVoice.say(text),
+  sayNeedMore: () => craftVoice.say(LINES.craftNeedMore[Math.floor(Math.random() * LINES.craftNeedMore.length)]),
+  sfxTap: () => sfx.tap(),
+  sfxCraft: () => sfx.craft(),
+  onOpenChange: open => hud.setOverlayOpen(open),
+});
+game.onCraftRequest = () => craftScreen.open();
 
 // Taps on the canvas: pick, resolve, debounce, apply.
 const allowTap = createDebouncer();
@@ -119,7 +135,10 @@ function frame(now: number): void {
   last = now;
 
   const { stick, pressed } = pad.poll(now);
-  if (hud.blockingOverlayOpen) {
+  if (craftScreen.isOpen) {
+    game.player.setStick(0, 0);
+    craftScreen.padInput(stick, pressed);
+  } else if (hud.blockingOverlayOpen) {
     game.player.setStick(0, 0);
   } else {
     if (stick[0] !== 0 || stick[1] !== 0) {
