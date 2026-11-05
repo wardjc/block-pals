@@ -76,7 +76,12 @@ const craftScreen = new CraftScreen(document.getElementById('ui')!, {
   sayNeedMore: () => craftVoice.say(LINES.craftNeedMore[Math.floor(Math.random() * LINES.craftNeedMore.length)]),
   sfxTap: () => sfx.tap(),
   sfxCraft: () => sfx.craft(),
-  onOpenChange: open => hud.setOverlayOpen(open),
+  sayFull: () => craftVoice.say(LINES.full[Math.floor(Math.random() * LINES.full.length)]),
+  onOpenChange: open => {
+    hud.setOverlayOpen(open);
+    game.paused = open;
+    if (open) { game.player.setPath(null); game.player.setStick(0, 0); }
+  },
 });
 game.onCraftRequest = () => craftScreen.open();
 

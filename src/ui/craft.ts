@@ -3,6 +3,7 @@ import { canCraft } from '../core/crafting';
 import type { Inventory } from '../core/inventory';
 import { RECIPES, type Recipe } from '../core/recipes';
 import type { Action } from '../input/mapping';
+import { createDebouncer } from '../input/tap';
 
 export interface CraftRow {
   recipe: Recipe;
@@ -26,6 +27,10 @@ export interface CraftDeps {
   say(text: string): void;
   /** Speaks a 'craftNeedMore' line. */
   sayNeedMore(): void;
+  /** Speaks a 'full' line (output stack is full). */
+  sayFull?(): void;
+  /** Clock in ms; injectable for tests. */
+  now?: () => number;
   sfxTap(): void;
   sfxCraft(): void;
   onOpenChange(open: boolean): void;
@@ -39,6 +44,7 @@ export class CraftScreen {
   private open_ = false;
   private selected = 0;
   private padX = 0;
+  private readonly allow = createDebouncer(150);
 
   constructor(root: HTMLElement, private readonly deps: CraftDeps) {
     this.el.className = 'craft-screen';
@@ -89,17 +95,24 @@ export class CraftScreen {
     }
     this.padX = dir;
     for (const a of pressed) {
-      if (a === 'collect') this.make(this.selected);
+      if (a === 'collect') this.make(this.selected, 'craft:pad');
       else if (a === 'place') this.close();
     }
   }
 
-  private make(i: number): void {
+  make(i: number, source = 'craft:tap'): void {
+    const now = this.deps.now ? this.deps.now() : performance.now();
+    if (!this.allow(source, now)) return;
     const row = craftRows(this.deps.inventory)[i];
     if (!row) return;
     if (!row.can) {
-      this.deps.sayNeedMore();
-      this.pulse(i, row.missing);
+      if (row.missing.length === 0) {
+        (this.deps.sayFull ?? this.deps.sayNeedMore)();
+        this.pulse(i, [row.recipe.output.id]);
+      } else {
+        this.deps.sayNeedMore();
+        this.pulse(i, row.missing);
+      }
       return;
     }
     if (this.deps.tryCraft(row.recipe.id)) {

@@ -157,3 +157,17 @@ describe('Game', () => {
     expect(events.filter(e => e.type === 'idle')).toHaveLength(0);
   });
 });
+
+describe('Game pause', () => {
+  it('paused game does not move the player', () => {
+    const { game } = setup();
+    game.player.setStick(1, 0);
+    game.paused = true;
+    const x = game.player.pos.x;
+    game.update(0.5);
+    expect(game.player.pos.x).toBe(x);
+    game.paused = false;
+    game.update(0.5);
+    expect(game.player.pos.x).not.toBe(x);
+  });
+});
