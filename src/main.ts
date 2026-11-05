@@ -93,10 +93,18 @@ const hud = new Hud(document.getElementById('ui')!, scene.atlas.iconDataUrl, {
     sfx.tap();
     renderHud();
   },
-  onCraft: () => craftScreen.open(),
+  onCraft: openCraft,
   onGrownUps: () => {},
-  onGrownUpsHold: down => (down ? grownUps.holdStart() : grownUps.holdEnd()),
+  onGrownUpsHold: (down, id) => (down ? grownUps.holdStart(id) : grownUps.holdEnd(id)),
 });
+
+function syncOverlays(): void {
+  const open = craftScreen.isOpen || grownUps.isOpen;
+  hud.setOverlayOpen(open);
+  game.paused = open;
+  if (open) { game.player.setPath(null); game.player.setStick(0, 0); }
+}
+function openCraft(): void { if (!grownUps.isOpen) craftScreen.open(); }
 
 const craftScreen = new CraftScreen(document.getElementById('ui')!, {
   inventory: game.inventory,
@@ -107,32 +115,28 @@ const craftScreen = new CraftScreen(document.getElementById('ui')!, {
   sfxTap: () => sfx.tap(),
   sfxCraft: () => sfx.craft(),
   sayFull: () => voice.say(LINES.full[Math.floor(Math.random() * LINES.full.length)]),
-  onOpenChange: open => {
-    hud.setOverlayOpen(open);
-    game.paused = open;
-    if (open) { game.player.setPath(null); game.player.setStick(0, 0); }
-  },
+  onOpenChange: syncOverlays,
 });
-game.onCraftRequest = () => craftScreen.open();
+game.onCraftRequest = openCraft;
 
 let pad = new GamepadInput(loadMapping(storage));
 const grownUps = new GrownUps(document.getElementById('ui')!, {
   usage,
   storage,
   captureButton: () => pad.captureNextButton(),
+  cancelCapture: () => pad.cancelCapture(),
   getMapping: () => loadMapping(storage),
   onMappingSaved: m => { pad = new GamepadInput(m); },
   stopAutosave,
-  onOpenChange: open => {
-    hud.setOverlayOpen(open);
-    game.paused = open;
-    if (open) { game.player.setPath(null); game.player.setStick(0, 0); }
-  },
+  onOpenChange: syncOverlays,
 });
 
 const flushUsage = (): void => usage.flush();
 setInterval(flushUsage, 15_000);
-document.addEventListener('visibilitychange', () => { if (document.visibilityState === 'hidden') flushUsage(); });
+document.addEventListener('visibilitychange', () => {
+  if (document.visibilityState === 'hidden') flushUsage();
+  else last = performance.now();
+});
 window.addEventListener('pagehide', flushUsage);
 
 // Taps on the canvas: pick, resolve, debounce, apply.
@@ -194,7 +198,9 @@ function frame(now: number): void {
   last = now;
 
   const { stick, pressed } = pad.poll(now);
-  if (craftScreen.isOpen) {
+  if (grownUps.isOpen) {
+    game.player.setStick(0, 0);
+  } else if (craftScreen.isOpen) {
     game.player.setStick(0, 0);
     craftScreen.padInput(stick, pressed);
   } else if (hud.blockingOverlayOpen) {

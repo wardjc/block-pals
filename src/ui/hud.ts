@@ -6,7 +6,7 @@ export interface HudHandlers {
   onCraft(): void;
   onGrownUps(): void;
   /** Hotspot press and release, for the 3 second hold. */
-  onGrownUpsHold?(down: boolean): void;
+  onGrownUpsHold?(down: boolean, pointerId: number): void;
 }
 
 export interface HudState {
@@ -44,8 +44,8 @@ export class Hud {
 
     const grownUps = this.button('grownups-hotspot', '', () => handlers.onGrownUps());
     grownUps.setAttribute('aria-label', 'Grown-ups');
-    grownUps.addEventListener('pointerdown', () => handlers.onGrownUpsHold?.(true));
-    for (const t of ['pointerup', 'pointercancel']) window.addEventListener(t, () => handlers.onGrownUpsHold?.(false), true);
+    grownUps.addEventListener('pointerdown', e => handlers.onGrownUpsHold?.(true, e.pointerId));
+    for (const t of ['pointerup', 'pointercancel']) window.addEventListener(t, e => handlers.onGrownUpsHold?.(false, (e as PointerEvent).pointerId), true);
     root.appendChild(grownUps);
 
     this.bubble.className = 'bubble';

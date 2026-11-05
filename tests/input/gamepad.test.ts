@@ -155,6 +155,16 @@ describe('GamepadInput', () => {
     expect(input.poll(1600).pressed).toEqual(['place']);
   });
 
+  it('cancelCapture makes the next press a normal action', () => {
+    let current = pad();
+    const input = new GamepadInput(DEFAULT_MAPPING, () => [current]);
+    input.poll(0);
+    void input.captureNextButton();
+    input.cancelCapture();
+    current = pad([1]);
+    expect(input.poll(100).pressed).toEqual(['place']);
+  });
+
   it('captures unmapped buttons after a pad connects', async () => {
     let pads: (Gamepad | null)[] = [];
     const input = new GamepadInput(DEFAULT_MAPPING, () => pads);

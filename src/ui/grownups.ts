@@ -8,6 +8,7 @@ export interface GrownUpsDeps {
   storage: Storage | null;
   /** Used for "Set up controller". */
   captureButton(): Promise<number>;
+  cancelCapture(): void;
   getMapping(): ButtonMapping;
   onMappingSaved(m: ButtonMapping): void;
   /** Stops autosave so it cannot rewrite the save while resetting. */
@@ -40,6 +41,7 @@ export class GrownUps {
   private readonly ring = el('div', 'gu-ring');
   private readonly overlay = el('div', 'gu-overlay');
   private raf = 0;
+  private holdPointer: number | null = null;
   private open_ = false;
   private captureRun = 0;
 
@@ -59,8 +61,9 @@ export class GrownUps {
     return (this.deps.now ?? (() => performance.now()))();
   }
 
-  holdStart(): void {
+  holdStart(pointerId = 0): void {
     if (this.open_ || this.hold.active) return;
+    this.holdPointer = pointerId;
     this.hold.start(this.now());
     this.ring.hidden = false;
     const step = (): void => {
@@ -76,7 +79,9 @@ export class GrownUps {
     this.raf = requestAnimationFrame(step);
   }
 
-  holdEnd(): void {
+  holdEnd(pointerId = 0): void {
+    if (this.holdPointer !== null && pointerId !== this.holdPointer) return;
+    this.holdPointer = null;
     this.hold.release();
     cancelAnimationFrame(this.raf);
     this.ring.hidden = true;
@@ -93,6 +98,7 @@ export class GrownUps {
 
   close(): void {
     this.captureRun++;
+    this.deps.cancelCapture();
     this.overlay.hidden = true;
     this.overlay.replaceChildren();
     if (this.open_) {
@@ -144,7 +150,7 @@ export class GrownUps {
       const row = el('div', 'gu-bar-row');
       const bar = el('div', 'gu-bar');
       bar.style.width = `${Math.round((d.minutes / max) * 100)}%`;
-      row.append(el('span', 'gu-bar-date', d.date.slice(5)), bar, el('span', 'gu-bar-min', `${d.minutes} min`));
+      row.append(el('span', 'gu-bar-date', new Date(`${d.date}T12:00:00`).toLocaleDateString('en-GB', { weekday: 'short', day: 'numeric', month: 'short' })), bar, el('span', 'gu-bar-min', `${d.minutes} min`));
       bars.appendChild(row);
     }
     card.appendChild(bars);

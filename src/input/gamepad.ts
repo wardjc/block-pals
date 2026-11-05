@@ -76,6 +76,12 @@ export class GamepadInput {
     return { stick: [x, y], pressed };
   }
 
+  /** Abandons a pending capture so the next press is a normal action again. */
+  cancelCapture(): void {
+    this.captureResolve = null;
+    this.capturePromise = null;
+  }
+
   /** The regular poll loop resolves setup capture on the next button edge. */
   captureNextButton(): Promise<number> {
     if (!this.capturePromise) {

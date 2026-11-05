@@ -276,19 +276,19 @@ html, body {
 .gu-sum { font: 900 56px/1.2 system-ui, sans-serif; }
 .gu-display { font: 900 48px/1.3 system-ui, sans-serif; min-height: 64px; border-bottom: 4px solid #ccd; margin-bottom: 10px; }
 .gu-pad { display: grid; grid-template-columns: repeat(3, 96px); gap: 10px; justify-content: center; }
-.gu-key { height: 80px; border: 0; border-radius: 16px; background: #e6ebf5; font: 900 40px system-ui, sans-serif; cursor: pointer; }
+.gu-key { height: 88px; border: 0; border-radius: 16px; background: #e6ebf5; font: 900 40px system-ui, sans-serif; cursor: pointer; }
 .gu-key.gu-ok { background: #2fb34a; color: #fff; }
 .gu-panel { width: min(92vw, 560px); font-size: 15px; }
 .gu-title { margin: 0 0 4px; font-size: 24px; }
 .gu-sub { margin: 14px 0 6px; font-size: 14px; }
 .gu-today { margin: 4px 0 10px; font-size: 16px; font-weight: 700; }
-.gu-bar-row { display: grid; grid-template-columns: 52px 1fr 60px; align-items: center; gap: 8px; margin: 3px 0; }
+.gu-bar-row { display: grid; grid-template-columns: 90px 1fr 60px; align-items: center; gap: 8px; margin: 3px 0; }
 .gu-bar { height: 14px; background: #4a90d9; border-radius: 7px; min-width: 2px; }
 .gu-bar-min { text-align: right; }
 .gu-options { display: flex; flex-wrap: wrap; gap: 8px; }
-.gu-opt { min-width: 64px; height: 48px; border: 2px solid #99a; border-radius: 12px; background: #fff; font-size: 16px; cursor: pointer; }
+.gu-opt { min-width: 88px; height: 88px; border: 2px solid #99a; border-radius: 12px; background: #fff; font-size: 16px; cursor: pointer; }
 .gu-opt.on { background: #ff9d00; border-color: #c77700; font-weight: 700; }
-.gu-action { display: block; margin: 12px 8px 0 0; height: 52px; padding: 0 20px; border: 0; border-radius: 12px; background: #e6ebf5; font-size: 16px; cursor: pointer; }
+.gu-action { display: block; margin: 12px 8px 0 0; min-height: 88px; padding: 0 24px; border: 0; border-radius: 12px; background: #e6ebf5; font-size: 16px; cursor: pointer; }
 .gu-confirm .gu-action { display: inline-block; }
 .gu-danger { background: #f3c3be; }
 .gu-warn, .gu-status { margin: 8px 0 0; }
