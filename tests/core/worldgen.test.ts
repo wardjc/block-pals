@@ -1,5 +1,6 @@
 import { describe, expect, it } from 'vitest';
 import { BLOCKS, BlockId } from '../../src/core/blocks';
+import { findPath, isStandable, type Cell } from '../../src/core/pathfind';
 import { mulberry32, valueNoise2D } from '../../src/core/rng';
 import { World } from '../../src/core/world';
 import { generateWorld } from '../../src/core/worldgen';
@@ -192,5 +193,26 @@ describe('generateWorld', () => {
     });
   });
 
-  it.todo('every land column at the spawn plateau is reachable (enable with Task 6 findPath)');
+  it('every land column at the spawn plateau is reachable', () => {
+    for (const seed of [2026, 2027, 0, 1, -1, 0xffffffff]) {
+      const { world, spawn } = generateWorld(seed);
+      const from: Cell = [spawn.x, spawn.y, spawn.z];
+      // Check the tree-free spawn clearing, including the slope towards the pond.
+      for (let x = spawn.x - 3; x <= spawn.x + 3; x++) {
+        for (let z = spawn.z - 3; z <= spawn.z + 3; z++) {
+          const to: Cell = [x, world.topSolidY(x, z) + 1, z];
+          const path = findPath(world, from, to);
+          expect(path, `seed ${seed}, column (${x}, ${z})`).not.toBeNull();
+          let previous = from;
+          for (const cell of path!) {
+            expect(isStandable(world, cell)).toBe(true);
+            expect(Math.abs(cell[0] - previous[0]) + Math.abs(cell[2] - previous[2])).toBe(1);
+            expect(Math.abs(cell[1] - previous[1])).toBeLessThanOrEqual(1);
+            previous = cell;
+          }
+          expect(previous).toEqual(to);
+        }
+      }
+    }
+  });
 });
