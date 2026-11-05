@@ -11,8 +11,6 @@ import { createDebouncer, resolveTap } from './input/tap';
 import { makePalModel, makePlayerModel } from './render/characters';
 import { GameScene } from './render/scene';
 import { sfx } from './audio/sfx';
-import { Voice } from './audio/voice';
-import { LINES } from './content/lines';
 import { CraftScreen } from './ui/craft';
 import { Hud } from './ui/hud';
 import { Voice } from './audio/voice';
@@ -92,16 +90,15 @@ const hud = new Hud(document.getElementById('ui')!, scene.atlas.iconDataUrl, {
   onGrownUps: () => {},
 });
 
-const craftVoice = new Voice();
 const craftScreen = new CraftScreen(document.getElementById('ui')!, {
   inventory: game.inventory,
   tryCraft: id => game.tryCraft(id),
   iconFor: scene.atlas.iconDataUrl,
-  say: text => craftVoice.say(text),
-  sayNeedMore: () => craftVoice.say(LINES.craftNeedMore[Math.floor(Math.random() * LINES.craftNeedMore.length)]),
+  say: text => voice.say(text),
+  sayNeedMore: () => voice.say(LINES.craftNeedMore[Math.floor(Math.random() * LINES.craftNeedMore.length)]),
   sfxTap: () => sfx.tap(),
   sfxCraft: () => sfx.craft(),
-  sayFull: () => craftVoice.say(LINES.full[Math.floor(Math.random() * LINES.full.length)]),
+  sayFull: () => voice.say(LINES.full[Math.floor(Math.random() * LINES.full.length)]),
   onOpenChange: open => {
     hud.setOverlayOpen(open);
     game.paused = open;
