@@ -21,6 +21,29 @@ beforeEach(() => localStorage.clear());
 afterEach(() => vi.restoreAllMocks());
 
 describe('save data', () => {
+  test('the hotbar order survives a reload', () => {
+    const game = makeGame();
+    for (const id of [BlockId.Planks, BlockId.Stone, BlockId.Wood]) game.inventory.add(id, 2);
+    expect(storeSave(localStorage, serialise(game, 1234))).toBe(true);
+    const restored = applySave(readSave(localStorage)!);
+    expect(restored.inventory.hotbar()).toEqual([BlockId.Planks, BlockId.Stone, BlockId.Wood]);
+  });
+
+  test('old saves without order still load (id order)', () => {
+    const raw = JSON.stringify({ ...validSave(), inventory: { [BlockId.Planks]: 2, [BlockId.Wood]: 1 } });
+    const data = parseSave(raw)!;
+    expect(data).not.toBeNull();
+    expect(data.order).toBeUndefined();
+    expect(applySave(data).inventory.hotbar()).toEqual([BlockId.Wood, BlockId.Planks]);
+  });
+
+  test.each([['x'], [[999]], [[1.5]], [{}]])('a bad order %j is dropped, save kept', order => {
+    const data = parseSave(JSON.stringify({ ...validSave(), inventory: { [BlockId.Wood]: 1 }, order }))!;
+    expect(data).not.toBeNull();
+    expect(data.order).toBeUndefined();
+    expect(data.inventory).toEqual({ [BlockId.Wood]: 1 });
+  });
+
   test('round-trips a game with edits and inventory', () => {
     const game = makeGame();
     game.world.set(24, 1, 24, BlockId.Air);
@@ -35,6 +58,7 @@ describe('save data', () => {
       version: 1, seed: 1234,
       edits: [[24, 1, 24, BlockId.Air], [25, 14, 25, BlockId.Bricks]],
       inventory: { [BlockId.Wood]: 7, [BlockId.Glass]: 20 }, player: game.player.pos,
+      order: [BlockId.Wood, BlockId.Glass],
     });
     expect(game.world.isDirty()).toBe(true);
     expect(storeSave(localStorage, data)).toBe(true);

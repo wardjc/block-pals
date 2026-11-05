@@ -93,6 +93,14 @@ describe('Game', () => {
     expect(game.tryCraft('nope')).toBe(false);
   });
 
+  it('crafting selects the output so it can be placed straight away', () => {
+    const inv = new Inventory();
+    inv.add(BlockId.Wood, 1);
+    const { game } = setup(inv);
+    expect(game.tryCraft('planks')).toBe(true);
+    expect(game.effectiveSelected()).toBe(BlockId.Planks);
+  });
+
   it('idle does not accumulate while paused', () => {
     const { game, events } = setup();
     game.paused = true;

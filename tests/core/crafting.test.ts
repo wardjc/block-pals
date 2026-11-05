@@ -35,19 +35,39 @@ describe('Inventory', () => {
     expect(inv.count(BlockId.Wood)).toBe(2);
   });
 
-  test('hotbar shows up to six positive stacks in first-collected order', () => {
+  test('hotbar shows every positive stack in first-collected order', () => {
     const inv = new Inventory();
     const ids = [BlockId.Wood, BlockId.Sand, BlockId.Stone, BlockId.Dirt,
-      BlockId.Glass, BlockId.Bricks, BlockId.Leaves];
+      BlockId.Glass, BlockId.Bricks, BlockId.Leaves, BlockId.Grass, BlockId.Planks];
     inv.add(BlockId.Planks, 0);
     for (const id of ids) inv.add(id);
-    expect(inv.hotbar()).toEqual(ids.slice(0, 6));
+    expect(inv.hotbar()).toEqual(ids);
     inv.remove(BlockId.Wood);
     expect(inv.hotbar()).toEqual(ids.slice(1));
     inv.add(BlockId.Wood);
-    expect(inv.hotbar()).toEqual(ids.slice(0, 6));
+    expect(inv.hotbar()).toEqual(ids);
     inv.hotbar().reverse();
-    expect(inv.hotbar()).toEqual(ids.slice(0, 6));
+    expect(inv.hotbar()).toEqual(ids);
+  });
+
+  test('order round-trips through fromJSON, keeping emptied stacks in place', () => {
+    const inv = new Inventory();
+    for (const id of [BlockId.Stone, BlockId.Wood, BlockId.Planks, BlockId.Dirt]) inv.add(id, 2);
+    inv.remove(BlockId.Wood, 2);
+    expect(inv.order()).toEqual([BlockId.Stone, BlockId.Wood, BlockId.Planks, BlockId.Dirt]);
+    const restored = Inventory.fromJSON(JSON.parse(JSON.stringify(inv)), inv.order());
+    expect(restored.hotbar()).toEqual([BlockId.Stone, BlockId.Planks, BlockId.Dirt]);
+    restored.add(BlockId.Wood);
+    expect(restored.hotbar()).toEqual([BlockId.Stone, BlockId.Wood, BlockId.Planks, BlockId.Dirt]);
+  });
+
+  test('fromJSON without an order falls back to id order; a bad order is ignored', () => {
+    const counts = { [BlockId.Planks]: 1, [BlockId.Dirt]: 3 };
+    expect(Inventory.fromJSON(counts).hotbar()).toEqual([BlockId.Dirt, BlockId.Planks]);
+    for (const order of ['x', [999], [BlockId.Planks, BlockId.Planks], [1.5], {}, [BlockId.Bedrock]]) {
+      expect(Inventory.fromJSON(counts, order).hotbar()).toEqual([BlockId.Dirt, BlockId.Planks]);
+    }
+    expect(Inventory.fromJSON(counts, [BlockId.Planks]).hotbar()).toEqual([BlockId.Planks, BlockId.Dirt]);
   });
 
   test('toJSON and fromJSON round-trip counts without sharing state', () => {

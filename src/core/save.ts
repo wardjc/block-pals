@@ -13,6 +13,8 @@ export interface SaveData {
   edits: Array<[number, number, number, number]>;
   inventory: Record<number, number>;
   player: { x: number; y: number; z: number };
+  /** Hotbar order (first collected first). Optional: saves before the final review lack it. */
+  order?: number[];
 }
 
 export function serialise(game: Game, seed: number): SaveData {
@@ -22,6 +24,7 @@ export function serialise(game: Game, seed: number): SaveData {
     edits: game.world.edits(),
     inventory: game.inventory.toJSON(),
     player: { ...game.player.pos },
+    order: game.inventory.order(),
   };
 }
 
@@ -60,6 +63,7 @@ export function parseSave(raw: string | null): SaveData | null {
     const data = JSON.parse(raw) as unknown;
     if (!isSaveData(data)) return null;
     if (!validInventory(data.inventory)) data.inventory = {};
+    if ('order' in data && !Inventory.validOrder(data.order)) delete data.order;
     return data;
   } catch {
     return null;
@@ -78,7 +82,7 @@ export function applySave(data: SaveData): {
   const { x, y, z } = data.player;
   return {
     world,
-    inventory: Inventory.fromJSON(data.inventory),
+    inventory: Inventory.fromJSON(data.inventory, data.order),
     spawn: isStandable(world, [Math.floor(x), Math.floor(y), Math.floor(z)])
       ? { ...data.player } : spawn,
   };
@@ -104,9 +108,10 @@ export function readSave(storage: Storage | null): SaveData | null {
 
 /** Returns a disposer for the timer and visibility listener. */
 export function startAutosave(game: Game, seed: number, storage: Storage | null): () => void {
-  let savedInventory = JSON.stringify(game.inventory.toJSON());
+  const snapshot = (): string => JSON.stringify([game.inventory.toJSON(), game.inventory.order()]);
+  let savedInventory = snapshot();
   const save = (force: boolean): void => {
-    const inventory = JSON.stringify(game.inventory.toJSON());
+    const inventory = snapshot();
     if (!force && !game.world.isDirty() && inventory === savedInventory) return;
     if (storeSave(storage, serialise(game, seed))) {
       game.world.markClean();

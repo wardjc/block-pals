@@ -102,7 +102,7 @@ export class Hud {
     this.bar.replaceChildren();
     const slots: Array<{ id: BlockId | null; count: number }> = [
       { id: null, count: 0 },
-      ...state.hotbar.slice(0, 6),
+      ...state.hotbar.slice(0, 9), // all nine collectable kinds fit: 10 × 96 px
     ];
     slots.forEach((slot, i) => {
       const el = document.createElement('button');

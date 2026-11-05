@@ -214,6 +214,7 @@ export class Game {
     const recipe = RECIPES.find(r => r.id === recipeId);
     if (!recipe || !canCraft(this.inventory, recipe) || !craft(this.inventory, recipe)) return false;
     this.idleFor = 0;
+    this.selected = recipe.output.id; // ready to place straight away
     this.emit({ type: 'crafted', recipe: recipeId });
     return true;
   }
