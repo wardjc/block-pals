@@ -1,4 +1,4 @@
-import { describe, it, expect, vi } from 'vitest';
+import { describe, it, expect, vi, afterEach } from 'vitest';
 import { pickVoice, Voice } from '../../src/audio/voice';
 import { sfx } from '../../src/audio/sfx';
 
@@ -21,7 +21,26 @@ describe('pickVoice', () => {
   });
 });
 
+function stubUtterance() {
+  vi.stubGlobal(
+    'SpeechSynthesisUtterance',
+    class {
+      text: string;
+      rate = 1;
+      pitch = 1;
+      lang = '';
+      voice: any = null;
+      constructor(t: string) {
+        this.text = t;
+      }
+    },
+  );
+}
+
 describe('Voice', () => {
+  afterEach(() => {
+    vi.unstubAllGlobals();
+  });
   it('say does nothing and does not throw when synth is null', () => {
     const vo = new Voice(null);
     expect(vo.available).toBe(false);
@@ -35,36 +54,25 @@ describe('Voice', () => {
       cancel: () => calls.push('cancel'),
       speak: (u: any) => calls.push(`speak:${u.text}:${u.rate}:${u.pitch}:${u.voice === gb}`),
     } as unknown as SpeechSynthesis;
-    vi.stubGlobal(
-      'SpeechSynthesisUtterance',
-      class {
-        text: string;
-        rate = 1;
-        pitch = 1;
-        lang = '';
-        voice: any = null;
-        constructor(t: string) {
-          this.text = t;
-        }
-      },
-    );
+    stubUtterance();
     const vo = new Voice(synth);
     expect(vo.available).toBe(true);
     vo.say('Hiya');
     expect(calls).toEqual(['cancel', 'speak:Hiya:0.9:1.1:true']);
-    vi.unstubAllGlobals();
   });
-  it('never throws if synth throws', () => {
+  it.each(['cancel', 'speak'] as const)('never throws if %s throws', (which) => {
+    stubUtterance();
+    const boom = () => {
+      throw new Error('boom');
+    };
     const synth = {
       getVoices: () => [],
-      cancel: () => {
-        throw new Error('x');
-      },
-      speak: () => {
-        throw new Error('y');
-      },
+      cancel: which === 'cancel' ? boom : () => {},
+      speak: which === 'speak' ? boom : () => {},
     } as unknown as SpeechSynthesis;
-    expect(() => new Voice(synth).say('a')).not.toThrow();
+    const vo = new Voice(synth);
+    expect(vo.available).toBe(true);
+    expect(() => vo.say('a')).not.toThrow();
   });
 });
 
