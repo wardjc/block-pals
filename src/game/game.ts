@@ -20,7 +20,8 @@ export type GameEvent =
   | { type: 'lifted' }
   | { type: 'idle' };
 
-const IDLE_SECONDS = 20;
+/** Seconds of quiet before each idle hint; after the last one Pip waits for the next action. */
+const IDLE_SECONDS = [20, 60];
 /** A reachable region this small (cells) with no way nearer the tap counts as a pit. */
 const PIT_CELLS = 30;
 const LIFT_RADIUS = 8;
@@ -38,6 +39,7 @@ export class Game {
   private readonly listeners: Array<(e: GameEvent) => void> = [];
   private occupiedFn: () => Cell[];
   private idleFor = 0;
+  private idleHints = 0;
 
   constructor(opts: { world: World; spawn: { x: number; y: number; z: number }; inventory?: Inventory }) {
     this.world = opts.world;
@@ -78,15 +80,15 @@ export class Game {
   applyIntent(intent: TapIntent): void {
     switch (intent.kind) {
       case 'walk':
-        this.idleFor = 0;
+        this.active();
         this.walk(intent.to);
         return;
       case 'collect':
-        this.idleFor = 0;
+        this.active();
         this.collect(intent.cell);
         return;
       case 'place':
-        this.idleFor = 0;
+        this.active();
         this.place(intent.cell);
         return;
       default:
@@ -193,11 +195,11 @@ export class Game {
         this.applyIntent({ kind: 'place', cell: this.frontCell(0) });
         return;
       case 'nextSlot':
-        this.idleFor = 0;
+        this.active();
         this.selectNext();
         return;
       case 'craft':
-        this.idleFor = 0;
+        this.active();
         this.onCraftRequest();
         return;
     }
@@ -213,7 +215,7 @@ export class Game {
   tryCraft(recipeId: string): boolean {
     const recipe = RECIPES.find(r => r.id === recipeId);
     if (!recipe || !canCraft(this.inventory, recipe) || !craft(this.inventory, recipe)) return false;
-    this.idleFor = 0;
+    this.active();
     this.selected = recipe.output.id; // ready to place straight away
     this.emit({ type: 'crafted', recipe: recipeId });
     return true;
@@ -221,16 +223,24 @@ export class Game {
 
   /** Called by input code when the pad stick is held. */
   noteActivity(): void {
+    this.active();
+  }
+
+  /** Any action restarts the idle hints from the first one. */
+  private active(): void {
     this.idleFor = 0;
+    this.idleHints = 0;
   }
 
   update(dt: number): void {
     if (!this.paused) this.player.update(this.world, dt);
     this.normaliseSelection();
     if (this.paused) return;
+    if (this.idleHints >= IDLE_SECONDS.length) return;
     this.idleFor += dt;
-    if (this.idleFor >= IDLE_SECONDS) {
+    if (this.idleFor >= IDLE_SECONDS[this.idleHints]) {
       this.idleFor = 0;
+      this.idleHints++;
       this.emit({ type: 'idle' });
     }
   }

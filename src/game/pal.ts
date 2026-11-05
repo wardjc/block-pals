@@ -27,6 +27,7 @@ export class Pal {
   private repathCooldown = 0;
   private lastSpoke = -Infinity;
   private collectCount = 0;
+  private placeCount = 0;
   private hop = false;
   private hasWood: () => boolean = () => true;
 
@@ -73,6 +74,10 @@ export class Pal {
       case 'crafted':
         this.hop = true;
         this.speak('crafted', true);
+        return;
+      case 'placed':
+        this.placeCount++;
+        if (this.placeCount === 1 || this.placeCount % 5 === 0) this.speak('placed');
         return;
       case 'full':
         this.speak('full');
@@ -174,7 +179,7 @@ export class Pal {
         return;
       }
     }
-    this.speak('noPath');
+    // No line here: 'noPath' is for the player's own taps; the stuck teleport fixes Pip.
   }
 
   private follow(world: World, player: Player, dt: number): void {

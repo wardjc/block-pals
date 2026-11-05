@@ -123,6 +123,19 @@ describe('Player', () => {
     expect(player.feetCell()).toEqual([3, 1, 3]);
   });
 
+  it('diagonal stick into a wall slides along it', () => {
+    const world = flatWorld();
+    for (let x = 0; x < 48; x++) for (const y of [1, 2]) world.set(x, y, 5, BlockId.Stone);
+    const player = playerAt(3.5, 1, 4.5);
+    player.setStick(1, 1);
+    for (let i = 0; i < 20; i++) player.update(world, 0.05);
+    expect(player.pos.x).toBeGreaterThan(5);
+    expect(player.feetCell()[2]).toBe(4);
+    player.setStick(-1, 1);
+    for (let i = 0; i < 20; i++) player.update(world, 0.05);
+    expect(player.pos.x).toBeLessThan(4);
+  });
+
   it('non-zero stick input clears a path; releasing the stick preserves a path', () => {
     const world = flatWorld();
     const player = playerAt();

@@ -119,6 +119,22 @@ describe('Game', () => {
     expect(events.filter(e => e.type === 'idle')).toHaveLength(1);
   });
 
+  it('idle hints back off: 20 s, then 60 s, then none until the next action', () => {
+    const { game, events } = setup();
+    const idles = () => events.filter(e => e.type === 'idle').length;
+    for (let i = 0; i < 20; i++) game.update(1);
+    expect(idles()).toBe(1);
+    for (let i = 0; i < 59; i++) game.update(1);
+    expect(idles()).toBe(1);
+    game.update(1);
+    expect(idles()).toBe(2);
+    for (let i = 0; i < 600; i++) game.update(1);
+    expect(idles()).toBe(2);
+    game.padAction('nextSlot');
+    for (let i = 0; i < 20; i++) game.update(1);
+    expect(idles()).toBe(3);
+  });
+
   it('default occupied covers feet and head', () => {
     const { game } = setup();
     expect(game.occupied()).toEqual([[5, 1, 5], [5, 2, 5]]);
@@ -241,16 +257,32 @@ describe('Game', () => {
       }
     }
     expect(trunks.length).toBeGreaterThan(5);
-    // Warm the JIT up first: this measures the steady cost of one tap (one BFS flood).
-    for (let i = 0; i < 5; i++) game.applyIntent({ kind: 'walk', to: [trunks[i][0] - 1, trunks[i][1], trunks[i][2]] });
+    const tap = ([x, y, z]: [number, number, number]) => {
+      game.player.pos = { ...spawn };
+      game.applyIntent({ kind: 'walk', to: [x - 1, y, z] });
+    };
+    // Deterministic: one flood reads each block a handful of times. The old ring search
+    // (up to 25 A* runs of 4000 nodes) read the world millions of times per tree tap.
+    const get = world.get.bind(world);
+    let reads = 0;
+    world.get = (x, y, z) => { reads++; return get(x, y, z); };
+    let mostReads = 0;
+    for (const trunk of trunks) {
+      reads = 0;
+      tap(trunk);
+      mostReads = Math.max(mostReads, reads);
+    }
+    world.get = get;
+    expect(mostReads).toBeLessThan(60_000);
+    // Wall clock, after warming the JIT up: best of three per tree, so a GC pause or a
+    // busy CI core does not count as the tap's cost.
+    for (let i = 0; i < 2; i++) trunks.forEach(tap);
     let worst = 0;
-    for (const [x, y, z] of trunks) {
-      // Best of three per tree, so a GC pause or a busy CI core does not count as the tap's cost.
+    for (const trunk of trunks) {
       let best = Infinity;
       for (let rep = 0; rep < 3; rep++) {
-        game.player.pos = { ...spawn };
         const t0 = performance.now();
-        game.applyIntent({ kind: 'walk', to: [x - 1, y, z] });
+        tap(trunk);
         best = Math.min(best, performance.now() - t0);
       }
       worst = Math.max(worst, best);

@@ -80,9 +80,13 @@ game.on(e => {
   else if (e.type === 'walking') { sfx.walk(); scene.showMarker(e.to); }
 });
 
+let hudRevision = -1;
+let hudSelected: BlockId | 'hand' | null = null;
 function renderHud(): void {
   const hotbar = game.inventory.hotbar().map(id => ({ id, count: game.inventory.count(id) }));
   const sel = game.effectiveSelected();
+  hudRevision = game.inventory.revision;
+  hudSelected = sel;
   const selected = sel === 'hand' ? 0 : hotbar.findIndex(h => h.id === sel) + 1;
   hud.render({ hotbar, selected });
 }
@@ -149,7 +153,8 @@ scene.renderer.domElement.addEventListener('pointerup', e => {
   const hit = scene.pick(e.clientX, e.clientY);
   game.applyIntent(resolveTap(hit, game.effectiveSelected(), game.player.feetCell(), world, occupied()));
 });
-window.addEventListener('pointerdown', () => { sfx.unlock(); greetOnce(); }, { once: true });
+// Capture phase: HUD buttons stop propagation, but a first tap on them must still unlock audio and greet.
+window.addEventListener('pointerdown', () => { sfx.unlock(); greetOnce(); }, { once: true, capture: true });
 
 const camDir = { x: 0, z: 1 };
 const camera3 = new THREE.Vector3();
@@ -191,7 +196,7 @@ if (debugOn) {
   (window as unknown as { __triangles: () => number }).__triangles = () => scene.triangleCount();
 }
 
-let lastHotbar = '';
+let usageMs = 0;
 let last = performance.now();
 function frame(now: number): void {
   const rawMs = now - last;
@@ -218,7 +223,12 @@ function frame(now: number): void {
   }
 
   game.update(dt);
-  if (usage.tick(rawMs, document.visibilityState === 'visible').remind) pal.remindBreak();
+  // Usage is counted once a second, not every frame (it caps each tick at 5 s anyway).
+  usageMs += rawMs;
+  if (usageMs >= 1000) {
+    if (usage.tick(usageMs, document.visibilityState === 'visible').remind) pal.remindBreak();
+    usageMs = 0;
+  }
   const p = game.player.pos;
   playerModel.position.set(p.x, p.y, p.z);
   playerModel.rotation.y = game.player.heading;
@@ -236,8 +246,10 @@ function frame(now: number): void {
   scene.updateMarker(dt);
   scene.render();
 
-  const key = JSON.stringify([game.inventory.toJSON(), game.effectiveSelected()]);
-  if (key !== lastHotbar) { lastHotbar = key; renderHud(); }
+  // Redraw the hotbar only when a count or the selection changed.
+  const rev = game.inventory.revision;
+  const sel = game.effectiveSelected();
+  if (rev !== hudRevision || sel !== hudSelected) renderHud();
 
   fpsFrames++;
   if (now - fpsSince >= 500) {

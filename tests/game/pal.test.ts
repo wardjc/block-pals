@@ -130,10 +130,20 @@ describe('Pal', () => {
     expect(dist(pal.pos, player.pos)).toBeLessThanOrEqual(3);
   });
 
-  it('says noPath when no route is found', () => {
+  it('stays quiet when he cannot find a route himself (the stuck teleport handles it)', () => {
     const { world, player, pal, said } = fenced();
-    pal.update(world, player, 1 / 30);
-    expect(said).toContain('noPath');
+    for (let i = 0; i < 120; i++) pal.update(world, player, 1 / 30);
+    expect(said).not.toContain('noPath');
+    expect(dist(pal.pos, player.pos)).toBeLessThanOrEqual(3);
+  });
+
+  it('cheers the first placed block and every 5th after', () => {
+    const { pal, said, time } = setup();
+    for (let i = 1; i <= 10; i++) {
+      time(i * 5000);
+      pal.handle({ type: 'placed', id: BlockId.Planks });
+    }
+    expect(said).toEqual(['placed', 'placed', 'placed']);
   });
 
   it('says a cheerful line when the player is lifted out of a pit', () => {

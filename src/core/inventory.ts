@@ -13,6 +13,12 @@ function validQuantity(n: number): boolean {
 export class Inventory {
   // Keep depleted stacks to preserve their first-collected order.
   private readonly counts = new Map<BlockId, number>();
+  private rev = 0;
+
+  /** Bumped on every count change, so the HUD redraws only when needed. */
+  get revision(): number {
+    return this.rev;
+  }
 
   count(id: BlockId): number {
     return this.counts.get(id) ?? 0;
@@ -21,13 +27,19 @@ export class Inventory {
   add(id: BlockId, n = 1): number {
     if (!validId(id) || !validQuantity(n)) return 0;
     const added = Math.min(n, MAX_STACK - this.count(id));
-    if (added > 0) this.counts.set(id, this.count(id) + added);
+    if (added > 0) {
+      this.counts.set(id, this.count(id) + added);
+      this.rev++;
+    }
     return added;
   }
 
   remove(id: BlockId, n = 1): boolean {
     if (!validId(id) || !validQuantity(n) || this.count(id) < n) return false;
-    if (n > 0) this.counts.set(id, this.count(id) - n);
+    if (n > 0) {
+      this.counts.set(id, this.count(id) - n);
+      this.rev++;
+    }
     return true;
   }
 

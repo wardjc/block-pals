@@ -48,7 +48,10 @@ export class Player {
       remaining *= magnitude;
       while (remaining > EPSILON) {
         const distance = Math.min(MAX_STEP, remaining);
-        if (!this.move(world, this.stick.x / magnitude * distance, this.stick.z / magnitude * distance)) break;
+        const dx = this.stick.x / magnitude * distance;
+        const dz = this.stick.z / magnitude * distance;
+        // Blocked on a diagonal? Slide along the wall: try x alone, then z alone.
+        if (!this.move(world, dx, dz) && !this.move(world, dx, 0) && !this.move(world, 0, dz)) break;
         remaining -= distance;
       }
       return;

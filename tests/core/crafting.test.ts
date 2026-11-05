@@ -70,6 +70,19 @@ describe('Inventory', () => {
     expect(Inventory.fromJSON(counts, [BlockId.Planks]).hotbar()).toEqual([BlockId.Planks, BlockId.Dirt]);
   });
 
+  test('revision changes only when a count changes', () => {
+    const inv = new Inventory();
+    const r0 = inv.revision;
+    inv.add(BlockId.Wood, 0);
+    inv.remove(BlockId.Wood, 1);
+    expect(inv.revision).toBe(r0);
+    inv.add(BlockId.Wood, 2);
+    const r1 = inv.revision;
+    expect(r1).not.toBe(r0);
+    inv.remove(BlockId.Wood, 1);
+    expect(inv.revision).not.toBe(r1);
+  });
+
   test('toJSON and fromJSON round-trip counts without sharing state', () => {
     const inv = new Inventory();
     inv.add(BlockId.Wood, 4);
