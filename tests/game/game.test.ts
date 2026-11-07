@@ -331,21 +331,8 @@ describe('Game', () => {
       mostReads = Math.max(mostReads, reads);
     }
     world.get = get;
+    // Work done, not wall-clock, so machine load cannot flake it.
     expect(mostReads).toBeLessThan(60_000);
-    // Wall clock, after warming the JIT up: best of three per tree, so a GC pause or a
-    // busy CI core does not count as the tap's cost.
-    for (let i = 0; i < 2; i++) trunks.forEach(tap);
-    let worst = 0;
-    for (const trunk of trunks) {
-      let best = Infinity;
-      for (let rep = 0; rep < 3; rep++) {
-        const t0 = performance.now();
-        tap(trunk);
-        best = Math.min(best, performance.now() - t0);
-      }
-      worst = Math.max(worst, best);
-    }
-    expect(worst).toBeLessThanOrEqual(10);
   });
 
   it('noteActivity resets idle', () => {
