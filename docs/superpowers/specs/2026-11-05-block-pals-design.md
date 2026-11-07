@@ -153,6 +153,27 @@ Agreed with the parent, question by question. Everything below follows the §4 a
 
 Each step gets its own detailed implementation plan when it starts. Step 1 first. After the Village steps comes the **Underground** version (§7b item 4), then bad guys with friendly weapons, music, STEM, more pals, and two-player.
 
+### 7e. Water: flowing channels and swimming (agreed 2026-11-07)
+
+Agreed with the parent. Follows the §4 anti-goals: nothing scary, nothing lost, never stuck, no reading, British English, 30 fps on the Tab A8.
+
+**Flowing water.**
+- **Ponds stay still.** Water only flows when he lets it: first by digging a gap or channel in a pond bank. The water then runs gently downhill a few blocks, spreads only a limited distance from its source (it never floods the world) and settles.
+- **He is always in charge.** He can plug a gap with a block to stop the water, and he can drain water he let out. It is an easy undo and nothing is permanent. Ponds themselves never drain.
+- **Bucket (a separate later step, step 2):** craft a bucket, scoop water, pour it, carry it.
+- **Farm link.** The flow rules must let a channel carry water from a source to a field, because the farm will irrigate with channels.
+
+**Swimming.**
+- No drowning, ever. In water he sinks slowly and floats up on his own when he stops.
+- Tap to swim to a spot, drag to turn (the existing controls). He is slower in water.
+- Underwater the camera gets a soft blue tint, never dark. The camera's close mode (§7c) keeps working underwater.
+- Pip swims along or waits at the shore. Villagers stay out of water.
+- He can always get out of water and out of a flooded pit; a rescue rule like the pit lift (§7a) guarantees it.
+
+**My calls (the parent can overrule; listed in the plan):** water has levels so it visibly thins out and stops; a walled channel carries water without thinning, so a trench can reach a field; shallow flowing water can be waded; undo is plugging, which drains everything downstream; flowing water is recomputed from the blocks on load, so saves do not change; Pip waits at the shore.
+
+**Done when:** he can dig a pond bank and watch water run out a few blocks and stop; plug it and see it drain; swim across the pond by tapping and climb out onto either bank; stop in the water and float up; see the soft blue tint underwater without it ever going dark; get out of a flooded pit without help; reload with the same water; and the tablet stays at 30 fps with the water running.
+
 ## 8. Left to the builder
 
 - World size, block set and exact materials in v1, within "small and can't get lost".
