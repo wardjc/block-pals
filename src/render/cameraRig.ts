@@ -10,7 +10,8 @@ import { blocksRay, castVoxelRay, type VoxelHit } from './voxelRay';
  *
  * Every frame a ray goes from the eye back towards where the camera wants to be. If a block is in
  * the way the camera snaps in front of it at once, then glides back out when the way is clear.
- * Closer than CLOSE_DISTANCE it sits at the eye (first person) and the player model is hidden.
+ * Below CLOSE_DISTANCE it eases to the eye (first person) and hides the player model until the
+ * camera has glided beyond CLOSE_EXIT_DISTANCE.
  */
 export interface Vec3 {
   x: number;
@@ -23,6 +24,7 @@ export const DEFAULT_PITCH = 0.5; // ≈ 29° down, close to the v1 view (6 back
 export const PITCH_MIN = -0.15; // slightly above the horizon
 export const PITCH_MAX = (70 * Math.PI) / 180;
 export const CLOSE_DISTANCE = 1.2;
+export const CLOSE_EXIT_DISTANCE = 1.6;
 /** Gap kept between the camera and the first block behind it. */
 export const CAMERA_MARGIN = 0.2;
 /** The camera point keeps at least this far from any block face, so the near plane never cuts one. */
@@ -35,7 +37,7 @@ export const PAD_PITCH_RATE = 1.5;
 /** Glide-out time constant (s): about 95 % of the way back out in 0.36 s. */
 export const EASE_OUT_SECONDS = 0.12;
 
-const CLEARANCE_STEP = 0.05;
+const CLEARANCE_ITERATIONS = 8;
 
 /** Unit look direction for (yaw, pitch), written into `out`. */
 export function lookDir(yaw: number, pitch: number, out: Vec3): Vec3 {
@@ -75,25 +77,38 @@ export function clampDistance(world: World, eye: Vec3, dir: Vec3, maxDist: numbe
     if (hit.t === 0) return 0; // the eye itself is in a block
     d = Math.min(d, hit.t - CAMERA_MARGIN);
   }
-  while (d > 0 && clearance(world, eye.x + bx * d, eye.y + by * d, eye.z + bz * d) < CAMERA_CLEARANCE) {
-    d -= CLEARANCE_STEP;
+  if (d <= 0) return 0;
+  if (clearance(world, eye.x + bx * d, eye.y + by * d, eye.z + bz * d) >= CAMERA_CLEARANCE) return d;
+
+  // Keep a tested safe endpoint, with at most 7 / 256 blocks of search uncertainty.
+  // The eye (close mode) skips clearance: player collision radius must be >= 0.12 blocks.
+  let safe = 0;
+  let blocked = d;
+  for (let i = 0; i < CLEARANCE_ITERATIONS; i++) {
+    const mid = (safe + blocked) / 2;
+    if (clearance(world, eye.x + bx * mid, eye.y + by * mid, eye.z + bz * mid) >= CAMERA_CLEARANCE) {
+      safe = mid;
+    } else {
+      blocked = mid;
+    }
   }
-  return Math.max(0, d);
+  return safe;
 }
 
 export class CameraRig {
   yaw = 0;
   pitch = DEFAULT_PITCH;
-  /** Current (smoothed) distance from the eye; 0 in close mode. */
+  /** Drawn distance from the eye; eases to 0 in close mode. */
   distance = MAX_DISTANCE;
   /** Camera position and unit look direction after the last update (reused objects). */
   readonly position: Vec3 = { x: 0, y: 0, z: 0 };
   readonly forward: Vec3 = lookDir(0, DEFAULT_PITCH, { x: 0, y: 0, z: 0 });
   private started = false;
+  private closeMode = false;
 
-  /** First person: the camera sits at his head and his model is hidden. */
+  /** Latched first-person state, including the glide away from the player's head. */
   get close(): boolean {
-    return this.distance < CLOSE_DISTANCE;
+    return this.closeMode;
   }
 
   /** A finger drag of (dx, dy) CSS px on a screen widthPx wide. Right turns right, down looks down. */
@@ -116,17 +131,22 @@ export class CameraRig {
   /** Places the camera for this frame around `eye` (the player's head). */
   update(world: World, eye: Vec3, dt: number): void {
     const f = lookDir(this.yaw, this.pitch, this.forward);
-    let allowed = clampDistance(world, eye, f, MAX_DISTANCE);
-    if (allowed < CLOSE_DISTANCE) allowed = 0;
-    if (!this.started || allowed <= this.distance) {
-      this.distance = allowed; // pull in at once: never inside or behind a block
+    const allowed = clampDistance(world, eye, f, MAX_DISTANCE);
+    if (allowed < CLOSE_DISTANCE) this.closeMode = true;
+    const target = this.closeMode && allowed <= CLOSE_EXIT_DISTANCE ? 0 : allowed;
+    if (!this.started) {
+      this.distance = target;
       this.started = true;
     } else {
+      // Obstructions still pull in at once; the extra move to/from the eye is eased.
+      this.distance = Math.min(this.distance, allowed);
       const a = 1 - Math.exp(-Math.max(0, dt) / EASE_OUT_SECONDS);
-      this.distance += (allowed - this.distance) * a;
-      if (allowed - this.distance < 1e-3) this.distance = allowed;
+      this.distance += (target - this.distance) * a;
+      if (Math.abs(target - this.distance) < 1e-3) this.distance = target;
     }
-    const d = this.distance < CLOSE_DISTANCE ? 0 : this.distance;
+    // Keep the model hidden during the glide out, until the drawn camera is clear of it.
+    if (this.distance > CLOSE_EXIT_DISTANCE) this.closeMode = false;
+    const d = this.distance;
     this.position.x = eye.x - f.x * d;
     this.position.y = eye.y - f.y * d;
     this.position.z = eye.z - f.z * d;

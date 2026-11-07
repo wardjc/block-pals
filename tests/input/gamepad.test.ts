@@ -73,7 +73,76 @@ describe('GamepadInput', () => {
     current = pad([], [0, 0, 0.2, -0.24]);
     expect(input.poll(1).look).toEqual([0, 0]);
     current = pad([], [0.5, 0, 0.8, -0.6]);
-    expect(input.poll(2)).toEqual({ stick: [0.5, 0], look: [0.8, -0.6], pressed: [] });
+    const result = input.poll(2);
+    expect(result.stick).toEqual([0.5, 0]);
+    expect(result.look[0]).toBeCloseTo((0.8 - 0.25) / 0.75);
+    expect(result.look[1]).toBeCloseTo(-(0.6 - 0.25) / 0.75);
+    expect(result.pressed).toEqual([]);
+  });
+
+  it('rescales look smoothly from the dead-zone to full tilt', () => {
+    let current = pad([], [0, 0, 0, 0]);
+    const input = new GamepadInput(DEFAULT_MAPPING, () => [current]);
+    input.poll(0);
+    for (const [value, expected] of [[0.25, 0], [0.26, 0.01 / 0.75], [0.625, 0.5], [1, 1]]) {
+      current = pad([], [0, 0, value, -value]);
+      const { look } = input.poll(10);
+      expect(look[0]).toBeCloseTo(expected);
+      expect(look[1]).toBeCloseTo(-expected);
+    }
+  });
+
+  it('an axis resting at +1 disables look after 1 s', () => {
+    let current = pad([], [0, 0, 0, 0]);
+    const input = new GamepadInput(DEFAULT_MAPPING, () => [current]);
+    input.poll(0);
+    current = pad([], [0, 0, 1, 0]);
+    expect(input.poll(10).look).toEqual([1, 0]);
+    expect(input.poll(1009).look).toEqual([1, 0]);
+    expect(input.poll(1010).look).toEqual([0, 0]);
+  });
+
+  it.each([[2, 1], [2, -1], [3, 1], [3, -1]])(
+    'ignores small resting jitter on axis %s at %s until reconnect', (index, sign) => {
+      let current: Gamepad | null = pad([], [0, 0, 0, 0]);
+      const input = new GamepadInput(DEFAULT_MAPPING, () => [current]);
+      input.poll(0);
+      for (let now = 10; now <= 1010; now += 10) {
+        const axes = [0, 0, 0, 0];
+        axes[index] = sign * (now % 20 ? 1 : 0.995);
+        current = pad([], axes);
+        input.poll(now);
+      }
+      expect(input.poll(1011).look).toEqual([0, 0]);
+      current = pad([], [0, 0, 0, 0]);
+      input.poll(1100);
+      current = pad([], [0, 0, 0.625, -0.625]);
+      expect(input.poll(1200).look).toEqual([0, 0]);
+      current = null;
+      input.poll(1300);
+      current = pad([], [0, 0, 0, 0]);
+      input.poll(1400);
+      current = pad([], [0, 0, 0.625, -0.625]);
+      expect(input.poll(1500).look).toEqual([0.5, -0.5]);
+    },
+  );
+
+  it('a real right stick still turns', () => {
+    let current = pad([], [0, 0, 0.625, -0.625]);
+    const input = new GamepadInput(DEFAULT_MAPPING, () => [current]);
+    expect(input.poll(0).look).toEqual([0, 0]);
+    current = pad([], [0, 0, 0, -0.625]);
+    expect(input.poll(100).look).toEqual([0, 0]);
+    current = pad([], [0, 0, 0.625, 0]);
+    expect(input.poll(200).look).toEqual([0.5, 0]);
+    current = pad([], [0, 0, 0.625, -0.625]);
+    expect(input.poll(2000).look).toEqual([0.5, -0.5]);
+    current = pad([], [0, 0, 1, 0]);
+    expect(input.poll(2100).look).toEqual([1, 0]);
+    current = pad([], [0, 0, 0.95, 0]);
+    expect(input.poll(2700).look[0]).toBeGreaterThan(0);
+    current = pad([], [0, 0, 1, 0]);
+    expect(input.poll(3200).look).toEqual([1, 0]);
   });
 
   it('no second stick means no look', () => {

@@ -1,4 +1,4 @@
-import { describe, expect, it } from 'vitest';
+import { describe, expect, it, vi } from 'vitest';
 import { BlockId } from '../../src/core/blocks';
 import { World } from '../../src/core/world';
 import {
@@ -64,6 +64,25 @@ describe('clampDistance', () => {
   it('an eye inside a block gives 0', () => {
     const w = flat();
     expect(clampDistance(w, { x: 3.5, y: 2.5, z: 3.5 }, lookDir(0, 0.5, { x: 0, y: 0, z: 0 }), MAX_DISTANCE)).toBe(0);
+  });
+
+  it('bounds clearance work in a tight tunnel', () => {
+    const w = flat();
+    for (let z = 1; z <= 16; z++) w.set(15, 5, z, BlockId.Stone);
+    const get = vi.spyOn(w, 'get');
+    const d = clampDistance(w, { x: 16.05, y: 5.6, z: 16.5 }, { x: 0, y: 0, z: 1 }, MAX_DISTANCE);
+    expect(d).toBe(0);
+    expect(get.mock.calls.length).toBeLessThan(300);
+  });
+
+  it('finds a safe distance beside a block without stepping through the whole ray', () => {
+    const w = flat();
+    w.set(15, 5, 9, BlockId.Stone);
+    const eye = { x: 16.05, y: 5.6, z: 16.5 };
+    const d = clampDistance(w, eye, { x: 0, y: 0, z: 1 }, MAX_DISTANCE);
+    const clearance = Math.hypot(0.05, eye.z - d - 10);
+    expect(clearance).toBeGreaterThanOrEqual(0.12);
+    expect(clearance).toBeLessThan(0.15);
   });
 
   it('camera never ends inside a solid block (many directions, tunnel and hills)', () => {
@@ -148,6 +167,65 @@ describe('CameraRig', () => {
     step(rig, w, 1);
     expect(rig.distance).toBeGreaterThan(CLOSE_DISTANCE);
     expect(rig.close).toBe(false);
+  });
+
+  it('distance hovering around 1.2 does not toggle close mode', () => {
+    const w = flat();
+    wallBehind(w);
+    const rig = new CameraRig();
+    rig.pitch = 0;
+    const eyeAtDistance = (distance: number) => ({ ...EYE, z: 15 + CAMERA_MARGIN + distance });
+    rig.update(w, eyeAtDistance(1.3), 1 / 60);
+    expect(rig.close).toBe(false);
+    for (let i = 0; i < 120; i++) {
+      rig.update(w, eyeAtDistance(i % 2 ? 1.21 : 1.19), 1 / 60);
+      expect(rig.close).toBe(true);
+    }
+    step(rig, w, 1, eyeAtDistance(1.59));
+    expect(rig.close).toBe(true);
+    expect(rig.distance).toBe(0);
+    step(rig, w, 1, eyeAtDistance(1.7));
+    expect(rig.close).toBe(false);
+  });
+
+  it('entering close mode eases toward the eye without a threshold jump', () => {
+    const w = flat();
+    wallBehind(w);
+    const rig = new CameraRig();
+    rig.pitch = 0;
+    rig.update(w, { ...EYE, z: 16.41 }, 1 / 60); // 1.21 blocks allowed
+    const before = rig.distance;
+    const eye = { ...EYE, z: 16.39 }; // 1.19 blocks allowed
+    rig.update(w, eye, 1 / 60);
+    expect(rig.close).toBe(true);
+    expect(rig.distance).toBeLessThanOrEqual(1.19);
+    expect(rig.distance).toBeGreaterThan(before - 0.25);
+    expect(eye.z - rig.position.z).toBeCloseTo(rig.distance);
+    step(rig, w, 1, eye);
+    expect(rig.position).toEqual(eye);
+  });
+
+  it('leaving close mode glides out without a jump', () => {
+    const w = flat();
+    wallBehind(w);
+    const rig = new CameraRig();
+    rig.pitch = 0;
+    rig.update(w, { ...EYE, z: 16.3 }, 1 / 60);
+    expect(rig.close).toBe(true);
+    const eye = { ...EYE, z: 17 }; // 1.8 blocks allowed
+    let previous = 0;
+    for (let i = 0; i < 60; i++) {
+      rig.update(w, eye, 1 / 60);
+      const drawn = eye.z - rig.position.z;
+      expect(drawn).toBeGreaterThan(previous);
+      expect(drawn - previous).toBeLessThan(0.25);
+      expect(drawn).toBeCloseTo(rig.distance);
+      if (drawn <= 1.6) expect(rig.close).toBe(true);
+      previous = drawn;
+      if (drawn === 1.8 || Math.abs(drawn - 1.8) < 1e-9) break;
+    }
+    expect(rig.close).toBe(false);
+    expect(previous).toBeCloseTo(1.8);
   });
 
   it('pitch is clamped and yaw wraps without flipping', () => {

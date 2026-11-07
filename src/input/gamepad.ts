@@ -10,21 +10,33 @@ function axis(value = 0): number {
   return Math.max(-1, Math.min(1, value));
 }
 
+function lookAxis(value = 0): number {
+  if (!Number.isFinite(value) || Math.abs(value) <= 0.25) return 0;
+  return Math.sign(value) * (Math.min(1, Math.abs(value)) - 0.25) / 0.75;
+}
+
 /** A second stick turns the camera (spec §7c). Standard pads put it on axes 2 and 3. */
 const LOOK_X = 2;
 const LOOK_Y = 3;
+const REST_THRESHOLD = 0.9;
+const REST_TOLERANCE = 0.02;
+const REST_DISABLE_MS = 1000;
 
 export interface PadState {
   stick: [number, number];
-  /** Second-stick camera turn, dead-zoned like the move stick; [0, 0] when the pad has none. */
+  /** Second-stick camera turn, rescaled beyond the 0.25 dead-zone; [0, 0] without a usable stick. */
   look: [number, number];
   pressed: Action[];
 }
 
 export class GamepadInput {
   private activePad: string | null = null;
-  /** Whether this pad's axes 2/3 look like a centred second stick (not triggers resting at -1). */
+  /** Both look axes must have centred; a resting trigger disables look until reconnect. */
   private lookUsable = false;
+  private lookDisabled = false;
+  private readonly lookCentred = [false, false];
+  private readonly lookRestSince: (number | null)[] = [null, null];
+  private readonly lookRestValue = [0, 0];
   private previous: boolean[] = [];
   private placeSince: number | null = null;
   private readonly allow = createDebouncer();
@@ -48,9 +60,13 @@ export class GamepadInput {
       this.activePad = identity;
       this.previous = [];
       this.placeSince = null;
-      this.lookUsable = !!pad && this.hasCentredSecondStick(pad);
+      this.lookUsable = false;
+      this.lookDisabled = false;
+      this.lookCentred.fill(false);
+      this.lookRestSince.fill(null);
     }
     if (!pad) return { stick: [0, 0], look: [0, 0], pressed: [] };
+    this.checkSecondStick(pad, now);
 
     const down = pad.buttons.map((button) => button.pressed);
     const rising = (index: number): boolean => !!down[index] && !this.previous[index];
@@ -88,17 +104,31 @@ export class GamepadInput {
     if (down[12] || down[13]) y = Number(!!down[13]) - Number(!!down[12]);
     this.previous = down;
     const look: [number, number] = this.lookUsable
-      ? [axis(pad.axes[LOOK_X]), axis(pad.axes[LOOK_Y])]
+      ? [lookAxis(pad.axes[LOOK_X]), lookAxis(pad.axes[LOOK_Y])]
       : [0, 0];
     return { stick: [x, y], look, pressed };
   }
 
-  /** Axes 2/3 exist, are not the mapped move stick, and rest inside the dead-zone when the pad connects. */
-  private hasCentredSecondStick(pad: Gamepad): boolean {
-    if (pad.axes.length <= LOOK_Y) return false;
-    const used = [this.mapping.axisX, this.mapping.axisY];
-    if (used.includes(LOOK_X) || used.includes(LOOK_Y)) return false;
-    return axis(pad.axes[LOOK_X]) === 0 && axis(pad.axes[LOOK_Y]) === 0;
+  /** Re-check even during setup: generic pads can report zero until their triggers first move. */
+  private checkSecondStick(pad: Gamepad, now: number): void {
+    this.lookUsable = false;
+    if (this.lookDisabled || pad.axes.length <= LOOK_Y) return;
+    if (this.mapping.axisX === LOOK_X || this.mapping.axisX === LOOK_Y ||
+        this.mapping.axisY === LOOK_X || this.mapping.axisY === LOOK_Y) return;
+    for (let i = 0; i < 2; i++) {
+      const value = pad.axes[LOOK_X + i];
+      if (Number.isFinite(value) && Math.abs(value) < 0.25) this.lookCentred[i] = true;
+      if (!Number.isFinite(value) || Math.abs(value) <= REST_THRESHOLD) {
+        this.lookRestSince[i] = null;
+      } else if (this.lookRestSince[i] === null || Math.abs(value - this.lookRestValue[i]) > REST_TOLERANCE) {
+        // Compare to the start of the interval so slow, deliberate motion resets the timer too.
+        this.lookRestSince[i] = now;
+        this.lookRestValue[i] = value;
+      } else if (now - this.lookRestSince[i]! >= REST_DISABLE_MS) {
+        this.lookDisabled = true;
+      }
+    }
+    this.lookUsable = !this.lookDisabled && this.lookCentred[0] && this.lookCentred[1];
   }
 
   /** Abandons a pending capture so the next press is a normal action again. */

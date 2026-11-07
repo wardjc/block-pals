@@ -315,7 +315,7 @@ function frame(now: number): void {
   pip.position.set(pal.pos.x, pal.pos.y + hopY, pal.pos.z);
   pip.rotation.y = pal.heading;
   scene.followTarget(playerModel.position, dt);
-  // Close to a wall the camera is at his head: hide him so we never see inside it (Pip still shows).
+  // The hysteresis flag keeps the model hidden through close-mode glides (Pip still shows).
   playerModel.visible = !scene.rig.close;
   scene.updateMarker(dt);
   scene.render();
