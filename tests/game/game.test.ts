@@ -30,6 +30,39 @@ describe('Game', () => {
     expect(events).toContainEqual({ type: 'collected', id: BlockId.Wood });
   });
 
+  it('a hold dig intent digs the block, whatever slot is selected', () => {
+    const inv = new Inventory();
+    inv.add(BlockId.Planks, 3);
+    const { world, game, events } = setup(inv);
+    game.selected = BlockId.Planks;
+    world.set(6, 1, 5, BlockId.Stone);
+    game.applyIntent({ kind: 'dig', cell: [6, 1, 5] });
+    expect(world.get(6, 1, 5)).toBe(BlockId.Air);
+    expect(game.inventory.count(BlockId.Stone)).toBe(1);
+    expect(game.inventory.count(BlockId.Planks)).toBe(3);
+    expect(events).toContainEqual({ type: 'collected', id: BlockId.Stone });
+  });
+
+  it('a hold dig intent keeps the collect guards (feet, reach)', () => {
+    const { world, game } = setup();
+    game.applyIntent({ kind: 'dig', cell: [5, 0, 5] });
+    expect(world.get(5, 0, 5)).toBe(BlockId.Grass);
+    world.set(12, 1, 5, BlockId.Stone);
+    game.applyIntent({ kind: 'dig', cell: [12, 1, 5] });
+    expect(world.get(12, 1, 5)).toBe(BlockId.Stone);
+    expect(game.inventory.hotbar()).toEqual([]);
+  });
+
+  it('a hold walkNear intent walks next to the block', () => {
+    const { world, game, events } = setup();
+    world.set(12, 1, 5, BlockId.Stone);
+    game.applyIntent({ kind: 'walkNear', to: [11, 1, 5] });
+    expect(events).toContainEqual({ type: 'walking', to: [11, 1, 5] });
+    for (let i = 0; i < 200; i++) game.update(0.05);
+    expect(game.player.feetCell()).toEqual([11, 1, 5]);
+    expect(world.get(12, 1, 5)).toBe(BlockId.Stone);
+  });
+
   it('collect at 99 emits full and keeps block', () => {
     const inv = new Inventory();
     inv.add(BlockId.Wood, 99);

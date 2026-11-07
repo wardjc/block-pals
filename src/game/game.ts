@@ -7,7 +7,7 @@ import { canCollect, canPlace, withinReach } from '../core/placement';
 import { RECIPES } from '../core/recipes';
 import type { World } from '../core/world';
 import type { Action } from '../input/mapping';
-import type { TapIntent } from '../input/tap';
+import type { HoldIntent, TapIntent } from '../input/tap';
 import { Player } from './player';
 
 export type GameEvent =
@@ -25,6 +25,9 @@ const IDLE_SECONDS = [20, 60];
 /** A reachable region this small (cells) with no way nearer the tap counts as a pit. */
 const PIT_CELLS = 30;
 const LIFT_RADIUS = 8;
+
+/** Tap and hold intents from the touch screen, plus the pad's collect. */
+export type Intent = TapIntent | HoldIntent | { kind: 'collect'; cell: Cell };
 
 export class Game {
   readonly world: World;
@@ -77,13 +80,15 @@ export class Game {
     if (this.selected !== 'hand' && this.inventory.count(this.selected) <= 0) this.selected = 'hand';
   }
 
-  applyIntent(intent: TapIntent): void {
+  applyIntent(intent: Intent): void {
     switch (intent.kind) {
       case 'walk':
+      case 'walkNear':
         this.active();
         this.walk(intent.to);
         return;
       case 'collect':
+      case 'dig':
         this.active();
         this.collect(intent.cell);
         return;
