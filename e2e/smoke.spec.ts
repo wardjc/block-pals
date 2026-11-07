@@ -182,7 +182,8 @@ test('works offline after first load', async ({ page, context }) => {
   await page.reload();
   await page.waitForFunction(() => !!navigator.serviceWorker.controller);
   await context.setOffline(true);
-  await page.reload();
+  const response = await page.reload();
+  expect(response?.fromServiceWorker()).toBe(true);
   await expect(page.locator('canvas')).toBeVisible();
   await expect(page.locator('.hotbar')).toBeVisible();
   // The service worker cache served this reload, not the HTTP cache.
