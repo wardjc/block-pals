@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest';
-import { VILLAGER_LINES, VILLAGERS } from '../../src/content/villagers';
+import { DOOR_EMBLEMS, VILLAGER_LINES, VILLAGERS, pickVillagerLine } from '../../src/content/villagers';
 import { GreetTracker } from '../../src/game/villagers';
 import { generateWorld } from '../../src/core/worldgen';
 import { clipKey } from '../../src/audio/voiceKey';
@@ -117,6 +117,18 @@ describe('GreetTracker', () => {
     set(20_000);
     g.update(far, houses, false);
     expect(g.takeCancel()).toBe(false);
+  });
+});
+
+describe('villager content helpers', () => {
+  it('never repeats the previous variant', () => {
+    for (const v of VILLAGERS) for (const last of VILLAGER_LINES[v.id]) for (let i = 0; i < 20; i++) {
+      expect(pickVillagerLine(v.id, last, () => i / 20)).not.toBe(last);
+    }
+  });
+  it('every house has a picture over its door, and they differ', () => {
+    expect(Object.keys(DOOR_EMBLEMS).sort()).toEqual(['bakery', 'cottage', 'farmhouse', 'granny', 'shop']);
+    expect(new Set(Object.values(DOOR_EMBLEMS)).size).toBe(5);
   });
 });
 

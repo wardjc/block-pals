@@ -54,3 +54,19 @@ export const VILLAGER_LINES: Record<VillagerId, string[]> = {
     'How lovely to meet you, dear.',
   ],
 };
+
+/** A variant for a villager, never the same one twice in a row. */
+export function pickVillagerLine(id: VillagerId, last: string | undefined, rng: () => number = Math.random): string {
+  const variants = VILLAGER_LINES[id];
+  const pool = variants.length > 1 ? variants.filter(v => v !== last) : variants;
+  return pool[Math.min(pool.length - 1, Math.floor(rng() * pool.length))] ?? '';
+}
+
+/** The picture over each house door, so the houses can be told apart without reading. */
+export const DOOR_EMBLEMS: Record<HouseId, string> = {
+  cottage: '🏠',
+  bakery: '🍞',
+  shop: '⛏️',
+  farmhouse: '🥕',
+  granny: '🧶',
+};
