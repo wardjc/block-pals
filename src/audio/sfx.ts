@@ -71,10 +71,39 @@ export class LoopScheduler {
 let noise: AudioBuffer | null = null;
 let scrapeFlip = false;
 
+interface Scrape { src: AudioBufferSourceNode; f: BiquadFilterNode; g: GainNode }
+const activeScrapes = new Set<Scrape>();
+
+function release(sc: Scrape): void {
+  activeScrapes.delete(sc);
+  try { sc.src.disconnect(); sc.f.disconnect(); sc.g.disconnect(); } catch { /* already gone */ }
+}
+
+/** Fade out and stop every scrape that is sounding or pending, then disconnect it. */
+function silenceScrapes(): void {
+  const c = ctx;
+  for (const sc of [...activeScrapes]) {
+    try {
+      if (c && c.state === 'running') {
+        const t = c.currentTime;
+        sc.g.gain.cancelScheduledValues(t);
+        sc.g.gain.setValueAtTime(Math.max(sc.g.gain.value, 0.0001), t);
+        sc.g.gain.linearRampToValueAtTime(0.0001, t + 0.03);
+        sc.src.stop(t + 0.04);
+        sc.src.onended = () => release(sc);
+        continue; // released when it ends
+      }
+      sc.src.stop();
+    } catch { /* never started or already stopped */ }
+    release(sc);
+  }
+}
+
 /** One soft, quiet band-limited noise "scrape" (about 1.2-1.9 kHz: no rumble, nothing harsh). */
 function scrape(): void {
   const c = ctx;
-  if (!c || !master) return;
+  // A suspended context has a frozen clock: scrapes would pile up at one timestamp and blast on resume.
+  if (!c || !master || c.state !== 'running') return;
   try {
     if (!noise) {
       noise = c.createBuffer(1, Math.floor(c.sampleRate * 0.12), c.sampleRate);
@@ -98,6 +127,9 @@ function scrape(): void {
     g.connect(master);
     src.start(t);
     src.stop(t + 0.12);
+    const sc: Scrape = { src, f, g };
+    activeScrapes.add(sc);
+    src.onended = () => release(sc);
   } catch {
     /* sound is optional */
   }
@@ -135,6 +167,7 @@ export const sfx = {
   digStop: () => {
     if (digLoop.running) digStats.stops++;
     digLoop.stop();
+    silenceScrapes();
   },
   /** For ?debug checks. */
   digState: () => ({ ...digStats, active: digLoop.running }),
