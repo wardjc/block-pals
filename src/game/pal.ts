@@ -3,6 +3,7 @@ import { insideWall } from '../core/bounds';
 import { canStep, findPath, isStandable, smoothPath, type Cell } from '../core/pathfind';
 import type { World } from '../core/world';
 import type { GameEvent } from './game';
+import { LEAD_CATCH_UP_SPEED, LEAD_SPEED } from './lead';
 import { easeHeading, type Player } from './player';
 
 const STEP_DYS = [0, 1, -1];
@@ -31,6 +32,13 @@ export class Pal {
   private placeCount = 0;
   private hop = false;
   private hasWood: () => boolean = () => true;
+  private speed = SPEED;
+  private hushUntil = 0;
+  /** Lead mode: the route to walk and which index of it to head for (-1 = wait where he is). */
+  private leadRoute: Cell[] | null = null;
+  private leadIndex: () => number = () => -1;
+  private leadGoal: Cell | null = null;
+  private avoid: Cell = [NaN, 0, NaN];
 
   constructor(
     start: Vec,
@@ -43,6 +51,30 @@ export class Pal {
   /** Lets Pip know whether the player holds any wood (for the idle hint). */
   setHasWood(fn: () => boolean): void {
     this.hasWood = fn;
+  }
+
+  /**
+   * Lead mode: walk the precomputed route towards `targetIndex()` at a pace he can follow. Pip never
+   * teleports in this mode, never steps into the cell he stands in and never moves him. null = back to following.
+   */
+  setLead(route: Cell[] | null, targetIndex: () => number = () => -1): void {
+    this.leadRoute = route && route.length > 0 ? route : null;
+    this.leadIndex = targetIndex;
+    this.leadGoal = null;
+    this.path = [];
+    this.waypoint = 0;
+    this.stuckFor = 0;
+    this.speed = SPEED;
+    this.avoid = [NaN, 0, NaN];
+  }
+
+  get leading(): boolean {
+    return this.leadRoute !== null;
+  }
+
+  /** Pip's own chatter (not the 'always' lines) stays quiet for this long, e.g. while a neighbour speaks. */
+  hush(ms: number): void {
+    this.hushUntil = Math.max(this.hushUntil, this.now() + ms);
   }
 
   feetCell(): Cell {
@@ -98,7 +130,7 @@ export class Pal {
 
   private speak(key: LineKey, always = false): void {
     const t = this.now();
-    if (!always && t - this.lastSpoke < MIN_GAP_MS) return;
+    if (!always && (t - this.lastSpoke < MIN_GAP_MS || t < this.hushUntil)) return;
     this.lastSpoke = t;
     this.say(key);
   }
@@ -106,6 +138,11 @@ export class Pal {
   update(world: World, player: Player, dt: number): void {
     if (!Number.isFinite(dt) || dt <= 0) return;
     this.repathCooldown = Math.max(0, this.repathCooldown - dt);
+    if (this.leadRoute) {
+      this.updateLead(world, player, dt);
+      return;
+    }
+    this.speed = SPEED;
     const dist = Math.hypot(player.pos.x - this.pos.x, player.pos.z - this.pos.z);
     const playerCell = player.feetCell();
     const here = this.feetCell();
@@ -132,6 +169,24 @@ export class Pal {
     if (moved > SPEED * dt * 0.2) this.stuckFor = 0;
     else this.stuckFor += dt;
     if (this.stuckFor >= STUCK_SECONDS) this.teleport(world, player);
+  }
+
+  private updateLead(world: World, player: Player, dt: number): void {
+    const route = this.leadRoute!;
+    const idx = this.leadIndex();
+    if (idx < 0) { this.path = []; return; } // the controller says wait
+    const goal = route[Math.min(route.length - 1, idx)];
+    this.leadGoal = goal;
+    this.avoid = player.feetCell();
+    const here = this.feetCell();
+    if (here[0] === goal[0] && here[2] === goal[2]) { this.path = []; this.waypoint = 0; return; }
+    // Easy pace he can follow; hurry only when well behind the goal (he overtook Pip).
+    const away = Math.hypot(goal[0] + 0.5 - this.pos.x, goal[2] + 0.5 - this.pos.z);
+    this.speed = away > 4 ? LEAD_CATCH_UP_SPEED : LEAD_SPEED;
+    const end = this.path[this.path.length - 1];
+    const stale = !end || this.waypoint >= this.path.length || Math.max(Math.abs(end[0] - goal[0]), Math.abs(end[2] - goal[2])) > 1;
+    if (stale && this.repathCooldown <= 0) this.repath(world, player);
+    this.follow(world, player, dt);
   }
 
   private pathLeadsNear(player: Player): boolean {
@@ -170,9 +225,10 @@ export class Pal {
   private repath(world: World, player: Player): void {
     this.path = [];
     this.waypoint = 0;
-    this.repathCooldown = 1;
+    this.repathCooldown = this.leadGoal && this.leadRoute ? 0.3 : 1;
     const from = this.feetCell();
-    for (const goal of this.spots(world, player, [2, 1], this.pos).slice(0, 6)) {
+    const goals = this.leadRoute && this.leadGoal ? [this.leadGoal] : this.spots(world, player, [2, 1], this.pos).slice(0, 6);
+    for (const goal of goals) {
       const p = findPath(world, from, goal, 1500, this.allowed(world));
       if (p) {
         this.path = smoothPath(world, p, from, this.allowed(world));
@@ -183,7 +239,7 @@ export class Pal {
   }
 
   private follow(world: World, player: Player, dt: number): void {
-    let remaining = SPEED * dt;
+    let remaining = this.speed * dt;
     while (remaining > 1e-6 && this.waypoint < this.path.length) {
       const [cx, cy, cz] = this.path[this.waypoint];
       if (!isStandable(world, [cx, cy, cz])) {
@@ -248,7 +304,8 @@ export class Pal {
   private allowed(world: World): (cell: Cell) => boolean {
     if (this.allowedWorld !== world) {
       this.allowedWorld = world;
-      this.allowedFn = cell => this.insideWall(world, cell);
+      // In lead mode he is never walked into: his own cell is off limits.
+      this.allowedFn = cell => this.insideWall(world, cell) && !(cell[0] === this.avoid[0] && cell[2] === this.avoid[2]);
     }
     return this.allowedFn;
   }
