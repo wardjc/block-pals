@@ -232,6 +232,18 @@ describe('worldgen stages', () => {
     expect(hash).toBe(fixture.hash);
     expect(counts).toEqual(fixture.counts);
     expect(spawn).toEqual(fixture.spawn);
+    // Named landmarks of the v1 meadow, asserted explicitly (not only through the hash).
+    const topOf = (x: number, z: number): { y: number; id: BlockId } => {
+      for (let y = 15; y >= 0; y--) if (world.get(x, y, z) !== BlockId.Air && world.get(x, y, z) !== BlockId.Water) return { y, id: world.get(x, y, z) as BlockId };
+      return { y: 0, id: BlockId.Air };
+    };
+    expect(topOf(34, 12).y).toBe(11); // hill peak
+    expect(topOf(14, 32).id).toBe(BlockId.Sand); // pond bed
+    expect(world.get(14, topOf(14, 32).y + 1, 32)).toBe(BlockId.Water); // water over it
+    expect(topOf(14, 32).y).toBeLessThan(topOf(14, 38).y); // pond is a dip
+    expect(topOf(24, 24).y).toBe(Math.floor(spawn.y) - 1); // spawn plateau
+    expect(topOf(24, 24).id).toBe(BlockId.Grass);
+    for (const [dx, dz] of [[1, 0], [0, 1], [-1, 0], [0, -1]]) expect(topOf(24 + dx, 24 + dz).y).toBe(topOf(24, 24).y);
     for (let y = 16; y < world.sizeY; y++) for (let z = 0; z < 48; z++) for (let x = 0; x < 48; x++) {
       expect(world.get(x, y, z)).toBe(BlockId.Air);
     }

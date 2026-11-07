@@ -18,7 +18,9 @@ export const LEGACY_SAVE_KEY = 'blockpals.save.v1';
 /** Raw copy of the v1 payload, written once when it is first migrated, never overwritten. */
 export const BACKUP_KEY = 'blockpals.save.v1.backup';
 /** Every key a reset has to clear. */
-export const ALL_SAVE_KEYS: readonly string[] = [SAVE_KEY, LEGACY_SAVE_KEY, BACKUP_KEY];
+/** Raw copy of a v2 payload that failed validation while v1 was used instead; written once, never overwritten. */
+export const BAD_V2_KEY = 'blockpals.save.v2.bad';
+export const ALL_SAVE_KEYS: readonly string[] = [SAVE_KEY, LEGACY_SAVE_KEY, BACKUP_KEY, BAD_V2_KEY];
 
 export interface SaveFlags { ledToVillage: boolean }
 
@@ -144,10 +146,12 @@ export function applySave(data: SaveData): {
   // Replayed edits must remain in every later save, even while the world is clean.
   world.markClean();
   const { x, y, z } = data.player;
+  // Never put him back under a roof: a saved spot inside any house footprint means spawn instead.
+  const inHouse = village.houses.some(h => x >= h.rect.x0 && x < h.rect.x1 + 1 && z >= h.rect.z0 && z < h.rect.z1 + 1);
   return {
     world,
     inventory: Inventory.fromJSON(data.inventory, data.order),
-    spawn: isStandable(world, [Math.floor(x), Math.floor(y), Math.floor(z)])
+    spawn: !inHouse && isStandable(world, [Math.floor(x), Math.floor(y), Math.floor(z)])
       ? { ...data.player } : spawn,
     village,
     flags: { ledToVillage: data.flags.ledToVillage },
@@ -193,6 +197,13 @@ function backupLegacy(storage: Storage, raw: string): void {
   } catch { /* full or blocked storage: the v1 key itself is untouched anyway */ }
 }
 
+/** Keeps the unreadable v2 payload once, before v1 replaces it; an existing copy is never overwritten. */
+function backupBad(storage: Storage, raw: string): void {
+  try {
+    if (storage.getItem(BAD_V2_KEY) === null) storage.setItem(BAD_V2_KEY, raw);
+  } catch { /* full or blocked storage: harmless */ }
+}
+
 /**
  * Reads v2 first. If there is no valid v2, falls back to migrating the v1 save: the raw v1
  * payload is backed up (first time only), the v1 key stays byte-identical, and the migrated
@@ -201,11 +212,13 @@ function backupLegacy(storage: Storage, raw: string): void {
 export function readSave(storage: Storage | null): SaveData | null {
   if (!storage) return null;
   try {
-    const current = parseSave(readRaw(storage, SAVE_KEY));
+    const currentRaw = readRaw(storage, SAVE_KEY);
+    const current = parseSave(currentRaw);
     if (current) return current;
     const legacyRaw = readRaw(storage, LEGACY_SAVE_KEY);
     const migrated = parseSave(legacyRaw);
     if (!migrated || legacyRaw === null) return null;
+    if (currentRaw !== null) backupBad(storage, currentRaw);
     backupLegacy(storage, legacyRaw);
     storeSave(storage, migrated);
     return migrated;

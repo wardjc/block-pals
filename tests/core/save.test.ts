@@ -3,7 +3,7 @@ import { afterEach, beforeEach, describe, expect, test, vi } from 'vitest';
 import { BlockId } from '../../src/core/blocks';
 import { isStandable } from '../../src/core/pathfind';
 import {
-  ALL_SAVE_KEYS, BACKUP_KEY, LEGACY_SAVE_KEY, SAVE_KEY, applySave, migrateV1, parseSave, readSave, serialise,
+  ALL_SAVE_KEYS, BACKUP_KEY, BAD_V2_KEY, LEGACY_SAVE_KEY, SAVE_KEY, applySave, migrateV1, parseSave, readSave, serialise,
   startAutosave, storeSave, type SaveData,
 } from '../../src/core/save';
 import { GEN_VERSION } from '../../src/core/worldgen';
@@ -479,7 +479,40 @@ describe('save v2 and migration', () => {
     expect(JSON.parse(localStorage.getItem(SAVE_KEY)!).gen).toBe(5);
   });
 
+  test('a bad v2 payload is backed up once when v1 is used instead', () => {
+    const { raw } = legacySave();
+    localStorage.setItem(LEGACY_SAVE_KEY, raw);
+    localStorage.setItem(SAVE_KEY, '{"version":2,"broken":true}');
+    expect(readSave(localStorage)).not.toBeNull();
+    expect(localStorage.getItem(BAD_V2_KEY)).toBe('{"version":2,"broken":true}');
+    // A second bad v2 never overwrites the first backup.
+    localStorage.setItem(SAVE_KEY, 'garbage');
+    readSave(localStorage);
+    expect(localStorage.getItem(BAD_V2_KEY)).toBe('{"version":2,"broken":true}');
+  });
+
+  test('no backup when v2 is simply absent', () => {
+    localStorage.setItem(LEGACY_SAVE_KEY, legacySave().raw);
+    readSave(localStorage);
+    expect(localStorage.getItem(BAD_V2_KEY)).toBeNull();
+  });
+
+  test.each([1, 2])('a v%i saved position inside any house footprint falls back to spawn', version => {
+    const { village, spawn } = generateWorld(1234);
+    for (const house of village.houses) {
+      const r = house.rect;
+      const data = { ...validSave(), player: { x: r.x0 + 1.5, y: house.groundY + 1, z: r.z0 + 1.5 } };
+      const raw = version === 1
+        ? JSON.stringify({ version: 1, seed: 1234, edits: [], inventory: {}, player: data.player })
+        : JSON.stringify(data);
+      const parsed = parseSave(raw);
+      // v1 saves only validate inside the old 48x48 meadow; the cottage is the one that can be there.
+      if (!parsed) { expect(version).toBe(1); continue; }
+      expect(applySave(parsed).spawn, house.id).toEqual(spawn);
+    }
+  });
+
   test('the reset key list covers v2, v1 and the backup', () => {
-    expect([...ALL_SAVE_KEYS].sort()).toEqual([BACKUP_KEY, LEGACY_SAVE_KEY, SAVE_KEY].sort());
+    expect([...ALL_SAVE_KEYS].sort()).toEqual([BACKUP_KEY, BAD_V2_KEY, LEGACY_SAVE_KEY, SAVE_KEY].sort());
   });
 });
