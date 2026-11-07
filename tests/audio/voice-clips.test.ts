@@ -20,7 +20,7 @@ interface Rig {
   deps: ClipDeps;
 }
 
-function rig(opts: { manifest?: unknown; manifestFails?: boolean; clip?: 'ok' | 'missing'; decodeFails?: boolean; state?: string; noAudio?: boolean; gate?: (url: string) => Promise<void> | undefined; hang?: boolean } = {}): Rig {
+function rig(opts: { manifest?: unknown; manifestFails?: boolean; clip?: 'ok' | 'missing'; decodeFails?: boolean; state?: string; noAudio?: boolean; gate?: (url: string) => Promise<void> | undefined; hang?: boolean; timeoutMs?: number } = {}): Rig {
   const sources: Src[] = [];
   const ctx = {
     state: opts.state ?? 'running',
@@ -54,7 +54,7 @@ function rig(opts: { manifest?: unknown; manifestFails?: boolean; clip?: 'ok' | 
     base: '/block-pals/',
     audio: () => (opts.noAudio ? null : { ctx: ctx as unknown as AudioContext, out: {} as AudioNode }),
     resumeWaitMs: 5,
-    timeoutMs: 50,
+    timeoutMs: opts.timeoutMs ?? 50,
   };
   vi.stubGlobal('SpeechSynthesisUtterance', class { constructor(public text: string) {} });
   return { voice: new Voice(synth as unknown as SpeechSynthesis, deps), synth, sources, fetch: fetchFn, deps };
@@ -179,7 +179,7 @@ describe('Voice clips', () => {
   it('out of order: the first load finishing late never plays and never speaks', async () => {
     let release!: () => void;
     const held = new Promise<void>((res) => { release = res; });
-    const r = rig({ gate: (url) => (url.endsWith(`${KEY}.ogg`) ? held : undefined) });
+    const r = rig({ timeoutMs: 5000, gate: (url) => (url.endsWith(`${KEY}.ogg`) ? held : undefined) });
     r.voice.say(TEXT); // slow
     await settle();
     r.voice.say(TEXT2); // fast

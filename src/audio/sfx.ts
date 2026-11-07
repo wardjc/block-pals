@@ -10,8 +10,8 @@ function ensure(): AudioContext | null {
     ctx = new Ctor();
     master = ctx.createGain();
     master.gain.value = 0.5;
-    // Safety limiter: a voice clip (peak ~0.54 after master) plus a pop or two (~0.2 each) can approach
-    // full scale. Threshold -6 dB with a hard ratio keeps the sum from clipping; it does nothing at normal levels.
+    // Safety limiter: a voice clip (peak ~0.45 after master, more after the compressor's automatic makeup gain of roughly +3 dB) plus a pop or two (~0.2 each) can approach
+    // full scale. Threshold -6 dB with a hard ratio keeps the sum from clipping; it is not a no-op: the compressor adds makeup gain, which is why CLIP_GAIN is a modest 1.0.
     let sink: AudioNode = ctx.destination;
     try {
       const lim = ctx.createDynamicsCompressor();

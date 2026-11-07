@@ -28,10 +28,10 @@ interface ManifestEntry { file: string; text: string; duration: number }
 type Manifest = Record<string, ManifestEntry>;
 export interface VoiceLast { source: 'clip' | 'tts' | 'none'; key: string }
 
-// Clips are normalised to a 0.9 peak and the master gain is 0.5, so 1.2 puts speech peaks near 0.54: clearly
+// Clips are normalised to a 0.9 peak and the master gain is 0.5, so 1.0 puts speech peaks near 0.45 (about 0.55-0.6 after the limiter's makeup gain): clearly
 // louder than the sfx blips (about 0.2 after master) without leaving room to clip when a pop lands mid-sentence.
 // The master also feeds a limiter (sfx.ts) as a safety net.
-const CLIP_GAIN = 1.2;
+const CLIP_GAIN = 1.0;
 const FETCH_TIMEOUT_MS = 4000;
 
 /** fetch that gives up after FETCH_TIMEOUT_MS (a stalled network must fall back to speech, not wait forever). */
