@@ -1,4 +1,5 @@
 import { BLOCKS } from '../core/blocks';
+import { clampToWall, insideWall } from '../core/bounds';
 import { canStep, isStandable, type Cell } from '../core/pathfind';
 import type { World } from '../core/world';
 
@@ -134,14 +135,12 @@ export class Player {
   }
 
   private insideWall(world: World, [x, , z]: Cell): boolean {
-    return x >= 1 && x <= Math.min(46, world.sizeX - 2)
-      && z >= 1 && z <= Math.min(46, world.sizeZ - 2);
+    return insideWall(world, x, z);
   }
 
   /** Small horizontal sweeps prevent a long frame from tunnelling through a wall. */
   private move(world: World, dx: number, dz: number): boolean {
-    const x = Math.max(1, Math.min(Math.min(47, world.sizeX - 1) - EPSILON, this.pos.x + dx));
-    const z = Math.max(1, Math.min(Math.min(47, world.sizeZ - 1) - EPSILON, this.pos.z + dz));
+    const { x, z } = clampToWall(world, this.pos.x + dx, this.pos.z + dz);
     const from = this.feetCell();
     const nextX = Math.floor(x);
     const nextZ = Math.floor(z);
