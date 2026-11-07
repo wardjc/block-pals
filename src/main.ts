@@ -14,7 +14,7 @@ import { sfx } from './audio/sfx';
 import { CraftScreen } from './ui/craft';
 import { Hud } from './ui/hud';
 import { Voice } from './audio/voice';
-import { LINES, LINE_ICONS, pickLine, type LineKey } from './content/lines';
+import { LINE_ICONS, pickLine, type LineKey } from './content/lines';
 import { Pal } from './game/pal';
 import { UsageTracker } from './core/usage';
 import { GrownUps } from './ui/grownups';
@@ -43,10 +43,13 @@ const BUBBLE_WORDS: Partial<Record<LineKey, string>> = { hello: 'Hi!', welcomeBa
 let bubbleTimer = 0;
 const voice = new Voice();
 const lastSpoken: Partial<Record<LineKey, string>> = {};
-const sayLine = (key: LineKey): void => {
+const speakVariant = (key: LineKey): void => {
   const text = pickLine(key, lastSpoken[key]);
   lastSpoken[key] = text;
   voice.say(text);
+};
+const sayLine = (key: LineKey): void => {
+  speakVariant(key);
   if (key === 'breakTime') {
     hud.showBreak(() => usage.resetSessionTimer());
     return;
@@ -117,10 +120,10 @@ const craftScreen = new CraftScreen(document.getElementById('ui')!, {
   tryCraft: id => game.tryCraft(id),
   iconFor: scene.atlas.iconDataUrl,
   say: text => voice.say(text),
-  sayNeedMore: () => voice.say(LINES.craftNeedMore[Math.floor(Math.random() * LINES.craftNeedMore.length)]),
+  sayNeedMore: () => speakVariant('craftNeedMore'),
   sfxTap: () => sfx.tap(),
   sfxCraft: () => sfx.craft(),
-  sayFull: () => voice.say(LINES.full[Math.floor(Math.random() * LINES.full.length)]),
+  sayFull: () => speakVariant('full'),
   onOpenChange: syncOverlays,
 });
 game.onCraftRequest = openCraft;

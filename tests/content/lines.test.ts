@@ -21,7 +21,7 @@ describe('lines', () => {
   });
   it('first variants are fixed', () => {
     expect(LINES.hello[0]).toBe("Hiya! I'm Pip. Let's go exploring!");
-    expect(LINES.letsFindWood[0]).toBe("Let's find some wood. Look for a tree!");
+    expect(LINES.letsFindWood[0]).toBe("Let's find some wood. Press and hold a tree!");
     expect(LINES.crafted[0]).toBe('Brilliant! You made it!');
     expect(LINES.full[0]).toBe('Your bag is full of those!');
     expect(LINES.noPath[0]).toBe("Hmm, I can't get there. Let's try another way!");
@@ -32,7 +32,23 @@ describe('lines', () => {
     for (const k of keys) expect(LINE_ICONS[k]).toBeTruthy();
   });
 
+  it('no line tells the player to tap to collect', () => {
+    for (const k of keys) for (const l of LINES[k]) expect(l).not.toMatch(/\b(tap|click|touch)\b/i);
+  });
+  it('lines make no false visibility or progress claims', () => {
+    for (const k of keys) for (const l of LINES[k]) expect(l).not.toMatch(/I can see|Look, a|Nearly|Almost/i);
+  });
+
   describe('pickLine', () => {
+    it('empty variants returns an empty string', () => {
+      const orig = LINES.hello;
+      LINES.hello = [];
+      try {
+        expect(pickLine('hello', undefined)).toBe('');
+      } finally {
+        LINES.hello = orig;
+      }
+    });
     it('never repeats the previous variant', () => {
       for (const k of keys)
         for (const last of LINES[k])

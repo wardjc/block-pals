@@ -22,16 +22,16 @@ export const LINES: Record<LineKey, string[]> = {
     'Hello! What a lovely day for blocks!',
   ],
   letsFindWood: [
-    "Let's find some wood. Look for a tree!", 'Trees have wood. Can you spot one?',
-    'Wood comes from trees. Can you find one?',
-    'Shall we get some wood? Find a tree!',
-    "I can see trees. Let's get some wood!",
+    "Let's find some wood. Press and hold a tree!",
+    'Trees have wood. Shall we look for one?',
+    "Shall we get some wood? Let's find a tree!",
+    'Hold your finger on a tree to get wood!',
   ],
   collectedFirst: [
-    'Well done! You got your first one!', 'Ooh, lovely! Your first block!',
-    "Hooray! That's your very first one!",
-    'Ooh, well done! You got one!',
-    'Lovely! Your first block is in your bag!',
+    'Well done! You collected a block!',
+    'Ooh, lovely! You got one!',
+    'Hooray! You found a lovely block!',
+    "Super! That one's in your bag!",
   ],
   collectedMore: [
     'Nice one! Keep going!', 'Super! You got another!', 'Hooray! Look at that!',
@@ -40,10 +40,10 @@ export const LINES: Record<LineKey, string[]> = {
     'Great job! Keep it up!',
   ],
   full: [
-    'Your bag is full of those!', 'No more room for those. Try something else!',
-    'Oh, your bag has lots of those!',
-    "That's plenty of those! Try something new!",
-    'Your bag is nice and full!',
+    'Your bag is full of those!',
+    'No more room for those. Try something else!',
+    "That's plenty of those! Let's use some.",
+    "Wow, lots of those! Let's build with them.",
   ],
   crafted: [
     'Brilliant! You made it!', 'Wow, look what you made!', 'Fantastic! Well done!',
@@ -52,8 +52,8 @@ export const LINES: Record<LineKey, string[]> = {
     'Hooray! What a clever make!',
   ],
   placed: [
-    'Lovely building!', 'Nice! That looks great!', 'Ooh, what are you making?',
-    'Ooh, that looks so good!',
+    'Lovely building!',
+    'Ooh, what are you making?',
     'What a lovely spot for it!',
     'Great building! Keep going!',
   ],
@@ -64,16 +64,16 @@ export const LINES: Record<LineKey, string[]> = {
     "That's a bit tricky. Shall we go round?",
   ],
   idleHint: [
-    'Tap a block to collect it!', 'What shall we build today?', 'Look, a tree! Shall we go?',
-    'Tap a tree to get some wood!',
-    'Shall we build something lovely?',
-    'Can you tap a block for me?',
+    'Press and hold a block to dig it!',
+    'What shall we build today?',
+    'Shall we look for a tree?',
+    'Hold your finger on a block to dig it!',
   ],
   craftNeedMore: [
-    'We need a few more blocks first.', 'Almost! Collect a few more.',
-    'Nearly there! Just a few more blocks.',
+    'We need a few more blocks first.',
+    "Let's collect the blocks we need!",
     'We need a little bit more first.',
-    "Let's get a few more, then try!",
+    "Let's get some more blocks, then try!",
   ],
   breakTime: [
     "Let's have a stretch! Wiggle your arms!", 'Time for a wiggle! Jump up and down!',
@@ -98,6 +98,7 @@ export const LINES: Record<LineKey, string[]> = {
 /** Pick a variant for a key, never the same one twice in a row. */
 export function pickLine(key: LineKey, last: string | undefined, rng: () => number = Math.random): string {
   const variants = LINES[key];
+  if (variants.length === 0) return '';
   const pool = variants.length > 1 ? variants.filter(v => v !== last) : variants;
   const i = Math.min(pool.length - 1, Math.floor(rng() * pool.length));
   return pool[i];
