@@ -16,8 +16,8 @@ export type LineKey =
 /** Lines spoken by Pip. British English, short and warm. */
 export const LINES: Record<LineKey, string[]> = {
   hello: [
-    "Hiya! I'm Pip. Let's go exploring!", "Hello! I'm Pip. Shall we play?",
-    'Hello, friend! Pip is so happy to see you!',
+    "Hiya! I'm Pip. Let's go exploring!",
+    "Hello! I'm Pip. Shall we play?",
     'Hiya! Ready for an adventure?',
     'Hello! What a lovely day for blocks!',
   ],
@@ -34,22 +34,22 @@ export const LINES: Record<LineKey, string[]> = {
     "Super! That one's in your bag!",
   ],
   collectedMore: [
-    'Nice one! Keep going!', 'Super! You got another!', 'Hooray! Look at that!',
+    'Nice one! Keep going!',
+    'Super! You got another!',
+    'Hooray! Look at that!',
     'Wonderful! One more for your bag!',
-    "Yippee! You're so good at this!",
-    'Great job! Keep it up!',
   ],
   full: [
-    'Your bag is full of those!',
-    'No more room for those. Try something else!',
     "That's plenty of those! Let's use some.",
+    "Let's use some of those to make room!",
     "Wow, lots of those! Let's build with them.",
+    "Lots of those! Let's make something with them.",
   ],
   crafted: [
-    'Brilliant! You made it!', 'Wow, look what you made!', 'Fantastic! Well done!',
+    'Brilliant! You made it!',
+    'Wow, look what you made!',
+    'Fantastic! Well done!',
     'Ta-da! Look at your new thing!',
-    'Super! You made something new!',
-    'Hooray! What a clever make!',
   ],
   placed: [
     'Lovely building!',
@@ -58,9 +58,9 @@ export const LINES: Record<LineKey, string[]> = {
     'Great building! Keep going!',
   ],
   noPath: [
-    "Hmm, I can't get there. Let's try another way!", "That's tricky! Let's go a different way.",
+    "Hmm, I can't get there. Let's try another way!",
+    "That's tricky! Let's go a different way.",
     "Oops, I can't reach that. Let's try again!",
-    "Hmm, not that way. Let's find another!",
     "That's a bit tricky. Shall we go round?",
   ],
   idleHint: [
@@ -76,21 +76,21 @@ export const LINES: Record<LineKey, string[]> = {
     "Let's get some more blocks, then try!",
   ],
   breakTime: [
-    "Let's have a stretch! Wiggle your arms!", 'Time for a wiggle! Jump up and down!',
+    "Let's have a stretch! Wiggle your arms!",
+    'Time for a wiggle! Jump up and down!',
     'Time for a little rest! Wiggle your toes!',
     "Let's stretch up high! Reach for the sky!",
-    'Wiggle time! Shake your hands!',
   ],
   welcomeBack: [
-    "You're back! I missed you!", 'Hiya! Yay, you came back!',
+    "You're back! I missed you!",
+    'Hiya! Yay, you came back!',
     "Hello again! I'm so happy you're here!",
-    "Yay, you're back! Let's play!",
     'Welcome back! Pip missed you!',
   ],
   upYouCome: [
-    'Up you come! There we go!', 'Whoops-a-daisy! Up you come!',
+    'Up you come! There we go!',
+    'Whoops-a-daisy! Up you come!',
     'Hup! Up you come!',
-    'There we go! Up you pop!',
     'Whoops! Let me help you up!',
   ],
 };

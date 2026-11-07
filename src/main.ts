@@ -45,6 +45,7 @@ const voice = new Voice();
 const lastSpoken: Partial<Record<LineKey, string>> = {};
 const speakVariant = (key: LineKey): void => {
   const text = pickLine(key, lastSpoken[key]);
+  if (!text) return; // never speak '' - it would cancel current speech
   lastSpoken[key] = text;
   voice.say(text);
 };

@@ -7,9 +7,8 @@ describe('lines', () => {
   it('every LineKey has at least one line', () => {
     expect(keys).toHaveLength(13);
     for (const k of keys) {
-      expect(LINES[k].length).toBeGreaterThanOrEqual(1);
-      expect(LINES[k].length).toBeLessThanOrEqual(6);
-      expect(LINES[k].length).toBeGreaterThanOrEqual(4);
+      expect(LINES[k].length).toBe(4);
+      expect(new Set(LINES[k]).size).toBe(4);
     }
   });
   it('lines use British spelling', () => {
@@ -23,7 +22,7 @@ describe('lines', () => {
     expect(LINES.hello[0]).toBe("Hiya! I'm Pip. Let's go exploring!");
     expect(LINES.letsFindWood[0]).toBe("Let's find some wood. Press and hold a tree!");
     expect(LINES.crafted[0]).toBe('Brilliant! You made it!');
-    expect(LINES.full[0]).toBe('Your bag is full of those!');
+    expect(LINES.full[0]).toBe("That's plenty of those! Let's use some.");
     expect(LINES.noPath[0]).toBe("Hmm, I can't get there. Let's try another way!");
     expect(LINES.breakTime[0]).toBe("Let's have a stretch! Wiggle your arms!");
     expect(LINES.welcomeBack[0]).toBe("You're back! I missed you!");
