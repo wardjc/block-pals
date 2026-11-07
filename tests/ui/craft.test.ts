@@ -64,10 +64,27 @@ describe('CraftScreen', () => {
     screen.make(0);
     expect(counts().crafted).toBe(2);
   });
+  test('crafting is all-or-nothing: 97 planks + a 2-plank recipe makes 99, 98 says full', () => {
+    const inv = new Inventory();
+    inv.add(BlockId.Wood, 2);
+    inv.add(BlockId.Planks, 97);
+    const t = { now: 0 };
+    const { screen, counts } = make(inv, t);
+    screen.open();
+    screen.make(0);
+    expect(counts()).toEqual({ crafted: 1, full: 0, need: 0 });
+    expect(inv.count(BlockId.Planks)).toBe(99);
+    inv.remove(BlockId.Planks, 1); // 98: no room for 2
+    t.now += 1000;
+    screen.make(0);
+    expect(counts()).toEqual({ crafted: 1, full: 1, need: 0 });
+    expect(inv.count(BlockId.Planks)).toBe(98);
+    expect(inv.count(BlockId.Wood)).toBe(1);
+  });
   test('full output stack says full, not need-more', () => {
     const inv = new Inventory();
     inv.add(BlockId.Wood, 1);
-    inv.add(BlockId.Planks, 20);
+    inv.add(BlockId.Planks, 99);
     const { screen, counts } = make(inv, { now: 0 });
     screen.open();
     screen.make(0);

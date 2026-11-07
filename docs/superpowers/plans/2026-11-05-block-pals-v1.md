@@ -346,6 +346,8 @@ Rendering details:
 - [ ] **Step 2:** Run, and expect FAIL. **Step 3:** Implement. **Step 4:** Run, and expect PASS.
 - [ ] **Step 5:** Commit with `feat: tap intents, debounce and mapped gamepad`.
 
+> **Superseded in v1.1:** the tap rules below are replaced by spec §7a (docs/superpowers/specs/2026-11-05-block-pals-design.md): a quick tap walks (or builds with a block selected) and never digs; press and hold for about ½ s digs. The bag holds 99 of each kind, not 20. Read §7a for the current behaviour; this note is kept as history.
+
 **Amendment (final review):** the first tap rule ("collect anything collectable within reach 3") made most ground taps dig instead of walk, and the pick ray stopped 12 units from the camera (about 5 blocks ahead). New rule — *tap to go, tap next to you to dig*:
 - The pick ray now reaches 40 units.
 - With the hand selected, a hit is **collected** only when it is the top of a block right next to the player (Chebyshev ≤ 1 from the feet column, one level below the feet), a tree block (Wood or Leaves) within reach 3, or a side or bottom face within reach 3. Every other hit **walks**, including collectable blocks beyond reach.

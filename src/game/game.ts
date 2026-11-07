@@ -7,7 +7,7 @@ import { canCollect, canPlace, withinReach } from '../core/placement';
 import { RECIPES } from '../core/recipes';
 import type { World } from '../core/world';
 import type { Action } from '../input/mapping';
-import type { TapIntent } from '../input/tap';
+import type { HoldIntent, TapIntent } from '../input/tap';
 import { Player } from './player';
 
 export type GameEvent =
@@ -25,6 +25,9 @@ const IDLE_SECONDS = [20, 60];
 /** A reachable region this small (cells) with no way nearer the tap counts as a pit. */
 const PIT_CELLS = 30;
 const LIFT_RADIUS = 8;
+
+/** Tap and hold intents from the touch screen, plus the pad's collect. */
+export type Intent = TapIntent | HoldIntent | { kind: 'collect'; cell: Cell };
 
 export class Game {
   readonly world: World;
@@ -77,13 +80,18 @@ export class Game {
     if (this.selected !== 'hand' && this.inventory.count(this.selected) <= 0) this.selected = 'hand';
   }
 
-  applyIntent(intent: TapIntent): void {
+  applyIntent(intent: Intent): void {
     switch (intent.kind) {
       case 'walk':
         this.active();
         this.walk(intent.to);
         return;
+      case 'walkNear':
+        this.active();
+        this.walkBeside(intent.block);
+        return;
       case 'collect':
+      case 'dig':
         this.active();
         this.collect(intent.cell);
         return;
@@ -104,8 +112,9 @@ export class Game {
    * (pathTowards). If he can get no nearer and is in a small enclosed pit, lift him to
    * the nearest surface cell outside it and carry on; otherwise Pip gives the noPath hint.
    */
-  private walk(goal: Cell, mayLift = true): void {
-    const approach = pathTowards(this.world, this.player.feetCell(), goal, this.insideWall);
+  private walk(goal: Cell, mayLift = true, avoid?: (cell: Cell) => boolean): void {
+    const allowed = avoid ? (c: Cell) => this.insideWall(c) && !avoid(c) : this.insideWall;
+    const approach = pathTowards(this.world, this.player.feetCell(), goal, allowed);
     if (approach && approach.distance < approach.startDistance) {
       this.player.setPath(approach.path);
       this.emit({ type: 'walking', to: approach.end });
@@ -114,10 +123,18 @@ export class Game {
     if (approach && approach.distance === 0) return; // already there
     if (mayLift && approach && approach.visited <= PIT_CELLS && this.liftOut(approach.reached)) {
       this.emit({ type: 'lifted' });
-      this.walk(goal, false);
+      this.walk(goal, false, avoid);
       return;
     }
     this.emit({ type: 'noPath' });
+  }
+
+  /**
+   * Walks to the reachable standable cell nearest a block, never one in the block's own
+   * column (on top of it), so a second hold can dig it (fix round 1).
+   */
+  private walkBeside(block: Cell): void {
+    this.walk(block, true, ([x, , z]) => x === block[0] && z === block[2]);
   }
 
   /** Puts the player on the nearest open surface (not a tree top) outside his pit. */

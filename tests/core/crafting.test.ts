@@ -5,13 +5,15 @@ import { RECIPES } from '../../src/core/recipes';
 import { canCraft, craft } from '../../src/core/crafting';
 
 describe('Inventory', () => {
-  test('add caps at 20 and returns amount added', () => {
+  test('add caps at 99 and returns amount added (v1.1 bigger bag)', () => {
     const inv = new Inventory();
-    expect(MAX_STACK).toBe(20);
+    expect(MAX_STACK).toBe(99);
     expect(inv.count(BlockId.Wood)).toBe(0);
     expect(inv.add(BlockId.Wood)).toBe(1);
-    expect(inv.add(BlockId.Wood, 25)).toBe(19);
-    expect(inv.count(BlockId.Wood)).toBe(20);
+    expect(inv.add(BlockId.Wood, 29)).toBe(29);
+    expect(inv.count(BlockId.Wood)).toBe(30);
+    expect(inv.add(BlockId.Wood, 100)).toBe(69);
+    expect(inv.count(BlockId.Wood)).toBe(99);
     expect(inv.add(BlockId.Wood)).toBe(0);
   });
 
@@ -86,22 +88,22 @@ describe('Inventory', () => {
   test('toJSON and fromJSON round-trip counts without sharing state', () => {
     const inv = new Inventory();
     inv.add(BlockId.Wood, 4);
-    inv.add(BlockId.Glass, 20);
+    inv.add(BlockId.Glass, 99);
     const saved = inv.toJSON();
-    expect(saved).toEqual({ [BlockId.Wood]: 4, [BlockId.Glass]: 20 });
+    expect(saved).toEqual({ [BlockId.Wood]: 4, [BlockId.Glass]: 99 });
     const restored = Inventory.fromJSON(JSON.parse(JSON.stringify(inv)));
     expect(restored.toJSON()).toEqual(saved);
     saved[BlockId.Wood] = 1;
     restored.remove(BlockId.Glass);
     expect(inv.count(BlockId.Wood)).toBe(4);
-    expect(inv.count(BlockId.Glass)).toBe(20);
+    expect(inv.count(BlockId.Glass)).toBe(99);
     expect(Inventory.fromJSON({ [BlockId.Wood]: 0 }).hotbar()).toEqual([]);
   });
 
   test('fromJSON ignores garbage', () => {
     for (const value of [null, undefined, 'garbage', 5, [], true,
       { unknown: 1 }, { 999: 1 }, { [BlockId.Wood]: '2' },
-      { [BlockId.Wood]: -1 }, { [BlockId.Wood]: 21 },
+      { [BlockId.Wood]: -1 }, { [BlockId.Wood]: 100 },
       { [BlockId.Wood]: 1.5 }, { [BlockId.Wood]: NaN },
       { [BlockId.Wood]: Infinity }, { [BlockId.Wood]: 2, [BlockId.Stone]: -1 }]) {
       const inv = Inventory.fromJSON(value);
@@ -151,11 +153,18 @@ describe('crafting', () => {
     expect(inv.toJSON()).toEqual(before);
   });
 
+  test('recipes never ask for or give more than 20 of a kind (the bag holds 99, numbers he reads stay small)', () => {
+    for (const recipe of RECIPES) {
+      expect(recipe.output.n).toBeLessThanOrEqual(20);
+      for (const input of recipe.inputs) expect(input.n).toBeLessThanOrEqual(20);
+    }
+  });
+
   test('cannot craft when output is full', () => {
     for (const recipe of RECIPES) {
       const inv = new Inventory();
       for (const input of recipe.inputs) inv.add(input.id, input.n);
-      inv.add(recipe.output.id, 20);
+      inv.add(recipe.output.id, 99);
       const before = inv.toJSON();
       expect(canCraft(inv, recipe)).toBe(false);
       expect(craft(inv, recipe)).toBe(false);
@@ -166,13 +175,13 @@ describe('crafting', () => {
   test('requires room for the whole output without losing inputs or output', () => {
     const inv = new Inventory();
     inv.add(BlockId.Wood);
-    inv.add(BlockId.Planks, 19);
+    inv.add(BlockId.Planks, 98);
     const before = inv.toJSON();
     expect(canCraft(inv, RECIPES[0])).toBe(false);
     expect(craft(inv, RECIPES[0])).toBe(false);
     expect(inv.toJSON()).toEqual(before);
     inv.remove(BlockId.Planks);
     expect(craft(inv, RECIPES[0])).toBe(true);
-    expect(inv.count(BlockId.Planks)).toBe(20);
+    expect(inv.count(BlockId.Planks)).toBe(99);
   });
 });

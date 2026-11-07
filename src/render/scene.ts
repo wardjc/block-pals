@@ -42,6 +42,7 @@ export class GameScene {
   private readonly raycaster = new THREE.Raycaster();
   private readonly marker: THREE.Mesh<THREE.RingGeometry, THREE.MeshBasicMaterial>;
   private markerAge = Infinity;
+  private readonly outline = new THREE.Group();
 
   constructor(private readonly host: HTMLElement, private readonly world: World) {
     this.renderer = new THREE.WebGLRenderer({ antialias: false, powerPreference: 'high-performance' });
@@ -73,6 +74,21 @@ export class GameScene {
     this.marker.renderOrder = 2;
     this.marker.visible = false;
     this.scene.add(this.marker);
+
+    // A white box around the block being dug (press and hold), drawn over everything.
+    const box = new THREE.BoxGeometry(1.04, 1.04, 1.04);
+    const edges = new THREE.LineSegments(
+      new THREE.EdgesGeometry(box),
+      new THREE.LineBasicMaterial({ color: 0xffffff, depthTest: false, transparent: true }),
+    );
+    const glow = new THREE.Mesh(
+      box,
+      new THREE.MeshBasicMaterial({ color: 0xffffff, transparent: true, opacity: 0.3, depthWrite: false, depthTest: false }),
+    );
+    edges.renderOrder = glow.renderOrder = 3;
+    this.outline.add(glow, edges);
+    this.outline.visible = false;
+    this.scene.add(this.outline);
 
     const cxs = Math.ceil(world.sizeX / CHUNK_SIZE);
     const czs = Math.ceil(world.sizeZ / CHUNK_SIZE);
@@ -216,6 +232,24 @@ export class GameScene {
     }
     this.marker.material.opacity = 0.95 * (1 - t * t);
     this.marker.scale.setScalar(0.8 + 0.4 * t);
+  }
+
+  /** Outlines a block cell in white (the block a hold will dig); null hides it. */
+  showOutline(cell: [number, number, number] | null): void {
+    this.outline.visible = cell !== null;
+    if (cell) this.outline.position.set(cell[0] + 0.5, cell[1] + 0.5, cell[2] + 0.5);
+  }
+
+  get outlineVisible(): boolean {
+    return this.outline.visible;
+  }
+
+  /** Client (CSS px) position of a world point, for tests and debug tools. */
+  screenOf(x: number, y: number, z: number): { x: number; y: number } {
+    const rect = this.renderer.domElement.getBoundingClientRect();
+    this.camera.updateMatrixWorld();
+    const v = new THREE.Vector3(x, y, z).project(this.camera);
+    return { x: rect.left + ((v.x + 1) / 2) * rect.width, y: rect.top + ((1 - v.y) / 2) * rect.height };
   }
 
   add(obj: THREE.Object3D): void {

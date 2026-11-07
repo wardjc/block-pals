@@ -1,6 +1,7 @@
 import { BLOCKS, BlockId } from './blocks';
 
-export const MAX_STACK = 20;
+/** Most of one kind the bag holds (v1.1: raised from 20, spec §7a). Recipes and prices never ask for more than 20. */
+export const MAX_STACK = 99;
 
 function validId(id: number): id is BlockId {
   return Number.isInteger(id) && Object.hasOwn(BLOCKS, id) && id !== BlockId.Air && id !== BlockId.Bedrock;

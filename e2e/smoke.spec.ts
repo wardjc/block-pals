@@ -1,18 +1,63 @@
-import { test, expect } from '@playwright/test';
+import { test, expect, type Page } from '@playwright/test';
 
 const URL = '/block-pals/?debug';
 const WOOD = 4;
 const PLANKS = 8;
 
+type Cell = [number, number, number];
 type Dbg = {
   playerPos(): { x: number; y: number; z: number };
+  pipPos(): { x: number; y: number; z: number };
   giveItem(id: number, n: number): void;
+  screenOf(x: number, y: number, z: number): { x: number; y: number };
+  pick(x: number, y: number): { cell: Cell; normal: Cell } | null;
+  outlineVisible(): boolean;
   game: {
     tryCraft(id: string): boolean;
     inventory: { count(id: number): number; hotbar(): number[] };
+    world: { get(x: number, y: number, z: number): number; topSolidY(x: number, z: number): number };
   };
 };
 declare global { interface Window { __debug: Dbg } }
+
+/** A grass or dirt top a couple of blocks in front of the player, in reach, not under anyone, that a tap there hits. */
+async function nearbyGround(page: Page): Promise<{ cell: Cell; id: number; x: number; y: number }> {
+  const found = await page.evaluate(() => {
+    const d = window.__debug;
+    const p = d.playerPos();
+    const pip = d.pipPos();
+    const fx = Math.floor(p.x), fy = Math.floor(p.y), fz = Math.floor(p.z);
+    for (const dz of [2, 3, 1]) for (const dx of [0, -1, 1, -2, 2]) {
+      const x = fx + dx, z = fz + dz;
+      const y = d.game.world.topSolidY(x, z);
+      const id = d.game.world.get(x, y, z);
+      if (id !== 1 && id !== 2) continue; // grass or dirt
+      if (Math.abs(y - fy) > 3 || (x === Math.floor(pip.x) && z === Math.floor(pip.z))) continue;
+      const s = d.screenOf(x + 0.5, y + 1, z + 0.5);
+      const hit = d.pick(s.x, s.y);
+      if (hit && hit.cell[0] === x && hit.cell[1] === y && hit.cell[2] === z) return { cell: [x, y, z] as Cell, id, ...s };
+    }
+    return null;
+  });
+  if (!found) throw new Error('no nearby ground block found');
+  return found;
+}
+
+/** A real touch press (pointerType touch) held for `ms`. */
+async function press(page: Page, x: number, y: number, ms: number): Promise<void> {
+  const cdp = await page.context().newCDPSession(page);
+  await cdp.send('Input.dispatchTouchEvent', { type: 'touchStart', touchPoints: [{ x, y }] });
+  await page.waitForTimeout(ms);
+  await cdp.send('Input.dispatchTouchEvent', { type: 'touchEnd', touchPoints: [] });
+  await cdp.detach();
+}
+
+async function ready(page: Page): Promise<void> {
+  await page.goto(URL);
+  await expect(page.locator('canvas')).toBeVisible();
+  await page.waitForFunction(() => !!window.__debug);
+  await page.waitForTimeout(1500); // let Pip settle beside the player
+}
 
 test('loads with canvas and hotbar and no console errors', async ({ page }) => {
   const errors: string[] = [];
@@ -35,8 +80,32 @@ test('tap on ground moves the player', async ({ page }) => {
   await page.waitForTimeout(3000);
   const after = await page.evaluate(() => window.__debug.playerPos());
   expect(Math.hypot(after.x - before.x, after.z - before.z)).toBeGreaterThan(0.5);
-  // Tap to go, tap next to you to dig: a ground tap ahead walks and digs nothing.
+  // Spec §7a: a tap never digs.
   expect(await page.evaluate(() => window.__debug.game.inventory.hotbar().length)).toBe(0);
+});
+
+test('press and hold on a nearby block digs it', async ({ page }) => {
+  await ready(page);
+  const target = await nearbyGround(page);
+  await press(page, target.x, target.y, 700);
+  await page.waitForTimeout(100);
+  const [x, y, z] = target.cell;
+  expect(await page.evaluate(([x, y, z]) => window.__debug.game.world.get(x, y, z), [x, y, z])).toBe(0);
+  expect(await page.evaluate(id => window.__debug.game.inventory.count(id), target.id)).toBe(1);
+  await expect(page.locator('.dig-ring')).toBeHidden();
+});
+
+test('a quick tap on the same nearby block walks and digs nothing', async ({ page }) => {
+  await ready(page);
+  const target = await nearbyGround(page);
+  const before = await page.evaluate(() => window.__debug.playerPos());
+  await page.touchscreen.tap(target.x, target.y);
+  await page.waitForTimeout(2500);
+  const [x, y, z] = target.cell;
+  expect(await page.evaluate(([x, y, z]) => window.__debug.game.world.get(x, y, z), [x, y, z])).toBe(target.id);
+  expect(await page.evaluate(() => window.__debug.game.inventory.hotbar().length)).toBe(0);
+  const after = await page.evaluate(() => window.__debug.playerPos());
+  expect(Math.hypot(after.x - before.x, after.z - before.z)).toBeGreaterThan(0.5);
 });
 
 test('craft planks via debug inventory', async ({ page }) => {

@@ -129,6 +129,25 @@ html, body {
   pointer-events: none;
 }
 
+/* Press-and-hold dig ring: 120 px round the finger, a white arc fills clockwise. */
+#ui > .dig-ring {
+  position: fixed;
+  width: 120px;
+  height: 120px;
+  margin: -60px 0 0 -60px;
+  border-radius: 50%;
+  opacity: 1;
+  pointer-events: none;
+  background: conic-gradient(#fff calc(var(--p, 0) * 360deg), rgba(255, 255, 255, 0.25) 0);
+  -webkit-mask: radial-gradient(circle, transparent 38px, #000 39px);
+  mask: radial-gradient(circle, transparent 38px, #000 39px);
+  filter: drop-shadow(0 0 3px rgba(0, 0, 0, 0.45));
+}
+
+#ui > .dig-ring[hidden] {
+  display: none;
+}
+
 .bubble[hidden] {
   display: none;
 }
