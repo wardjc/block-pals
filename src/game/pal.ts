@@ -1,4 +1,5 @@
 import type { LineKey } from '../content/lines';
+import { insideWall } from '../core/bounds';
 import { canStep, findPath, isStandable, smoothPath, type Cell } from '../core/pathfind';
 import type { World } from '../core/world';
 import type { GameEvent } from './game';
@@ -253,7 +254,7 @@ export class Pal {
   }
 
   private insideWall(world: World, [x, , z]: Cell): boolean {
-    return x >= 1 && x <= world.sizeX - 2 && z >= 1 && z <= world.sizeZ - 2;
+    return insideWall(world, x, z);
   }
 
   private teleport(world: World, player: Player): void {

@@ -236,4 +236,24 @@ describe('blocked Pip', () => {
       search.mockRestore();
     }
   });
+
+  it('stays inside the soft wall at all four edges of the 96x96 world', () => {
+    const spots: Array<[number, number]> = [[94.5, 40.5], [1.5, 40.5], [40.5, 94.5], [40.5, 1.5], [94.5, 94.5], [1.5, 1.5]];
+    for (const [px, pz] of spots) {
+      const world = new World(96, 20, 96);
+      for (let x = 0; x < 96; x++) for (let z = 0; z < 96; z++) world.set(x, 0, z, BlockId.Grass);
+      world.clearEdits();
+      const player = new Player({ x: px, y: 1, z: pz });
+      const pal = new Pal({ x: px, y: 1, z: pz }, () => undefined, () => 0);
+      for (let i = 0; i < 240; i++) {
+        pal.update(world, player, 1 / 30);
+        expect(pal.pos.x, `${px},${pz}`).toBeGreaterThanOrEqual(1);
+        expect(pal.pos.x).toBeLessThan(95);
+        expect(pal.pos.z).toBeGreaterThanOrEqual(1);
+        expect(pal.pos.z).toBeLessThan(95);
+      }
+      const [cx, , cz] = pal.feetCell();
+      expect(cx >= 1 && cx <= 94 && cz >= 1 && cz <= 94).toBe(true);
+    }
+  });
 });
