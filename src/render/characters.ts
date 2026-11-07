@@ -1,13 +1,24 @@
 import * as THREE from 'three';
+import { mergeGeometries } from 'three/examples/jsm/utils/BufferGeometryUtils.js';
 import type { VillagerId } from '../content/villagers';
 
 // Both models stand with their feet at y = 0 and face +z (heading 0).
+
+// One unit box and one material per colour, shared by every character (scale instead of new geometry).
+const UNIT_BOX = new THREE.BoxGeometry(1, 1, 1);
+const materials = new Map<number, THREE.MeshLambertMaterial>();
+function material(colour: number): THREE.MeshLambertMaterial {
+  let m = materials.get(colour);
+  if (!m) { m = new THREE.MeshLambertMaterial({ color: colour }); materials.set(colour, m); }
+  return m;
+}
 
 function box(
   w: number, h: number, d: number, colour: number,
   x: number, y: number, z: number, parent: THREE.Object3D,
 ): THREE.Mesh {
-  const m = new THREE.Mesh(new THREE.BoxGeometry(w, h, d), new THREE.MeshLambertMaterial({ color: colour }));
+  const m = new THREE.Mesh(UNIT_BOX, material(colour));
+  m.scale.set(w, h, d);
   m.position.set(x, y, z);
   parent.add(m);
   return m;
@@ -224,6 +235,8 @@ function fern(): THREE.Group {
   return g;
 }
 
+const RIM_GEOMETRY = new THREE.TorusGeometry(0.11, 0.02, 6, 14);
+
 function willow(): THREE.Group {
   const { g, head } = person({ skin: 0xf0c4a0, shirt: 0xb48be0, trousers: 0xb48be0, shoes: 0x8a5a3a, width: 0.6, skirt: 0x8f6bc7 });
   box(0.76, 0.14, 0.46, 0xcdb4f0, 0, 1.08, 0, g); // lilac shawl over the shoulders
@@ -233,9 +246,9 @@ function willow(): THREE.Group {
   box(0.56, 0.36, 0.12, 0xe3e3ea, 0, 0.32, -0.22, head);
   box(0.26, 0.22, 0.26, 0xe3e3ea, 0, 0.7, -0.08, head);
   // Round glasses.
-  const rim = new THREE.MeshLambertMaterial({ color: 0xd2569a });
+  const rim = material(0xd2569a);
   for (const sx of [-0.12, 0.12]) {
-    const ring = new THREE.Mesh(new THREE.TorusGeometry(0.11, 0.02, 6, 14), rim);
+    const ring = new THREE.Mesh(RIM_GEOMETRY, rim);
     ring.position.set(sx, 0.3, 0.29);
     head.add(ring);
   }
@@ -253,9 +266,53 @@ function willow(): THREE.Group {
   return g;
 }
 
+/** One shared material for every merged villager part: each box's colour is baked into the vertices. */
+const VERTEX_MATERIAL = new THREE.MeshLambertMaterial({ vertexColors: true });
+
+/**
+ * Merges everything under `root` into ONE mesh (one draw call), except the subtrees in `pivots`,
+ * which stay separate so they can still animate (they are merged on their own). Box colours are
+ * baked into vertex colours so the whole villager shares a single material.
+ */
+function mergeStatic(root: THREE.Object3D, pivots: THREE.Object3D[]): void {
+  root.updateMatrixWorld(true);
+  const inverse = new THREE.Matrix4().copy(root.matrixWorld).invert();
+  const parts: THREE.BufferGeometry[] = [];
+  const meshes: THREE.Mesh[] = [];
+  const visit = (o: THREE.Object3D): void => {
+    for (const child of o.children) {
+      if (pivots.includes(child)) continue;
+      if ((child as THREE.Mesh).isMesh) meshes.push(child as THREE.Mesh);
+      visit(child);
+    }
+  };
+  visit(root);
+  for (const m of meshes) {
+    const g = m.geometry.clone();
+    g.applyMatrix4(new THREE.Matrix4().multiplyMatrices(inverse, m.matrixWorld));
+    const c = (m.material as THREE.MeshLambertMaterial).color;
+    const n = g.attributes.position.count;
+    const colours = new Float32Array(n * 3);
+    for (let i = 0; i < n; i++) { colours[i * 3] = c.r; colours[i * 3 + 1] = c.g; colours[i * 3 + 2] = c.b; }
+    g.setAttribute('color', new THREE.BufferAttribute(colours, 3));
+    parts.push(g);
+    m.removeFromParent();
+  }
+  if (parts.length === 0) return;
+  const merged = mergeGeometries(parts, false);
+  for (const g of parts) g.dispose();
+  if (merged) root.add(new THREE.Mesh(merged, VERTEX_MATERIAL));
+}
+
 /** A neighbour: feet at y = 0, faces +z, about 1.9 blocks tall like the player. Boxes only, bright colours. */
 export function makeVillagerModel(id: VillagerId): THREE.Group {
   const g = { bramble, pebble, fern, willow }[id]();
+  // Static boxes become one mesh per animatable part (body, head, and Bramble's hat): about 3 draw calls, not ~40.
+  const head = g.userData.head as THREE.Object3D;
+  const hat = g.userData.hat as THREE.Object3D | undefined;
+  mergeStatic(g, [head]);
+  mergeStatic(head, hat ? [hat] : []);
+  if (hat) mergeStatic(hat, []);
   g.userData.phase = ({ bramble: 0, pebble: 1.7, fern: 3.1, willow: 4.6 })[id];
   return g;
 }
@@ -295,4 +352,20 @@ export function makeEmblem(emoji: string): THREE.Sprite {
   const sprite = new THREE.Sprite(new THREE.SpriteMaterial({ map, depthTest: true, depthWrite: false }));
   sprite.scale.set(1.5, 1.5, 1);
   return sprite;
+}
+
+/** Frees an emblem's own texture and material (its geometry is the shared sprite quad). */
+export function disposeEmblem(sprite: THREE.Sprite): void {
+  sprite.material.map?.dispose();
+  sprite.material.dispose();
+  sprite.removeFromParent();
+}
+
+/** Frees a villager's own merged geometries; the shared unit box, rim and materials stay for the next one. */
+export function disposeVillager(g: THREE.Object3D): void {
+  g.traverse(o => {
+    const m = o as THREE.Mesh;
+    if (m.isMesh && m.material === VERTEX_MATERIAL) m.geometry.dispose();
+  });
+  g.removeFromParent();
 }

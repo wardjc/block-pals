@@ -371,6 +371,7 @@ if (debugOn) {
     }),
     flags: () => ({ ...flags }),
     leadState: () => lead.state,
+    drawCalls: () => scene.renderer.info.render.calls,
     saveNow,
     hidePlayer: (hide: boolean) => { debugHidePlayer = hide; },
     setCamera: (yaw: number, pitch: number) => { scene.rig.yaw = yaw; scene.rig.pitch = pitch; },
