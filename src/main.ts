@@ -14,7 +14,7 @@ import { sfx } from './audio/sfx';
 import { CraftScreen } from './ui/craft';
 import { Hud } from './ui/hud';
 import { Voice } from './audio/voice';
-import { LINES, LINE_ICONS, type LineKey } from './content/lines';
+import { LINE_ICONS, pickLine, type LineKey } from './content/lines';
 import { Pal } from './game/pal';
 import { UsageTracker } from './core/usage';
 import { GrownUps } from './ui/grownups';
@@ -42,10 +42,15 @@ let pipHop = 0; // seconds into the happy hop; 0 = not hopping
 const BUBBLE_WORDS: Partial<Record<LineKey, string>> = { hello: 'Hi!', welcomeBack: 'Hi!', crafted: 'Yay!', collectedFirst: 'Yay!', upYouCome: 'Up!' };
 let bubbleTimer = 0;
 const voice = new Voice();
-const sayLine = (key: LineKey): void => {
-  const variants = LINES[key];
-  const text = variants[Math.floor(Math.random() * variants.length)];
+const lastSpoken: Partial<Record<LineKey, string>> = {};
+const speakVariant = (key: LineKey): void => {
+  const text = pickLine(key, lastSpoken[key]);
+  if (!text) return; // never speak '' - it would cancel current speech
+  lastSpoken[key] = text;
   voice.say(text);
+};
+const sayLine = (key: LineKey): void => {
+  speakVariant(key);
   if (key === 'breakTime') {
     hud.showBreak(() => usage.resetSessionTimer());
     return;
@@ -116,10 +121,10 @@ const craftScreen = new CraftScreen(document.getElementById('ui')!, {
   tryCraft: id => game.tryCraft(id),
   iconFor: scene.atlas.iconDataUrl,
   say: text => voice.say(text),
-  sayNeedMore: () => voice.say(LINES.craftNeedMore[Math.floor(Math.random() * LINES.craftNeedMore.length)]),
+  sayNeedMore: () => speakVariant('craftNeedMore'),
   sfxTap: () => sfx.tap(),
   sfxCraft: () => sfx.craft(),
-  sayFull: () => voice.say(LINES.full[Math.floor(Math.random() * LINES.full.length)]),
+  sayFull: () => speakVariant('full'),
   onOpenChange: syncOverlays,
 });
 game.onCraftRequest = openCraft;
@@ -156,6 +161,7 @@ const holdNow = (hit: Hit) => resolveHold(hit, game.player.feetCell(), world, oc
 function endHoldVisuals(): void {
   hud.hideDigRing();
   scene.showOutline(null);
+  sfx.digStop(); // every way a hold ends (complete, lift, slide, overlay) comes through here
 }
 function handleGesture(events: GestureEvent[]): void {
   for (const ev of events) {
@@ -165,6 +171,7 @@ function handleGesture(events: GestureEvent[]): void {
         const intent = holdNow(pressHit);
         if (intent.kind !== 'dig') { endHoldVisuals(); break; }
         hud.showDigRing(ev.x, ev.y, ev.progress);
+        sfx.digStart();
         scene.showOutline(intent.cell);
         break;
       }
@@ -255,6 +262,7 @@ if (debugOn) {
       return { position: { x: c.x, y: c.y, z: c.z }, yaw: scene.rig.yaw, pitch: scene.rig.pitch, distance: scene.rig.distance, close: scene.rig.close };
     },
     dragging: () => gesture.dragging,
+    digSound: () => sfx.digState(),
     game,
     usage,
     pal,
