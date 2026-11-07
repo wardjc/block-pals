@@ -98,7 +98,7 @@ describe('save data', () => {
     { version: 2 }, { seed: '1234' }, { seed: null }, { seed: 1.5 },
     { edits: null }, { edits: {} }, { edits: [[1, 2, 3]] },
     { edits: [[1, 2, 3, 4, 5]] }, { edits: [[1, 2, 3, -1]] },
-    { edits: [[1, 2, 3, 12]] }, { edits: [[1, 2, 3, 256]] },
+    { edits: [[1, 2, 3, 16]] }, { edits: [[1, 2, 3, 256]] },
     { edits: [[1, 2, 3, '4']] }, { edits: [[1, 2, 3, 1.5]] },
     { edits: [[-1, 2, 3, 4]] }, { edits: [[48, 2, 3, 4]] },
     { edits: [[1, 16, 3, 4]] }, { edits: [[1, 2, 48, 4]] },
@@ -236,7 +236,7 @@ describe('autosave', () => {
 });
 
 describe('save extras', () => {
-  test.each([null, [], { 4: 100 }, { 4: -1 }, { 4: 1.5 }, { 4: '3' }, { 0: 1 }, { 11: 1 }, { 12: 1 }, { '04': 1 }])(
+  test.each([null, [], { 4: 100 }, { 4: -1 }, { 4: 1.5 }, { 4: '3' }, { 0: 1 }, { 11: 1 }, { 16: 1 }, { '04': 1 }])(
     'bad inventory %j is emptied, save kept', inv => {
       const d = parseSave(JSON.stringify({ ...validSave(), inventory: inv }));
       expect(d).not.toBeNull();

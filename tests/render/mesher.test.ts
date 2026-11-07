@@ -15,6 +15,17 @@ describe('mesher', () => {
     expect(g.transparent.indices.length).toBe(0);
   });
 
+  it('new blocks mesh as opaque cubes', () => {
+    for (const id of [BlockId.PathStone, BlockId.RoofTile, BlockId.DoorFrame, BlockId.Lamp]) {
+      const w = new World(16, 16, 16);
+      w.set(5, 5, 5, id);
+      const g = buildChunkGeometry(w, 0, 0, uvFor);
+      expect(g.indices.length / 3).toBe(12);
+      expect(g.positions.length).toBe(24 * 3);
+      expect(g.transparent.indices.length).toBe(0);
+    }
+  });
+
   it('two adjacent blocks hide the shared faces', () => {
     const w = new World(16, 16, 16);
     w.set(5, 5, 5, BlockId.Stone);

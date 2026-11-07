@@ -4,15 +4,17 @@ import type { Face } from './mesher';
 
 const TILE = 16;
 const COLS = 4;
-const ROWS = 4;
+const ROWS = 6;
 
 type TileName =
   | 'grassTop' | 'grassSide' | 'dirt' | 'stone' | 'woodSide' | 'woodTop' | 'leaves'
-  | 'sand' | 'water' | 'planks' | 'glass' | 'bricks' | 'bedrock';
+  | 'sand' | 'water' | 'planks' | 'glass' | 'bricks' | 'bedrock'
+  | 'pathStone' | 'roofTile' | 'doorFrame' | 'lamp';
 
 const TILE_NAMES: TileName[] = [
   'grassTop', 'grassSide', 'dirt', 'stone', 'woodSide', 'woodTop', 'leaves',
   'sand', 'water', 'planks', 'glass', 'bricks', 'bedrock',
+  'pathStone', 'roofTile', 'doorFrame', 'lamp',
 ];
 
 function hash(x: number, y: number, s: number): number {
@@ -152,6 +154,69 @@ function drawTile(ctx: CanvasRenderingContext2D, name: TileName): void {
     case 'bedrock':
       noisy(ctx, '#3d3d3d', 5, 0.6);
       break;
+    case 'pathStone': {
+      // Warm sandy cobbles (3x3 stones in offset rows) with darker gaps.
+      ctx.fillStyle = '#a88f62';
+      ctx.fillRect(0, 0, TILE, TILE);
+      for (let row = 0; row < 4; row++) {
+        const off = row % 2 === 0 ? 0 : 2;
+        for (let bx = -1; bx < 4; bx++) {
+          const x = bx * 5 + off;
+          ctx.fillStyle = shade('#d9c08c', 1 + (hash(bx + 7, row, 11) - 0.5) * 0.18);
+          const x0 = Math.max(0, x);
+          const x1 = Math.min(TILE, x + 4);
+          if (x1 > x0) ctx.fillRect(x0, row * 4, x1 - x0, 3);
+        }
+      }
+      break;
+    }
+    case 'roofTile': {
+      // Red-orange shingles in offset rows, a darker lip under each row.
+      for (let row = 0; row < 4; row++) {
+        const off = row % 2 === 0 ? 0 : 4;
+        for (let bx = -1; bx < 3; bx++) {
+          const x = bx * 8 + off;
+          const x0 = Math.max(0, x);
+          const x1 = Math.min(TILE, x + 8);
+          if (x1 <= x0) continue;
+          ctx.fillStyle = shade('#d4542f', 1 + (hash(bx + 3, row, 12) - 0.5) * 0.16);
+          ctx.fillRect(x0, row * 4, x1 - x0, 3);
+          ctx.fillStyle = '#9c3a22';
+          ctx.fillRect(x0, row * 4 + 3, x1 - x0, 1);
+          ctx.fillRect(x0, row * 4, 1, 3);
+        }
+      }
+      break;
+    }
+    case 'doorFrame':
+      // Dark brown wood with long vertical grain.
+      ctx.fillStyle = '#5a3a1c';
+      ctx.fillRect(0, 0, TILE, TILE);
+      for (let x = 0; x < TILE; x++) {
+        ctx.fillStyle = x % 5 === 0 ? '#472c14' : hash(x, 0, 13) > 0.5 ? '#6a4524' : '#5f3d1f';
+        ctx.fillRect(x, 0, 1, TILE);
+        if (hash(x, 2, 13) > 0.75) {
+          ctx.fillStyle = '#4b2f16';
+          ctx.fillRect(x, Math.floor(hash(x, 5, 13) * 12), 1, 4);
+        }
+      }
+      break;
+    case 'lamp': {
+      // Always bright: every pixel is at least #ffe9a0 so side shading cannot make it dim.
+      ctx.fillStyle = '#ffeaa4';
+      ctx.fillRect(0, 0, TILE, TILE);
+      ctx.fillStyle = '#fff2c0';
+      ctx.fillRect(2, 2, TILE - 4, TILE - 4);
+      ctx.fillStyle = '#fff9dc';
+      ctx.fillRect(4, 4, TILE - 8, TILE - 8);
+      ctx.fillStyle = '#ffffff';
+      ctx.fillRect(6, 6, 4, 4);
+      for (const [sx, sy] of [[1, 1], [14, 1], [1, 14], [14, 14]]) {
+        ctx.fillStyle = '#ffffff';
+        ctx.fillRect(sx, sy, 1, 1);
+      }
+      break;
+    }
   }
 }
 
@@ -168,6 +233,10 @@ function tileFor(id: BlockId, face: Face): TileName {
     case BlockId.Glass: return 'glass';
     case BlockId.Bricks: return 'bricks';
     case BlockId.Bedrock: return 'bedrock';
+    case BlockId.PathStone: return 'pathStone';
+    case BlockId.RoofTile: return 'roofTile';
+    case BlockId.DoorFrame: return 'doorFrame';
+    case BlockId.Lamp: return 'lamp';
     default: return 'dirt';
   }
 }
