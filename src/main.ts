@@ -1,5 +1,4 @@
 import './ui/styles.css';
-import * as THREE from 'three';
 import { BlockId } from './core/blocks';
 import type { Cell } from './core/pathfind';
 import { applySave, readSave, startAutosave } from './core/save';
@@ -183,6 +182,9 @@ function handleGesture(events: GestureEvent[]): void {
       case 'cancel':
         endHoldVisuals();
         break;
+      case 'drag': // spec §7c: a slide turns the camera and never walks, builds or digs
+        scene.rig.drag(ev.dx, ev.dy, canvas.clientWidth || window.innerWidth);
+        break;
     }
   }
 }
@@ -215,13 +217,11 @@ canvas.addEventListener('contextmenu', e => e.preventDefault());
 window.addEventListener('pointerdown', () => { sfx.unlock(); greetOnce(); }, { once: true, capture: true });
 
 const camDir = { x: 0, z: 1 };
-const camera3 = new THREE.Vector3();
 
+/** Left stick relative to where the camera faces (its yaw, so pitch never matters). */
 function padStick(stick: [number, number]): [number, number] {
-  scene.camera.getWorldDirection(camera3);
-  const len = Math.hypot(camera3.x, camera3.z) || 1;
-  camDir.x = camera3.x / len;
-  camDir.z = camera3.z / len;
+  camDir.x = Math.sin(scene.rig.yaw);
+  camDir.z = Math.cos(scene.rig.yaw);
   const fwd = -stick[1];
   const right = stick[0];
   let x = camDir.x * fwd - camDir.z * right;
@@ -250,6 +250,11 @@ if (debugOn) {
     screenOf: (x: number, y: number, z: number) => scene.screenOf(x, y, z),
     pick: (x: number, y: number) => scene.pick(x, y),
     outlineVisible: () => scene.outlineVisible,
+    camera: () => {
+      const c = scene.camera.position;
+      return { position: { x: c.x, y: c.y, z: c.z }, yaw: scene.rig.yaw, pitch: scene.rig.pitch, distance: scene.rig.distance, close: scene.rig.close };
+    },
+    dragging: () => gesture.dragging,
     game,
     usage,
     pal,
@@ -264,7 +269,7 @@ function frame(now: number): void {
   const dt = Math.min(0.1, rawMs / 1000);
   last = now;
 
-  const { stick, pressed } = pad.poll(now);
+  const { stick, look, pressed } = pad.poll(now);
   if (grownUps.isOpen) {
     game.player.setStick(0, 0);
   } else if (craftScreen.isOpen) {
@@ -281,10 +286,14 @@ function frame(now: number): void {
       game.player.setStick(0, 0);
     }
     for (const action of pressed) game.padAction(action);
+    if (look[0] !== 0 || look[1] !== 0) {
+      scene.rig.turn(look[0], look[1], dt);
+      game.noteActivity();
+    }
   }
 
   if (hud.blockingOverlayOpen) cancelPress();
-  else if (gesture.busy) handleGesture(gesture.tick(now, holdNow(pressHit).kind === 'dig'));
+  else if (gesture.busy && !gesture.dragging) handleGesture(gesture.tick(now, holdNow(pressHit).kind === 'dig'));
   game.update(dt);
   // Usage is counted once a second, not every frame (it caps each tick at 5 s anyway).
   usageMs += rawMs;
@@ -305,7 +314,9 @@ function frame(now: number): void {
   }
   pip.position.set(pal.pos.x, pal.pos.y + hopY, pal.pos.z);
   pip.rotation.y = pal.heading;
-  scene.followTarget(playerModel.position, 0, dt);
+  scene.followTarget(playerModel.position, dt);
+  // The hysteresis flag keeps the model hidden through close-mode glides (Pip still shows).
+  playerModel.visible = !scene.rig.close;
   scene.updateMarker(dt);
   scene.render();
 

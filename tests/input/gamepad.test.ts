@@ -66,6 +66,105 @@ describe('GamepadInput', () => {
     expect(input.poll(1).stick).toEqual([0.5, -0.75]);
   });
 
+  it('a second stick on axes 2/3 gives look, with the same 0.25 dead-zone', () => {
+    let current = pad([], [0, 0, 0, 0]);
+    const input = new GamepadInput(DEFAULT_MAPPING, () => [current]);
+    expect(input.poll(0).look).toEqual([0, 0]);
+    current = pad([], [0, 0, 0.2, -0.24]);
+    expect(input.poll(1).look).toEqual([0, 0]);
+    current = pad([], [0.5, 0, 0.8, -0.6]);
+    const result = input.poll(2);
+    expect(result.stick).toEqual([0.5, 0]);
+    expect(result.look[0]).toBeCloseTo((0.8 - 0.25) / 0.75);
+    expect(result.look[1]).toBeCloseTo(-(0.6 - 0.25) / 0.75);
+    expect(result.pressed).toEqual([]);
+  });
+
+  it('rescales look smoothly from the dead-zone to full tilt', () => {
+    let current = pad([], [0, 0, 0, 0]);
+    const input = new GamepadInput(DEFAULT_MAPPING, () => [current]);
+    input.poll(0);
+    for (const [value, expected] of [[0.25, 0], [0.26, 0.01 / 0.75], [0.625, 0.5], [1, 1]]) {
+      current = pad([], [0, 0, value, -value]);
+      const { look } = input.poll(10);
+      expect(look[0]).toBeCloseTo(expected);
+      expect(look[1]).toBeCloseTo(-expected);
+    }
+  });
+
+  it('an axis resting at +1 disables look after 1 s', () => {
+    let current = pad([], [0, 0, 0, 0]);
+    const input = new GamepadInput(DEFAULT_MAPPING, () => [current]);
+    input.poll(0);
+    current = pad([], [0, 0, 1, 0]);
+    expect(input.poll(10).look).toEqual([1, 0]);
+    expect(input.poll(1009).look).toEqual([1, 0]);
+    expect(input.poll(1010).look).toEqual([0, 0]);
+  });
+
+  it.each([[2, 1], [2, -1], [3, 1], [3, -1]])(
+    'ignores small resting jitter on axis %s at %s until reconnect', (index, sign) => {
+      let current: Gamepad | null = pad([], [0, 0, 0, 0]);
+      const input = new GamepadInput(DEFAULT_MAPPING, () => [current]);
+      input.poll(0);
+      for (let now = 10; now <= 1010; now += 10) {
+        const axes = [0, 0, 0, 0];
+        axes[index] = sign * (now % 20 ? 1 : 0.995);
+        current = pad([], axes);
+        input.poll(now);
+      }
+      expect(input.poll(1011).look).toEqual([0, 0]);
+      current = pad([], [0, 0, 0, 0]);
+      input.poll(1100);
+      current = pad([], [0, 0, 0.625, -0.625]);
+      expect(input.poll(1200).look).toEqual([0, 0]);
+      current = null;
+      input.poll(1300);
+      current = pad([], [0, 0, 0, 0]);
+      input.poll(1400);
+      current = pad([], [0, 0, 0.625, -0.625]);
+      expect(input.poll(1500).look).toEqual([0.5, -0.5]);
+    },
+  );
+
+  it('a real right stick still turns', () => {
+    let current = pad([], [0, 0, 0.625, -0.625]);
+    const input = new GamepadInput(DEFAULT_MAPPING, () => [current]);
+    expect(input.poll(0).look).toEqual([0, 0]);
+    current = pad([], [0, 0, 0, -0.625]);
+    expect(input.poll(100).look).toEqual([0, 0]);
+    current = pad([], [0, 0, 0.625, 0]);
+    expect(input.poll(200).look).toEqual([0.5, 0]);
+    current = pad([], [0, 0, 0.625, -0.625]);
+    expect(input.poll(2000).look).toEqual([0.5, -0.5]);
+    current = pad([], [0, 0, 1, 0]);
+    expect(input.poll(2100).look).toEqual([1, 0]);
+    current = pad([], [0, 0, 0.95, 0]);
+    expect(input.poll(2700).look[0]).toBeGreaterThan(0);
+    current = pad([], [0, 0, 1, 0]);
+    expect(input.poll(3200).look).toEqual([1, 0]);
+  });
+
+  it('no second stick means no look', () => {
+    const input = new GamepadInput(DEFAULT_MAPPING, () => [pad([], [0.9, 0.9])]);
+    expect(input.poll(0).look).toEqual([0, 0]);
+  });
+
+  it('axes 2/3 that rest away from centre (triggers) never turn the view', () => {
+    let current = pad([], [0, 0, -1, -1]);
+    const input = new GamepadInput(DEFAULT_MAPPING, () => [current]);
+    expect(input.poll(0).look).toEqual([0, 0]);
+    current = pad([], [0, 0, 0.9, 0.9]);
+    expect(input.poll(1).look).toEqual([0, 0]);
+  });
+
+  it('look is off while capturing a button for setup', () => {
+    const input = new GamepadInput(DEFAULT_MAPPING, () => [pad([], [0, 0, 0.9, 0])]);
+    input.poll(0);
+    void input.captureNextButton();
+    expect(input.poll(1).look).toEqual([0, 0]);
+  });
+
   it.each([[12, [0, -1]], [13, [0, 1]], [14, [-1, 0]], [15, [1, 0]]] as const)(
     'd-pad button %s moves when axes absent', (button, stick) => {
       const input = new GamepadInput(DEFAULT_MAPPING, () => [pad([button], [])]);
@@ -111,7 +210,7 @@ describe('GamepadInput', () => {
     const mapping = { collect: 2, place: 3, nextSlot: 4, axisX: 2, axisY: 3, invertY: true };
     let current = pad([0, 1, 5], [1, 1, 0.5, -0.75]);
     const input = new GamepadInput(mapping, () => [current]);
-    expect(input.poll(0)).toEqual({ stick: [0.5, 0.75], pressed: [] });
+    expect(input.poll(0)).toEqual({ stick: [0.5, 0.75], look: [0, 0], pressed: [] });
     current = pad([2, 3, 4]);
     expect(input.poll(200).pressed).toEqual(['collect', 'place', 'nextSlot']);
     expect(input.poll(1200).pressed).toEqual(['craft']);
@@ -120,11 +219,11 @@ describe('GamepadInput', () => {
   it('handles missing pads, sparse slots and disconnects without stale holds', () => {
     let pads: (Gamepad | null)[] = [];
     const input = new GamepadInput(DEFAULT_MAPPING, () => pads);
-    expect(input.poll(0)).toEqual({ stick: [0, 0], pressed: [] });
+    expect(input.poll(0)).toEqual({ stick: [0, 0], look: [0, 0], pressed: [] });
     pads = [null, pad([1])];
     expect(input.poll(10).pressed).toEqual(['place']);
     pads = [{ ...pad([1]), connected: false }];
-    expect(input.poll(500)).toEqual({ stick: [0, 0], pressed: [] });
+    expect(input.poll(500)).toEqual({ stick: [0, 0], look: [0, 0], pressed: [] });
     pads = [null, pad([1])];
     expect(input.poll(1100).pressed).toEqual(['place']);
     expect(input.poll(2100).pressed).toEqual(['craft']);
@@ -146,7 +245,7 @@ describe('GamepadInput', () => {
     const captured = input.captureNextButton();
     expect(input.poll(200).pressed).toEqual([]);
     current = pad([0, 1], [1, 1]);
-    expect(input.poll(300)).toEqual({ stick: [0, 0], pressed: [] });
+    expect(input.poll(300)).toEqual({ stick: [0, 0], look: [0, 0], pressed: [] });
     await expect(captured).resolves.toBe(1);
     expect(input.poll(1400).pressed).toEqual([]);
     current = pad();
@@ -180,7 +279,7 @@ describe('GamepadInput', () => {
     expect(new GamepadInput(DEFAULT_MAPPING).poll(0).pressed).toEqual(['collect']);
     for (const navigator of [undefined, {}, { getGamepads: () => { throw new Error('Blocked'); } }]) {
       vi.stubGlobal('navigator', navigator);
-      expect(new GamepadInput(DEFAULT_MAPPING).poll(0)).toEqual({ stick: [0, 0], pressed: [] });
+      expect(new GamepadInput(DEFAULT_MAPPING).poll(0)).toEqual({ stick: [0, 0], look: [0, 0], pressed: [] });
     }
   });
 });
