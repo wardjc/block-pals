@@ -49,7 +49,7 @@ describe('save data', () => {
     game.world.set(24, 1, 24, BlockId.Air);
     game.world.set(25, 14, 25, BlockId.Bricks);
     game.inventory.add(BlockId.Wood, 7);
-    game.inventory.add(BlockId.Glass, 20);
+    game.inventory.add(BlockId.Glass, 99);
     game.player.pos.x += 0.5;
     game.player.pos.z += 0.25;
     const data = serialise(game, 1234);
@@ -57,7 +57,7 @@ describe('save data', () => {
     expect(data).toEqual({
       version: 1, seed: 1234,
       edits: [[24, 1, 24, BlockId.Air], [25, 14, 25, BlockId.Bricks]],
-      inventory: { [BlockId.Wood]: 7, [BlockId.Glass]: 20 }, player: game.player.pos,
+      inventory: { [BlockId.Wood]: 7, [BlockId.Glass]: 99 }, player: game.player.pos,
       order: [BlockId.Wood, BlockId.Glass],
     });
     expect(game.world.isDirty()).toBe(true);
@@ -236,12 +236,16 @@ describe('autosave', () => {
 });
 
 describe('save extras', () => {
-  test.each([null, [], { 4: 21 }, { 4: -1 }, { 4: 1.5 }, { 4: '3' }, { 0: 1 }, { 11: 1 }, { 12: 1 }, { '04': 1 }])(
+  test.each([null, [], { 4: 100 }, { 4: -1 }, { 4: 1.5 }, { 4: '3' }, { 0: 1 }, { 11: 1 }, { 12: 1 }, { '04': 1 }])(
     'bad inventory %j is emptied, save kept', inv => {
       const d = parseSave(JSON.stringify({ ...validSave(), inventory: inv }));
       expect(d).not.toBeNull();
       expect(d!.inventory).toEqual({});
     });
+  test.each([21, 50, 99])('keeps a saved stack of %i (bag holds 99 since v1.1)', n => {
+    const d = parseSave(JSON.stringify({ ...validSave(), inventory: { 4: n } }));
+    expect(d!.inventory).toEqual({ 4: n });
+  });
   test('keeps edits but empties a bad inventory', () => {
     const raw = JSON.stringify({ version: 1, seed: 1, edits: [[1, 5, 1, 2]], inventory: { '999': 3 }, player: { x: 1, y: 5, z: 1 } });
     const d = parseSave(raw);

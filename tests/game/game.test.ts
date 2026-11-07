@@ -30,14 +30,14 @@ describe('Game', () => {
     expect(events).toContainEqual({ type: 'collected', id: BlockId.Wood });
   });
 
-  it('collect at 20 emits full and keeps block', () => {
+  it('collect at 99 emits full and keeps block', () => {
     const inv = new Inventory();
-    inv.add(BlockId.Wood, 20);
+    inv.add(BlockId.Wood, 99);
     const { world, game, events } = setup(inv);
     world.set(6, 1, 5, BlockId.Wood);
     game.applyIntent({ kind: 'collect', cell: [6, 1, 5] });
     expect(world.get(6, 1, 5)).toBe(BlockId.Wood);
-    expect(game.inventory.count(BlockId.Wood)).toBe(20);
+    expect(game.inventory.count(BlockId.Wood)).toBe(99);
     expect(events).toContainEqual({ type: 'full', id: BlockId.Wood });
   });
 

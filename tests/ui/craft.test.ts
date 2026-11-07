@@ -67,7 +67,7 @@ describe('CraftScreen', () => {
   test('full output stack says full, not need-more', () => {
     const inv = new Inventory();
     inv.add(BlockId.Wood, 1);
-    inv.add(BlockId.Planks, 20);
+    inv.add(BlockId.Planks, 99);
     const { screen, counts } = make(inv, { now: 0 });
     screen.open();
     screen.make(0);
