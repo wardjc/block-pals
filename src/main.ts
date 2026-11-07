@@ -156,6 +156,7 @@ const holdNow = (hit: Hit) => resolveHold(hit, game.player.feetCell(), world, oc
 function endHoldVisuals(): void {
   hud.hideDigRing();
   scene.showOutline(null);
+  sfx.digStop(); // every way a hold ends (complete, lift, slide, overlay) comes through here
 }
 function handleGesture(events: GestureEvent[]): void {
   for (const ev of events) {
@@ -165,6 +166,7 @@ function handleGesture(events: GestureEvent[]): void {
         const intent = holdNow(pressHit);
         if (intent.kind !== 'dig') { endHoldVisuals(); break; }
         hud.showDigRing(ev.x, ev.y, ev.progress);
+        sfx.digStart();
         scene.showOutline(intent.cell);
         break;
       }
@@ -255,6 +257,7 @@ if (debugOn) {
       return { position: { x: c.x, y: c.y, z: c.z }, yaw: scene.rig.yaw, pitch: scene.rig.pitch, distance: scene.rig.distance, close: scene.rig.close };
     },
     dragging: () => gesture.dragging,
+    digSound: () => sfx.digState(),
     game,
     usage,
     pal,

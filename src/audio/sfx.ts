@@ -41,6 +41,103 @@ function blip(freq: number, start: number, dur: number, type: OscillatorType = '
   }
 }
 
+/** Repeats a tick on a timer. Start twice = still one loop; stop is always safe. Clock is injectable. */
+export class LoopScheduler {
+  private id: ReturnType<typeof setInterval> | null = null;
+  constructor(
+    private readonly tick: () => void,
+    private readonly intervalMs: number,
+    private readonly timers: { set: typeof setInterval; clear: typeof clearInterval } = {
+      set: (...a: Parameters<typeof setInterval>) => setInterval(...a),
+      clear: (id) => clearInterval(id),
+    } as { set: typeof setInterval; clear: typeof clearInterval },
+  ) {}
+  get running(): boolean { return this.id !== null; }
+  start(): void {
+    if (this.id !== null) return;
+    this.safeTick();
+    this.id = this.timers.set(() => this.safeTick(), this.intervalMs);
+  }
+  stop(): void {
+    if (this.id === null) return;
+    this.timers.clear(this.id);
+    this.id = null;
+  }
+  private safeTick(): void {
+    try { this.tick(); } catch { /* sound is optional */ }
+  }
+}
+
+let noise: AudioBuffer | null = null;
+let scrapeFlip = false;
+
+interface Scrape { src: AudioBufferSourceNode; f: BiquadFilterNode; g: GainNode }
+const activeScrapes = new Set<Scrape>();
+
+function release(sc: Scrape): void {
+  activeScrapes.delete(sc);
+  try { sc.src.disconnect(); sc.f.disconnect(); sc.g.disconnect(); } catch { /* already gone */ }
+}
+
+/** Fade out and stop every scrape that is sounding or pending, then disconnect it. */
+function silenceScrapes(): void {
+  const c = ctx;
+  for (const sc of [...activeScrapes]) {
+    try {
+      if (c && c.state === 'running') {
+        const t = c.currentTime;
+        sc.g.gain.cancelScheduledValues(t);
+        sc.g.gain.setValueAtTime(Math.max(sc.g.gain.value, 0.0001), t);
+        sc.g.gain.linearRampToValueAtTime(0.0001, t + 0.03);
+        sc.src.stop(t + 0.04);
+        sc.src.onended = () => release(sc);
+        continue; // released when it ends
+      }
+      sc.src.stop();
+    } catch { /* never started or already stopped */ }
+    release(sc);
+  }
+}
+
+/** One soft, quiet band-limited noise "scrape" (about 1.2-1.9 kHz: no rumble, nothing harsh). */
+function scrape(): void {
+  const c = ctx;
+  // A suspended context has a frozen clock: scrapes would pile up at one timestamp and blast on resume.
+  if (!c || !master || c.state !== 'running') return;
+  try {
+    if (!noise) {
+      noise = c.createBuffer(1, Math.floor(c.sampleRate * 0.12), c.sampleRate);
+      const d = noise.getChannelData(0);
+      for (let i = 0; i < d.length; i++) d[i] = Math.random() * 2 - 1;
+    }
+    scrapeFlip = !scrapeFlip;
+    const t = c.currentTime;
+    const src = c.createBufferSource();
+    src.buffer = noise;
+    const f = c.createBiquadFilter();
+    f.type = 'bandpass';
+    f.frequency.value = scrapeFlip ? 1200 : 1900;
+    f.Q.value = 1.1;
+    const g = c.createGain();
+    g.gain.setValueAtTime(0.0001, t);
+    g.gain.linearRampToValueAtTime(0.16, t + 0.02);
+    g.gain.exponentialRampToValueAtTime(0.0001, t + 0.1);
+    src.connect(f);
+    f.connect(g);
+    g.connect(master);
+    src.start(t);
+    src.stop(t + 0.12);
+    const sc: Scrape = { src, f, g };
+    activeScrapes.add(sc);
+    src.onended = () => release(sc);
+  } catch {
+    /* sound is optional */
+  }
+}
+
+const digLoop = new LoopScheduler(scrape, 130);
+const digStats = { starts: 0, stops: 0 };
+
 function play(fn: () => void): void {
   if (!ensure()) return;
   try {
@@ -59,6 +156,21 @@ export const sfx = {
   tap: () => play(() => blip(660, 0, 0.06, 'sine', 0.25)),
   /** A quiet "off we go" for walk taps. */
   walk: () => play(() => blip(440, 0, 0.09, 'sine', 0.14, 560)),
+  /** Gentle looping scrape while he holds to dig. Safe to call twice; silent with no AudioContext. */
+  digStart: () => {
+    if (digLoop.running) return;
+    if (!ensure()) return;
+    digStats.starts++;
+    if (ctx && ctx.state === 'suspended') void ctx.resume().catch(() => {});
+    digLoop.start();
+  },
+  digStop: () => {
+    if (digLoop.running) digStats.stops++;
+    digLoop.stop();
+    silenceScrapes();
+  },
+  /** For ?debug checks. */
+  digState: () => ({ ...digStats, active: digLoop.running }),
   /** Call on the first user gesture (browsers keep audio suspended until then). */
   unlock: () => {
     const c = ensure();
