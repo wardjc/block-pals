@@ -1,7 +1,11 @@
+// @vitest-environment jsdom
 import { describe, expect, it } from 'vitest';
 import {
   LEAD_GAP_MAX, LEAD_GIVE_UP, LEAD_OFFER_AFTER_ACTION, LEAD_OFFER_AFTER_LOAD, LeadToVillage, type LeadEvent,
 } from '../../src/game/lead';
+import { generateWorld } from '../../src/core/worldgen';
+import { Game } from '../../src/game/game';
+import { applySave, parseSave, readSave, serialise, storeSave, type SaveFlags } from '../../src/core/save';
 import type { Cell } from '../../src/core/pathfind';
 
 const route: Cell[] = Array.from({ length: 60 }, (_, i) => [i, 5, 10] as Cell);
@@ -151,5 +155,52 @@ describe('LeadToVillage', () => {
     const before = JSON.stringify(l.update.length);
     expect(typeof before).toBe('string');
     expect(l.update.length).toBe(4); // dt, playerCell, active, paused: no Player in, nothing but an event out
+  });
+
+  it('gave up, then he walks into the village on his own: the flag is set', () => {
+    const l = make();
+    run(l, 26, at(2));
+    run(l, LEAD_GIVE_UP + 5, at(2));
+    expect(l.state).toBe('gaveUp');
+    expect(run(l, 1, at(50))).toEqual([]);
+    expect(l.state).toBe('arrived');
+    expect(l.takeFlagSet()).toBe(true);
+    expect(l.takeFlagSet()).toBe(false);
+  });
+
+  it('arrives before any offer (he walked there first): the flag is set, no speech', () => {
+    const l = make();
+    expect(run(l, 2, at(50))).toEqual([]);
+    expect(l.takeFlagSet()).toBe(true);
+    expect(l.target()).toBeNull();
+  });
+
+  it('wandering into the pad while being led sets the flag once, and the lead still ends at the square', () => {
+    const l = make();
+    run(l, 26, at(40));
+    run(l, 0.5, at(46)); // in the pad, not yet in the square
+    expect(l.takeFlagSet()).toBe(true);
+    const events = run(l, 5, at(53));
+    expect(events).toEqual(['arrive']);
+    expect(l.takeFlagSet()).toBe(false);
+  });
+
+  it('is saved and validated: a reload with the flag never re-asks', () => {
+    localStorage.clear();
+    const l = make();
+    run(l, 26, at(2));
+    run(l, LEAD_GIVE_UP + 5, at(2));
+    run(l, 1, at(50));
+    const flags: SaveFlags = { ledToVillage: false };
+    if (l.takeFlagSet()) flags.ledToVillage = true;
+    const game = new Game(generateWorld(2026));
+    expect(storeSave(localStorage, serialise(game, 2026, flags))).toBe(true);
+    const raw = localStorage.getItem('blockpals.save.v2')!;
+    expect(parseSave(raw)!.flags.ledToVillage).toBe(true);
+    const restored = applySave(readSave(localStorage)!);
+    expect(restored.flags.ledToVillage).toBe(true);
+    const again = new LeadToVillage(route, square, restored.flags.ledToVillage, pad);
+    expect(again.state).toBe('done');
+    expect(run(again, 300, at(2), true)).toEqual([]);
   });
 });

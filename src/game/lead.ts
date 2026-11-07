@@ -6,7 +6,7 @@ export const LEAD_SPEED = 3; // blocks/s; the player walks at 3.5
 export const LEAD_CATCH_UP_SPEED = 4.5;
 export const LEAD_GAP_MIN = 3;
 export const LEAD_GAP_MAX = 8; // Pip stays this far ahead along the route, at most
-export const LEAD_OFFER_AFTER_ACTION = 8; // seconds
+export const LEAD_OFFER_AFTER_ACTION = 8.5; // seconds
 export const LEAD_OFFER_AFTER_LOAD = 25;
 export const LEAD_COME_ON_AFTER = 6; // seconds of waiting
 export const LEAD_THIS_WAY_AFTER = 15;
@@ -37,6 +37,8 @@ export class LeadToVillage {
   private saidComeOn = false;
   private saidThisWay = false;
   private flagPending = false;
+  /** He has stood in the village pad (or arrived) at some point. */
+  private reached = false;
 
   constructor(
     private readonly route: Cell[],
@@ -49,6 +51,12 @@ export class LeadToVillage {
 
   update(dt: number, playerCell: Cell, active: boolean, paused: boolean): LeadEvent | null {
     if (paused || !(dt > 0)) return null;
+    // Standing in the village counts in EVERY state, whoever led him: the flag is what stops the re-asking.
+    if (this.state !== 'done' && !this.reached && inRect(this.pad, playerCell)) {
+      this.reached = true;
+      this.flagPending = true;
+      if (this.state === 'waiting' || this.state === 'gaveUp') { this.state = 'arrived'; return null; }
+    }
     if (this.state === 'waiting') return this.updateWaiting(dt, playerCell, active);
     if (this.state !== 'leading') return null;
     return this.updateLeading(dt, playerCell);
@@ -58,11 +66,6 @@ export class LeadToVillage {
     this.sinceLoad += dt;
     if (this.sinceAction !== null) this.sinceAction += dt;
     else if (active) this.sinceAction = 0;
-    if (inRect(this.pad, playerCell)) { // already in the village: nothing to lead
-      this.state = 'arrived';
-      this.flagPending = true;
-      return null;
-    }
     if (this.sinceLoad < LEAD_OFFER_AFTER_LOAD && !(this.sinceAction !== null && this.sinceAction >= LEAD_OFFER_AFTER_ACTION)) return null;
     this.state = 'leading';
     this.playerIdx = this.nearestIndex(playerCell, true);
@@ -81,7 +84,8 @@ export class LeadToVillage {
       && Math.hypot(playerCell[0] - last[0], playerCell[2] - last[2]) <= 8;
     if (inRect(this.square, playerCell) || nearEnd) {
       this.state = 'arrived';
-      this.flagPending = true;
+      if (!this.reached) this.flagPending = true;
+      this.reached = true;
       return 'arrive';
     }
     if (this.noProgress >= LEAD_GIVE_UP) {
