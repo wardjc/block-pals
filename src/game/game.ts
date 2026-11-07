@@ -1,7 +1,7 @@
 import { BlockId } from '../core/blocks';
 import { canCraft, craft } from '../core/crafting';
 import { Inventory } from '../core/inventory';
-import { isStandable, pathTowards, type Cell } from '../core/pathfind';
+import { findPath, isStandable, pathTowards, smoothPath, type Cell } from '../core/pathfind';
 
 import { canCollect, canPlace, withinReach } from '../core/placement';
 import { RECIPES } from '../core/recipes';
@@ -105,7 +105,7 @@ export class Game {
 
   /** Same bounds as the player's soft wall. */
   private insideWall = ([x, , z]: Cell): boolean =>
-    x >= 1 && x <= Math.min(46, this.world.sizeX - 2) && z >= 1 && z <= Math.min(46, this.world.sizeZ - 2);
+    x >= 1 && x <= this.world.sizeX - 2 && z >= 1 && z <= this.world.sizeZ - 2;
 
   /**
    * One BFS from the player to the reachable standable cell nearest the goal
@@ -114,9 +114,11 @@ export class Game {
    */
   private walk(goal: Cell, mayLift = true, avoid?: (cell: Cell) => boolean): void {
     const allowed = avoid ? (c: Cell) => this.insideWall(c) && !avoid(c) : this.insideWall;
-    const approach = pathTowards(this.world, this.player.feetCell(), goal, allowed);
+    const start = this.player.feetCell();
+    const approach = pathTowards(this.world, start, goal, allowed);
     if (approach && approach.distance < approach.startDistance) {
-      this.player.setPath(approach.path);
+      const route = findPath(this.world, start, approach.end, 4000, allowed);
+      this.player.setPath(route ? smoothPath(this.world, route, start, allowed) : approach.path);
       this.emit({ type: 'walking', to: approach.end });
       return;
     }

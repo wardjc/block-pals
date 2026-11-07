@@ -1,4 +1,5 @@
-import { describe, expect, it } from 'vitest';
+import { describe, expect, it, vi } from 'vitest';
+import * as pathfinding from '../../src/core/pathfind';
 import { BlockId } from '../../src/core/blocks';
 import { World } from '../../src/core/world';
 import type { LineKey } from '../../src/content/lines';
@@ -182,5 +183,57 @@ describe('Pal', () => {
     time(1500);
     pal.remindBreak();
     expect(said).toEqual(['noPath', 'breakTime']);
+  });
+});
+
+
+describe('natural following', () => {
+  it('Pip follows with diagonals', () => {
+    const { world, player, pal } = setup();
+    pal.pos = { x: 5.5, y: 1, z: 5.5 };
+    const before = { ...pal.pos };
+    pal.update(world, player, 0.1);
+    expect(pal.pos.x).toBeGreaterThan(before.x);
+    expect(pal.pos.z).toBeGreaterThan(before.z);
+    expect(dist(pal.pos, before)).toBeCloseTo(0.45);
+    let previous = { ...pal.pos };
+    for (let i = 0; i < 120; i++) {
+      pal.update(world, player, 1 / 60);
+      expect(dist(pal.pos, previous)).toBeLessThanOrEqual(4.5 / 60 + 1e-8);
+      previous = { ...pal.pos };
+    }
+    expect(dist(pal.pos, player.pos)).toBeLessThanOrEqual(3);
+  });
+
+  it('recovers when support disappears even when already close to the player', () => {
+    const { world, player, pal } = setup();
+    world.set(12, 1, 10, BlockId.Stone);
+    pal.pos.y = 2;
+    world.set(12, 1, 10, BlockId.Air);
+    pal.update(world, player, 0.02);
+    expect(pal.pos.y).toBe(1);
+  });
+});
+
+describe('blocked Pip', () => {
+  it('does not repath every frame', () => {
+    const { world, player, pal } = setup();
+    pal.pos = { x: 5.5, y: 1, z: 5.5 };
+    player.pos = { x: 5.5, y: 1, z: 11.5 };
+    pal.update(world, player, 1 / 60); // takes a path
+    // Wall him in from the next step on so every follow() is blocked.
+    for (let x = 3; x <= 8; x++) for (let z = 3; z <= 8; z++) {
+      if (x === 5 && z === 5) continue;
+      for (const y of [1, 2]) world.set(x, y, z, BlockId.Stone);
+    }
+    // Every search offers a route whose first cell is solid, so each follow() is blocked.
+    const search = vi.spyOn(pathfinding, 'findPath').mockReturnValue([[5, 1, 6]]);
+    try {
+      for (let i = 0; i < 30; i++) pal.update(world, player, 1 / 60);
+      // One cooldown window (1 s) allows one repath, which stops at its first route.
+      expect(search.mock.calls.length).toBeLessThanOrEqual(1);
+    } finally {
+      search.mockRestore();
+    }
   });
 });
