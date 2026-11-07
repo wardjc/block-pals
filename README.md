@@ -114,7 +114,8 @@ sum (the sum screen closes itself after 20 seconds of nobody touching it; once y
 - **Break reminder:** choose how often Pip suggests a break. He pops up with a
   tick button (✔) that your child taps to dismiss. It is only a suggestion; the
   game is never locked.
-- **Reset progress:** wipes the saved world (it asks you to confirm).
+- **Reset progress:** wipes the saved world (it asks you to confirm). It clears all three save entries: the current save, the old version 1 save and its backup.
+- **Saves and rolling back:** the bigger-world version saves under its own name (`blockpals.save.v2`). The earlier version's save (`blockpals.save.v1`) is left exactly as it was and a one-time backup copy is kept, so going back to an older build of the app never loses his world.
 - **Set up controller:** see above.
 
 ## Tablet playtest checklist

@@ -1,5 +1,5 @@
 import { checkSum, HoldGate, makeSum } from '../core/gate';
-import { SAVE_KEY } from '../core/save';
+import { ALL_SAVE_KEYS } from '../core/save';
 import { REMINDER_OPTIONS, type UsageTracker } from '../core/usage';
 import { saveMapping, type ButtonMapping } from '../input/mapping';
 
@@ -235,7 +235,10 @@ export class GrownUps {
 
   private resetProgress(): void {
     this.deps.stopAutosave();
-    try { this.deps.storage?.removeItem(SAVE_KEY); } catch { /* storage blocked: nothing to clear */ }
+    // The grown-ups' reset is the only thing that ever deletes the old v1 save and its backup.
+    for (const key of ALL_SAVE_KEYS) {
+      try { this.deps.storage?.removeItem(key); } catch { /* storage blocked: nothing to clear */ }
+    }
     this.deps.usage.flush();
     (this.deps.reload ?? (() => location.reload()))();
   }

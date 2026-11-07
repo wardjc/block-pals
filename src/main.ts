@@ -24,11 +24,13 @@ try { storage = window.localStorage; } catch { /* Storage may be blocked. */ }
 const saved = readSave(storage);
 export const hadSave: boolean = saved !== null; // for Pip's welcome-back line (Task 10)
 const seed = saved?.seed ?? 2026;
-const initial = saved ? applySave(saved) : generateWorld(seed);
+const loaded = saved ? applySave(saved) : null;
+const initial = loaded ?? generateWorld(seed);
 const { world, spawn } = initial;
 const scene = new GameScene(document.getElementById('game')!, world);
 const game = new Game(initial);
-const stopAutosave = startAutosave(game, seed, storage);
+const flags = loaded?.flags ?? { ledToVillage: false };
+const stopAutosave = startAutosave(game, seed, storage, flags);
 const usage = new UsageTracker(storage);
 world.onChange((x, _y, z) => scene.rebuildChunkAt(x, z));
 
