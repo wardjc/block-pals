@@ -9,7 +9,10 @@
  *   being diggable the ring goes ('holdStop'). The block may come into reach mid-hold.
  * - At HOLD_MS 'holdComplete' whatever canDig says: the game decides (dig, walk beside a far
  *   block, or nothing).
- * - Sliding more than SLOP_PX, a pointercancel or cancel() → 'cancel'.
+ * - Sliding more than SLOP_PX → 'cancel', and from then on the slide is a camera drag (spec §7c):
+ *   'drag' with the finger's step since the last one (the first includes the slop). A drag never
+ *   taps, holds or digs, and its release gives nothing.
+ * - A pointercancel or cancel() → 'cancel' (a drag ends quietly).
  * - Only the first finger counts. A press older than STALE_MS is assumed to have lost its
  *   release and is dropped when a new finger lands.
  */
@@ -24,7 +27,8 @@ export type GestureEvent =
   | { type: 'holdProgress'; x: number; y: number; progress: number }
   | { type: 'holdStop' }
   | { type: 'holdComplete'; x: number; y: number }
-  | { type: 'cancel' };
+  | { type: 'cancel' }
+  | { type: 'drag'; dx: number; dy: number };
 
 interface Press {
   id: number;
@@ -34,6 +38,10 @@ interface Press {
   ringShown: boolean;
   /** Finished (completed, slid away or cancelled): waits silently for the finger to lift. */
   over: boolean;
+  /** Slid past the slop: moves are camera drags. */
+  dragging: boolean;
+  lastX: number;
+  lastY: number;
 }
 
 export class GestureClassifier {
@@ -49,22 +57,38 @@ export class GestureClassifier {
     return this.press?.id ?? null;
   }
 
+  /** True while the finger down is turning the camera. */
+  get dragging(): boolean {
+    return this.press?.dragging ?? false;
+  }
+
   down(id: number, x: number, y: number, t: number): GestureEvent[] {
     const out: GestureEvent[] = [];
     if (this.press) {
       if (t - this.press.t0 <= STALE_MS) return [];
       if (!this.press.over) out.push({ type: 'cancel' });
     }
-    this.press = { id, x, y, t0: t, ringShown: false, over: false };
+    this.press = { id, x, y, t0: t, ringShown: false, over: false, dragging: false, lastX: x, lastY: y };
     return out;
   }
 
   move(id: number, x: number, y: number, _t: number): GestureEvent[] {
     const p = this.press;
-    if (!p || p.id !== id || p.over) return [];
+    if (!p || p.id !== id) return [];
+    if (p.dragging) {
+      const dx = x - p.lastX;
+      const dy = y - p.lastY;
+      p.lastX = x;
+      p.lastY = y;
+      return dx === 0 && dy === 0 ? [] : [{ type: 'drag', dx, dy }];
+    }
+    if (p.over) return [];
     if (Math.hypot(x - p.x, y - p.y) > SLOP_PX) {
       p.over = true;
-      return [{ type: 'cancel' }];
+      p.dragging = true;
+      p.lastX = x;
+      p.lastY = y;
+      return [{ type: 'cancel' }, { type: 'drag', dx: x - p.x, dy: y - p.y }];
     }
     return [];
   }

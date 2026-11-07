@@ -89,7 +89,8 @@ describe('GestureClassifier', () => {
     const g = new GestureClassifier();
     g.down(1, 100, 100, 0);
     g.tick(300, true);
-    expect(g.move(1, 112, 112, 320)).toEqual([{ type: 'cancel' }]); // 17 px diagonally
+    // 17 px diagonally: the hold ends and the slide becomes a camera drag (spec §7c).
+    expect(g.move(1, 112, 112, 320)).toEqual([{ type: 'cancel' }, { type: 'drag', dx: 12, dy: 12 }]);
     expect(g.tick(600, true)).toEqual([]);
     expect(g.up(1, 120, 100, 700)).toEqual([]);
     expect(g.busy).toBe(false);
@@ -105,8 +106,40 @@ describe('GestureClassifier', () => {
   it('a quick slide is not a tap', () => {
     const g = new GestureClassifier();
     g.down(1, 100, 100, 0);
-    expect(g.move(1, 100, 120, 50)).toEqual([{ type: 'cancel' }]);
+    expect(g.move(1, 100, 120, 50)).toEqual([{ type: 'cancel' }, { type: 'drag', dx: 0, dy: 20 }]);
     expect(g.up(1, 100, 120, 100)).toEqual([]);
+  });
+
+  it('a slide turns into a drag: each move gives the step since the last one, and the release gives nothing', () => {
+    const g = new GestureClassifier();
+    g.down(1, 100, 100, 0);
+    expect(g.move(1, 105, 100, 10)).toEqual([]);
+    expect(g.move(1, 130, 95, 20)).toEqual([{ type: 'cancel' }, { type: 'drag', dx: 30, dy: -5 }]);
+    expect(g.move(1, 170, 95, 30)).toEqual([{ type: 'drag', dx: 40, dy: 0 }]);
+    expect(g.move(1, 170, 95, 40)).toEqual([]);
+    expect(g.move(1, 160, 115, 50)).toEqual([{ type: 'drag', dx: -10, dy: 20 }]);
+    expect(g.dragging).toBe(true);
+    expect(g.tick(900, true)).toEqual([]); // a long drag never completes a hold
+    expect(g.up(1, 160, 115, 1000)).toEqual([]);
+    expect(g.dragging).toBe(false);
+    expect(g.busy).toBe(false);
+  });
+
+  it('a second finger never drags', () => {
+    const g = new GestureClassifier();
+    g.down(1, 0, 0, 0);
+    g.move(1, 50, 0, 10);
+    expect(g.move(2, 300, 300, 20)).toEqual([]);
+    expect(g.move(1, 60, 0, 30)).toEqual([{ type: 'drag', dx: 10, dy: 0 }]);
+  });
+
+  it('pointercancel ends a drag quietly', () => {
+    const g = new GestureClassifier();
+    g.down(1, 0, 0, 0);
+    g.move(1, 50, 0, 10);
+    expect(g.cancel(1)).toEqual([]);
+    expect(g.dragging).toBe(false);
+    expect(g.move(1, 90, 0, 20)).toEqual([]);
   });
 
   it('ignores a second finger while the first is down', () => {
