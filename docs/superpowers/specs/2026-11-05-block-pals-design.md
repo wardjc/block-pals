@@ -87,6 +87,28 @@ Plus, in v1: voice for everything, British English, touch and controller, local 
 
 **Later versions** (rough order, to confirm at planning time): bad guys and friendly weapons → villagers, quests, trading and friendship hearts → beat blocks and music quests → STEM quests → more pals and areas → same-screen two-player.
 
+### 7a. v1.1: separate moving from digging (agreed 2026-11-07)
+
+After the first build, the parent found that moving and digging shared one tap, which was confusing. Agreed rule, modelled on Minecraft on tablets:
+
+- **Quick tap with the ✋ hand walks** there (to the nearest reachable spot). A tap never digs.
+- **Press and hold on a block for about ½ s digs it**, whichever slot is selected. A ring fills around the finger and the block is outlined. Lifting early or sliding away cancels. Too far away → he walks next to it instead. Blocks under his own or Pip's feet, water and bedrock can't be dug.
+- **Quick tap with a block selected builds** on the tapped face if it's in reach and there's room. Otherwise he walks there.
+- Every block takes the same time to dig. The controller is unchanged.
+- **A bigger bag** (requested by our player, 2026-11-07): the 20-per-kind limit was too restrictive for building. *My call:* raise it to **99 of each kind**. The hotbar shows the real number; recipes and prices still never ask for more than 20, so nothing he must read goes above 20. The "bag full" line only plays at 99.
+
+### 7b. Requests from our player (2026-11-07)
+
+The child this game is for asked for these. They are the player's own wishes, so they carry extra weight when ordering later versions. (His name is deliberately kept out of this public document.)
+
+1. **Eating things.** Food he can find, grow or buy (for example apples from trees, bread, carrots, cake) and eat with a happy munch animation and sound. Pip reacts ("Yum!"). **There is still no hunger bar and nothing bad happens if he doesn't eat.** Eating is a fun action, not a survival chore, which keeps the §3 non-goal. Sharing food with villagers could build friendship.
+2. **Going into shops.** Shops are buildings he can walk into, each with a friendly shopkeeper character (a baker, a block shop, a toy or pet shop). Prices are pictures and digits up to 20 (for example "3 🪵 = 1 🍞"), trading blocks he has collected. Shopping is spoken, never needs reading, and works as the "trading" in the roadmap.
+3. **Houses with other characters.** A small village of houses with doors he can walk through, each home to a villager with a strong, individual personality, in the spirit of the manga (§6). Villagers chat, give simple picture quests, become friends (hearts) and may join his crew.
+4. **Finding and building underground bases.** Hidden underground rooms to discover (for example a secret base behind a hillside door or at the bottom of a staircase, with a little treasure chest inside), and the freedom to dig out and furnish his own base. **Underground must never be dark or scary** (§4): tunnels and rooms are lit by glowing blocks or lanterns, there are no creatures in them, and a big "home" button or Pip can always lead him back to the surface. A deeper world (more layers below the meadow) will be needed for this.
+5. **A bigger bag.** Being built now in v1.1 (see §7a).
+
+*My suggestion (to confirm at planning time):* items 1–3 fit together as one **"Village" version**, made up of the existing roadmap step "villagers, quests, trading and friendship hearts" plus eating. It could move ahead of "bad guys and friendly weapons", because it is what the player asked for and it builds the friendships the spec puts at the heart of the game. Item 4 could be its own **"Underground" version** straight after. Open design questions include: how big the village is and whether it is in the same meadow or through a gate; which shops come first; where food comes from (trees, farming, shops or all three); whether he can build his own house and invite villagers in; and how deep the underground goes and what he can find there.
+
 ## 8. Left to the builder
 
 - World size, block set and exact materials in v1, within "small and can't get lost".
