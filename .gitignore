@@ -6,3 +6,8 @@ playwright-report/
 .claude-flow/
 .swarm/
 ruvector.db
+
+# voice generator model cache (downloaded, never committed)
+.voice-cache/
+tools/voice/.venv/
+__pycache__/

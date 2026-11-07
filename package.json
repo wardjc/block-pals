@@ -11,13 +11,15 @@
     "build": "tsc --noEmit && vite build",
     "preview": "vite preview",
     "typecheck": "tsc --noEmit",
-    "e2e": "playwright test"
+    "e2e": "playwright test",
+    "voice:lines": "node --experimental-strip-types tools/voice/export-lines.ts > tools/voice/lines.json"
   },
   "dependencies": {
     "three": "^0.187.0"
   },
   "devDependencies": {
     "@playwright/test": "^1.64.1",
+    "@types/node": "^22.20.5",
     "@types/three": "^0.187.0",
     "jsdom": "^31.0.0",
     "typescript": "^7.0.2",
