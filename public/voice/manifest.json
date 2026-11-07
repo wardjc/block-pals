@@ -1,83 +1,83 @@
 {
- "bramble/234fb9e17430": {
-  "file": "bramble/234fb9e17430.ogg",
-  "text": "Mind my floury hat. It wobbles when I laugh!",
-  "duration": 3.46
+ "bramble/542c322fbed8": {
+  "file": "bramble/542c322fbed8.ogg",
+  "text": "Hello, friend. You can come in.",
+  "duration": 2.9
  },
- "bramble/5c24142d281a": {
-  "file": "bramble/5c24142d281a.ogg",
-  "text": "A visitor! How lovely to meet you.",
-  "duration": 2.78
+ "bramble/a25c54fd91ff": {
+  "file": "bramble/a25c54fd91ff.ogg",
+  "text": "Hello! I am Bramble, the baker.",
+  "duration": 2.93
  },
  "bramble/a8f9f14e1145": {
   "file": "bramble/a8f9f14e1145.ogg",
   "text": "Hello, neighbour! Welcome to my bakery.",
   "duration": 3.0
  },
- "bramble/bb7e39043201": {
-  "file": "bramble/bb7e39043201.ogg",
-  "text": "Hello, hello! My bakery smells of warm bread.",
-  "duration": 3.72
+ "bramble/fca2e606075b": {
+  "file": "bramble/fca2e606075b.ogg",
+  "text": "My floury hat wobbles when I laugh!",
+  "duration": 2.43
  },
- "fern/0f904eade097": {
-  "file": "fern/0f904eade097.ogg",
-  "text": "Do you like my hat? It has a carrot!",
-  "duration": 3.09
+ "fern/aaa6834fa1a5": {
+  "file": "fern/aaa6834fa1a5.ogg",
+  "text": "Hello, neighbour. Come in if you like.",
+  "duration": 3.05
  },
- "fern/7f4806eaa8f5": {
-  "file": "fern/7f4806eaa8f5.ogg",
-  "text": "Nice to meet you, neighbour. Come and visit again!",
+ "fern/c2280817d4c5": {
+  "file": "fern/c2280817d4c5.ogg",
+  "text": "Hello! I'm Fern, the farmer.",
+  "duration": 2.73
+ },
+ "fern/cab648085eba": {
+  "file": "fern/cab648085eba.ogg",
+  "text": "Welcome to my farmhouse, neighbour.",
+  "duration": 2.09
+ },
+ "fern/d51f2e7e777e": {
+  "file": "fern/d51f2e7e777e.ogg",
+  "text": "I'm going to grow lots of food.",
+  "duration": 1.99
+ },
+ "granny/2be6078b4bc4": {
+  "file": "granny/2be6078b4bc4.ogg",
+  "text": "Hello, dear. I like to knit.",
   "duration": 3.5
  },
- "fern/c16b857ad6f4": {
-  "file": "fern/c16b857ad6f4.ogg",
-  "text": "Welcome to my farm. It is a lovely place.",
-  "duration": 3.66
+ "granny/7c0ced57d577": {
+  "file": "granny/7c0ced57d577.ogg",
+  "text": "Hello, dear. I am Granny Willow.",
+  "duration": 3.93
  },
- "fern/e30ff5512963": {
-  "file": "fern/e30ff5512963.ogg",
-  "text": "Hello, hello! My carrots say hello too.",
-  "duration": 3.28
+ "granny/9c422d2ca282": {
+  "file": "granny/9c422d2ca282.ogg",
+  "text": "I knit all my own scarves, dear.",
+  "duration": 2.54
  },
- "granny/7ef2d7ecacb0": {
-  "file": "granny/7ef2d7ecacb0.ogg",
-  "text": "Hello, dear. What a lovely surprise.",
-  "duration": 4.1
+ "granny/ecb160beb0e8": {
+  "file": "granny/ecb160beb0e8.ogg",
+  "text": "Hello, dear. Come in and sit down.",
+  "duration": 3.95
  },
- "granny/98c3d310a0f4": {
-  "file": "granny/98c3d310a0f4.ogg",
-  "text": "How lovely to meet you, dear.",
-  "duration": 2.28
- },
- "granny/d77d84c3a3a9": {
-  "file": "granny/d77d84c3a3a9.ogg",
-  "text": "Mind my scarf, dear. It is rather long!",
-  "duration": 4.14
- },
- "granny/df87c1734a6c": {
-  "file": "granny/df87c1734a6c.ogg",
-  "text": "Hello, dear. I am knitting a very long scarf.",
-  "duration": 4.57
- },
- "pebble/59b6c01e7382": {
-  "file": "pebble/59b6c01e7382.ogg",
-  "text": "Hello, neighbour! Mind the shiny stones.",
-  "duration": 3.55
+ "pebble/1d250cb420f1": {
+  "file": "pebble/1d250cb420f1.ogg",
+  "text": "Welcome to my shop, friend.",
+  "duration": 1.96
  },
  "pebble/802e90ad85f3": {
   "file": "pebble/802e90ad85f3.ogg",
   "text": "Shiny stones are my favourite thing in the world.",
   "duration": 2.9
  },
- "pebble/80e5baa4d4f8": {
-  "file": "pebble/80e5baa4d4f8.ogg",
-  "text": "Welcome to my shop, friend. I love a good stone.",
-  "duration": 4.18
- },
  "pebble/bf123ce8dd30": {
   "file": "pebble/bf123ce8dd30.ogg",
   "text": "Hello there, friend. My moustache says hello too.",
   "duration": 4.2
+ },
+ "pebble/fc574ac93258": {
+  "file": "pebble/fc574ac93258.ogg",
+  "text": "Hello, neighbour! I am Captain Pebble.",
+  "duration": 3.4
  },
  "pip/0b6fe595eeb3": {
   "file": "pip/0b6fe595eeb3.ogg",

@@ -25,33 +25,33 @@ export const VILLAGERS: VillagerDef[] = [
 
 /**
  * Hellos. Lines policy (tests enforce it): British, at most 12 words, no cheers or sound words,
- * four variants, true wherever the greeting can fire (near their house), nothing promised for
+ * four variants, true wherever and however often the greeting can fire (it repeats), nothing promised for
  * later steps and no claims about what he can see.
  */
 export const VILLAGER_LINES: Record<VillagerId, string[]> = {
   bramble: [
     'Hello, neighbour! Welcome to my bakery.',
-    'Mind my floury hat. It wobbles when I laugh!',
-    'Hello, hello! My bakery smells of warm bread.',
-    'A visitor! How lovely to meet you.',
+    'Hello! I am Bramble, the baker.',
+    'My floury hat wobbles when I laugh!',
+    'Hello, friend. You can come in.',
   ],
   pebble: [
-    'Hello, neighbour! Mind the shiny stones.',
-    'Welcome to my shop, friend. I love a good stone.',
+    'Hello, neighbour! I am Captain Pebble.',
+    'Welcome to my shop, friend.',
     'Shiny stones are my favourite thing in the world.',
     'Hello there, friend. My moustache says hello too.',
   ],
   fern: [
-    'Hello, hello! My carrots say hello too.',
-    'Welcome to my farm. It is a lovely place.',
-    'Do you like my hat? It has a carrot!',
-    'Nice to meet you, neighbour. Come and visit again!',
+    "Hello! I'm Fern, the farmer.",
+    "I'm going to grow lots of food.",
+    'Welcome to my farmhouse, neighbour.',
+    'Hello, neighbour. Come in if you like.',
   ],
   willow: [
-    'Hello, dear. What a lovely surprise.',
-    'Hello, dear. I am knitting a very long scarf.',
-    'Mind my scarf, dear. It is rather long!',
-    'How lovely to meet you, dear.',
+    'Hello, dear. I am Granny Willow.',
+    'Hello, dear. I like to knit.',
+    'I knit all my own scarves, dear.',
+    'Hello, dear. Come in and sit down.',
   ],
 };
 

@@ -34,6 +34,7 @@ describe('villagers', () => {
         expect(l).not.toMatch(/\b(color|favorite|gray|mom|center)\b/i);
         expect(l).not.toMatch(/\b(whee+|yippee|woo-?hoo|yay|hooray|ha ha|wahoo|ooh+|hmm+|ta-?da|hup|ahoy)\b/i);
         expect(l).not.toMatch(/\b(buy|sell|quest|bake you|coins?|tap|click|touch)\b/i);
+        expect(l).not.toMatch(/meet you|nice to|again|rather|\bcarrots say|do you like|mind the/i);
         expect(l).not.toMatch(/I can see|Look, a|Nearly|Almost/i);
         expect(l).not.toMatch(/minecraft|creeper|steve|villager/i);
       }
