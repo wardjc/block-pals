@@ -1,5 +1,5 @@
 import { describe, it, expect } from 'vitest';
-import { LINES, LINE_ICONS, type LineKey } from '../../src/content/lines';
+import { LINES, LINE_ICONS, pickLine, type LineKey } from '../../src/content/lines';
 
 const keys = Object.keys(LINES) as LineKey[];
 
@@ -8,7 +8,8 @@ describe('lines', () => {
     expect(keys).toHaveLength(13);
     for (const k of keys) {
       expect(LINES[k].length).toBeGreaterThanOrEqual(1);
-      expect(LINES[k].length).toBeLessThanOrEqual(3);
+      expect(LINES[k].length).toBeLessThanOrEqual(6);
+      expect(LINES[k].length).toBeGreaterThanOrEqual(4);
     }
   });
   it('lines use British spelling', () => {
@@ -29,5 +30,30 @@ describe('lines', () => {
   });
   it('every LineKey has an icon', () => {
     for (const k of keys) expect(LINE_ICONS[k]).toBeTruthy();
+  });
+
+  describe('pickLine', () => {
+    it('never repeats the previous variant', () => {
+      for (const k of keys)
+        for (const last of LINES[k])
+          for (let i = 0; i < 20; i++) expect(pickLine(k, last, () => i / 20)).not.toBe(last);
+    });
+    it('single-variant key returns it', () => {
+      const orig = LINES.hello;
+      LINES.hello = ['Only one!'];
+      try {
+        expect(pickLine('hello', 'Only one!')).toBe('Only one!');
+        expect(pickLine('hello', undefined)).toBe('Only one!');
+      } finally {
+        LINES.hello = orig;
+      }
+    });
+    it('deterministic with rng', () => {
+      for (const k of keys) {
+        expect(pickLine(k, undefined, () => 0)).toBe(LINES[k][0]);
+        expect(pickLine(k, LINES[k][0], () => 0)).toBe(LINES[k][1]);
+        expect(pickLine(k, undefined, () => 0.999)).toBe(LINES[k][LINES[k].length - 1]);
+      }
+    });
   });
 });
