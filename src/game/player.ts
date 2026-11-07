@@ -20,6 +20,7 @@ export class Player {
   heading = 0;
   private path: Cell[] = [];
   private waypoint = 0;
+  private centring = false;
   private stick = { x: 0, z: 0 };
 
   constructor(spawn: { x: number; y: number; z: number }) {
@@ -33,6 +34,7 @@ export class Player {
   setPath(path: Cell[] | null): void {
     this.path = path?.map(cell => [...cell] as Cell) ?? [];
     this.waypoint = 0;
+    this.centring = false;
     this.stick = { x: 0, z: 0 };
   }
 
@@ -82,15 +84,29 @@ export class Player {
         continue;
       }
       const step = Math.min(MAX_STEP, remaining, distance);
-      if (!this.move(world, dx / distance * step, dz / distance * step, step / SPEED)) {
-        this.path = [];
-        break;
+      const mx = dx / distance * step;
+      const mz = dz / distance * step;
+      const t = step / SPEED;
+      // Blocked? Slide along the wall (x then z), as the stick does; failing that, step back
+      // to the cell centre once so a sub-cell start cannot leave him stopped dead.
+      if (!this.move(world, mx, mz, t) && !this.move(world, mx, 0, t) && !this.move(world, 0, mz, t)) {
+        const here = this.feetCell();
+        const cx = here[0] + 0.5;
+        const cz = here[2] + 0.5;
+        if (this.centring || Math.hypot(cx - this.pos.x, cz - this.pos.z) < 0.01) {
+          this.path = [];
+          break;
+        }
+        this.centring = true;
+        this.path.splice(this.waypoint, 0, here);
+        continue;
       }
       remaining -= step;
       if (step === distance) {
         this.pos.x = target[0] + 0.5;
         this.pos.z = target[2] + 0.5;
         this.waypoint++;
+        this.centring = false;
       }
     }
   }

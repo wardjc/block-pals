@@ -289,3 +289,31 @@ it('reaches smoothed waypoints across generated terrain without getting stuck', 
   }
   expect(routes).toBeGreaterThanOrEqual(6);
 });
+
+describe('walking never stops dead', () => {
+  it('reaches the end from random sub-cell starts over seeded worlds', () => {
+    let seed = 4242;
+    const random = () => ((seed = (Math.imul(seed, 1664525) + 1013904223) >>> 0) / 2 ** 32);
+    let routes = 0;
+    for (let trial = 0; trial < 1500; trial++) {
+      const world = flatWorld();
+      const sx = 2 + random() * 3;
+      const sz = 2 + random() * 3;
+      for (let x = 1; x < 12; x++) for (let z = 1; z < 12; z++) {
+        if (random() >= 0.2 || (x === Math.floor(sx) && z === Math.floor(sz)) || (x === 10 && z === 10)) continue;
+        for (const y of [1, 2]) world.set(x, y, z, BlockId.Stone);
+      }
+      const player = playerAt(sx, 1, sz);
+      const start = player.feetCell();
+      const end: Cell = [10, 1, 10];
+      const wall = (c: Cell) => c[0] >= 1 && c[0] <= 46 && c[2] >= 1 && c[2] <= 46; // the Game's soft wall
+      const route = findPath(world, start, end, 4000, wall);
+      if (!route) continue;
+      routes++;
+      player.setPath(smoothPath(world, route, start, wall));
+      for (let i = 0; i < 900; i++) player.update(world, 1 / 30);
+      expect(player.feetCell(), `trial ${trial} from ${sx},${sz}`).toEqual(end);
+    }
+    expect(routes).toBeGreaterThan(500);
+  });
+});

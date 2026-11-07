@@ -2,8 +2,9 @@ import type { LineKey } from '../content/lines';
 import { canStep, findPath, isStandable, smoothPath, type Cell } from '../core/pathfind';
 import type { World } from '../core/world';
 import type { GameEvent } from './game';
-import type { Player } from './player';
+import { easeHeading, type Player } from './player';
 
+const STEP_DYS = [0, 1, -1];
 const SPEED = 4.5;
 const REPATH_DIST = 3;
 const TELEPORT_DIST = 10;
@@ -171,9 +172,9 @@ export class Pal {
     this.repathCooldown = 1;
     const from = this.feetCell();
     for (const goal of this.spots(world, player, [2, 1], this.pos).slice(0, 6)) {
-      const p = findPath(world, from, goal, 1500, cell => this.insideWall(world, cell));
+      const p = findPath(world, from, goal, 1500, this.allowed(world));
       if (p) {
-        this.path = smoothPath(world, p, from, cell => this.insideWall(world, cell));
+        this.path = smoothPath(world, p, from, this.allowed(world));
         return;
       }
     }
@@ -186,7 +187,7 @@ export class Pal {
       const [cx, cy, cz] = this.path[this.waypoint];
       if (!isStandable(world, [cx, cy, cz])) {
         // The world changed under the cached path (e.g. a block was placed).
-        this.repath(world, player);
+        this.repathGated(world, player);
         return;
       }
       const dx = cx + 0.5 - this.pos.x;
@@ -203,13 +204,12 @@ export class Pal {
       const nx = Math.floor(x);
       const nz = Math.floor(z);
       const destination = nx === from[0] && nz === from[2] ? from
-        : [0, 1, -1].map((dy): Cell => [nx, from[1] + dy, nz])
-          .find(to => canStep(world, from, to, cell => this.insideWall(world, cell)));
+        : this.findDestination(world, from, nx, nz);
       if (!destination || !this.insideWall(world, destination) || !isStandable(world, destination)) {
-        this.repath(world, player);
+        this.repathGated(world, player);
         return;
       }
-      this.heading = Math.atan2(dx, dz);
+      this.heading = easeHeading(this.heading, Math.atan2(dx, dz), 10 * step / SPEED);
       this.pos = { x, y: destination[1], z };
       remaining -= step;
       if (step === d) {
@@ -219,6 +219,37 @@ export class Pal {
       }
     }
     if (this.waypoint >= this.path.length) this.path = [];
+  }
+
+  /** A blocked Pip repaths at most once per cooldown; otherwise he waits (the stuck teleport is the backstop). */
+  private repathGated(world: World, player: Player): void {
+    if (this.repathCooldown <= 0) this.repath(world, player);
+    else {
+      this.path = [];
+      this.waypoint = 0;
+    }
+  }
+
+  private findDestination(world: World, from: Cell, nx: number, nz: number): Cell | undefined {
+    const allowed = this.allowed(world);
+    for (const dy of STEP_DYS) {
+      const to = this.scratch;
+      to[0] = nx; to[1] = from[1] + dy; to[2] = nz;
+      if (canStep(world, from, to, allowed)) return [nx, to[1], nz];
+    }
+    return undefined;
+  }
+
+  private allowedWorld: World | null = null;
+  private allowedFn: (cell: Cell) => boolean = () => true;
+  private scratch: Cell = [0, 0, 0];
+
+  private allowed(world: World): (cell: Cell) => boolean {
+    if (this.allowedWorld !== world) {
+      this.allowedWorld = world;
+      this.allowedFn = cell => this.insideWall(world, cell);
+    }
+    return this.allowedFn;
   }
 
   private insideWall(world: World, [x, , z]: Cell): boolean {

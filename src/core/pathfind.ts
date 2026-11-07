@@ -174,6 +174,8 @@ function lineClear(world: World, from: Cell, to: Cell, allowed: (cell: Cell) => 
  * Paths exclude the start: pass `from` to check and simplify the first segment.
  * Without it, the first path cell is kept as the starting endpoint. Inputs are untouched.
  */
+const SMOOTH_LOOKAHEAD = 16;
+
 export function smoothPath(
   world: World, path: Cell[], from?: Cell, allowed: (cell: Cell) => boolean = () => true,
 ): Cell[] {
@@ -184,7 +186,8 @@ export function smoothPath(
     let end = anchor + 1;
     if (points[anchor][1] === points[end][1]) {
       let last = end;
-      while (last + 1 < points.length && points[last + 1][1] === points[anchor][1]) last++;
+      // Bounded look-ahead keeps long routes linear rather than quadratic.
+      while (last + 1 < points.length && last - end < SMOOTH_LOOKAHEAD && points[last + 1][1] === points[anchor][1]) last++;
       for (let candidate = last; candidate > end; candidate--) {
         if (lineClear(world, points[anchor], points[candidate], allowed)) {
           end = candidate;

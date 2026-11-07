@@ -3,10 +3,10 @@ import { BLOCKS, BlockId } from '../../src/core/blocks';
 import { canStep, findPath, isStandable, nearestStandable, pathTowards, smoothPath, type Cell } from '../../src/core/pathfind';
 import { World } from '../../src/core/world';
 
-function flatWorld(): World {
-  const world = new World(9, 8, 9);
-  for (let x = 0; x < 9; x++) {
-    for (let z = 0; z < 9; z++) world.set(x, 0, z, BlockId.Grass);
+function flatWorld(size = 9): World {
+  const world = new World(size, 8, size);
+  for (let x = 0; x < size; x++) {
+    for (let z = 0; z < size; z++) world.set(x, 0, z, BlockId.Grass);
   }
   return world;
 }
@@ -180,6 +180,17 @@ describe('natural routes', () => {
     world.set(3, 2, 3, BlockId.Stone);
     expect(canStep(world, [2, 1, 2], [3, 3, 3])).toBe(false);
   });
+
+  it('a single solid flank or a door-frame lintel blocks a diagonal', () => {
+    const world = flatWorld();
+    world.set(3, 1, 2, BlockId.Stone);
+    world.set(3, 2, 2, BlockId.Stone); // one solid flank, the other open
+    expect(canStep(world, [2, 1, 2], [3, 1, 3])).toBe(false);
+    const door = flatWorld();
+    door.set(3, 2, 2, BlockId.Planks); // lintel over one flank: no head room there
+    expect(canStep(door, [2, 1, 2], [3, 1, 3])).toBe(false);
+    expect(canStep(door, [2, 1, 3], [3, 1, 3])).toBe(true);
+  });
 });
 
 describe('smoothPath', () => {
@@ -235,6 +246,66 @@ describe('smoothPath', () => {
       }
     }
     expect(routes).toBeGreaterThan(20);
+  });
+
+  it('stepped terrain: smoothing keeps both sides of every height change and never clips (seeded)', () => {
+    let seed = 99173;
+    const random = () => ((seed = (Math.imul(seed, 1664525) + 1013904223) >>> 0) / 2 ** 32);
+    let routes = 0;
+    let changes = 0;
+    for (let trial = 0; trial < 60; trial++) {
+      const world = flatWorld(12);
+      for (let x = 1; x < 10; x++) for (let z = 1; z < 10; z++) {
+        if ((x === 1 && z === 1) || (x === 9 && z === 9)) continue;
+        const r = random();
+        if (r < 0.35) world.set(x, 1, z, BlockId.Stone); // a one-block step up
+        else if (r < 0.42) for (const y of [1, 2]) world.set(x, y, z, BlockId.Stone);
+      }
+      const from: Cell = [1, 1, 1];
+      const to = nearestStandable(world, 9, 9)!;
+      const path = findPath(world, from, to);
+      if (!path) continue;
+      routes++;
+      const smooth = smoothPath(world, path, from);
+      expect(smooth.at(-1)).toEqual(to);
+      const same = (a: Cell, b: Cell) => a[0] === b[0] && a[1] === b[1] && a[2] === b[2];
+      let prev = from;
+      for (const cell of path) {
+        if (cell[1] !== prev[1]) {
+          changes++;
+          expect(same(prev, from) || smooth.some(c => same(c, prev))).toBe(true);
+          expect(smooth.some(c => same(c, cell))).toBe(true);
+        }
+        prev = cell;
+      }
+      let a = from;
+      for (const b of smooth) {
+        if (a[1] !== b[1]) {
+          expect(Math.hypot(a[0] - b[0], a[2] - b[2])).toBeLessThanOrEqual(Math.SQRT2 + 1e-8);
+        } else {
+          const count = Math.max(1, Math.ceil(Math.hypot(b[0] - a[0], b[2] - a[2]) / 0.025));
+          for (let i = 0; i <= count; i++) {
+            const x = a[0] + 0.5 + (b[0] - a[0]) * i / count;
+            const z = a[2] + 0.5 + (b[2] - a[2]) * i / count;
+            expect(isStandable(world, [Math.floor(x), a[1], Math.floor(z)])).toBe(true);
+          }
+        }
+        a = b;
+      }
+    }
+    expect(routes).toBeGreaterThan(25);
+    expect(changes).toBeGreaterThan(20);
+  });
+
+  it('look-ahead is capped but short paths smooth exactly as before', () => {
+    const world = flatWorld(48);
+    const short = findPath(world, [1, 1, 1], [9, 1, 5])!;
+    expect(smoothPath(world, short, [1, 1, 1])).toEqual([[9, 1, 5]]);
+    const long = findPath(world, [1, 1, 1], [40, 1, 40])!;
+    const smooth = smoothPath(world, long, [1, 1, 1]);
+    expect(smooth.at(-1)).toEqual([40, 1, 40]);
+    expect(smooth.length).toBeGreaterThanOrEqual(1);
+    expect(smooth.length).toBeLessThan(long.length);
   });
 
   it('smoothing keeps a waypoint at a height change, even when the end returns to the start height', () => {
