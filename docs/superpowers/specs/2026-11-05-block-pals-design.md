@@ -109,6 +109,18 @@ The child this game is for asked for these. They are the player's own wishes, so
 
 *My suggestion (to confirm at planning time):* items 1–3 fit together as one **"Village" version**, made up of the existing roadmap step "villagers, quests, trading and friendship hearts" plus eating. It could move ahead of "bad guys and friendly weapons", because it is what the player asked for and it builds the friendships the spec puts at the heart of the game. Item 4 could be its own **"Underground" version** straight after. Open design questions include: how big the village is and whether it is in the same meadow or through a gate; which shops come first; where food comes from (trees, farming, shops or all three); whether he can build his own house and invite villagers in; and how deep the underground goes and what he can find there.
 
+### 7c. v1.2: smart camera and turning the view (agreed 2026-11-07)
+
+When our player dug down, the camera (fixed behind and above him) went inside the ground and showed the hollow underside of the world. The parent chose a "smart camera + rotation" fix:
+
+1. **The camera never goes inside or behind blocks.** Every frame it looks from his head back towards where it wants to be. If any block is in the way (leaves and glass count; water does not), it sits just in front of the first one. It pulls in at once and glides back out over about ⅓ s when the way is clear, so it never pops through walls.
+2. **Close mode.** When there is less than about 1.2 blocks of room, the camera sits at his head (first person) and his own model is hidden, so we never see inside his head. Pip still shows.
+3. The camera's near plane is very close and the camera keeps a small gap from every block face, so block faces are never cut open at close range. In a dug-out hole the camera stays inside the hole, above its floor.
+4. The sky and fog stay bright blue. Nothing gets dark.
+5. **Drag to turn.** A one-finger drag on the world (anything past the 12 px slide that already cancels a tap or hold) turns the view: sideways turns around him, up and down tilts between slightly above the horizon and about 70° down, never flipping. A drag across the whole screen turns about 240°. A drag never walks, builds or digs, and drags that start on a button or overlay do nothing to the camera.
+6. **The camera stays where he leaves it.** It follows him but no longer swings round behind him.
+7. Tapping to walk works whichever way the camera faces. The controller's left stick moves relative to the camera. If the controller has a second stick it turns the view; otherwise the controller cannot turn it (axes that rest off-centre, like triggers, are ignored).
+
 ## 8. Left to the builder
 
 - World size, block set and exact materials in v1, within "small and can't get lost".
