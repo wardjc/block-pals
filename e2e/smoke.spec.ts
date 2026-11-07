@@ -12,6 +12,7 @@ type Dbg = {
   screenOf(x: number, y: number, z: number): { x: number; y: number };
   pick(x: number, y: number): { cell: Cell; normal: Cell } | null;
   outlineVisible(): boolean;
+  digSound(): { starts: number; stops: number; active: boolean };
   camera(): { position: { x: number; y: number; z: number }; yaw: number; pitch: number; distance: number; close: boolean };
   game: {
     tryCraft(id: string): boolean;
@@ -88,8 +89,17 @@ test('tap on ground moves the player', async ({ page }) => {
 test('press and hold on a nearby block digs it', async ({ page }) => {
   await ready(page);
   const target = await nearbyGround(page);
+  const errors: string[] = [];
+  page.on('console', m => { if (m.type() === 'error') errors.push(m.text()); });
+  page.on('pageerror', e => errors.push(String(e)));
   await press(page, target.x, target.y, 700);
   await page.waitForTimeout(100);
+  // The scraping loop started with the hold and is fully stopped once it completes.
+  const dig = await page.evaluate(() => window.__debug.digSound());
+  expect(dig.starts).toBe(1);
+  expect(dig.stops).toBe(1);
+  expect(dig.active).toBe(false);
+  expect(errors).toEqual([]);
   const [x, y, z] = target.cell;
   expect(await page.evaluate(([x, y, z]) => window.__debug.game.world.get(x, y, z), [x, y, z])).toBe(0);
   expect(await page.evaluate(id => window.__debug.game.inventory.count(id), target.id)).toBe(1);
