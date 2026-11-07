@@ -12,7 +12,8 @@ export type TapIntent =
 /** What a press and hold does (spec §7a): dig it, walk next to it, or nothing. */
 export type HoldIntent =
   | { kind: 'dig'; cell: Cell }
-  | { kind: 'walkNear'; to: Cell }
+  /** Too far: the game walks to a standable cell beside `block` (never on top of it). */
+  | { kind: 'walkNear'; block: Cell }
   | { kind: 'none' };
 
 const frontOf = ({ cell: c, normal: n }: { cell: Cell; normal: Cell }): Cell => [c[0] + n[0], c[1] + n[1], c[2] + n[2]];
@@ -41,7 +42,7 @@ export function resolveTap(
 /**
  * Press and hold, whichever slot is selected. Blocks that can't be dug (air, water, bedrock,
  * the block under his or Pip's feet) give none, so the ring never starts. A diggable block
- * within reach (3, Chebyshev from the feet cell) digs; one further away walks next to it.
+ * within reach (3, Chebyshev from the feet cell) digs; one further away walks beside it.
  */
 export function resolveHold(
   hit: { cell: Cell; normal: Cell } | null,
@@ -54,7 +55,7 @@ export function resolveHold(
   if (!world.inBounds(x, y, z) || !canCollect(world, hit.cell)) return { kind: 'none' };
   const standers = [playerFeet, ...occupied];
   if (standers.some(([sx, sy, sz]) => sx === x && sy === y + 1 && sz === z)) return { kind: 'none' };
-  if (!withinReach(playerFeet, hit.cell)) return { kind: 'walkNear', to: frontOf(hit) };
+  if (!withinReach(playerFeet, hit.cell)) return { kind: 'walkNear', block: hit.cell };
   return { kind: 'dig', cell: hit.cell };
 }
 

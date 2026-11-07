@@ -4,6 +4,7 @@ import { Inventory } from '../../src/core/inventory';
 import { World } from '../../src/core/world';
 import { generateWorld } from '../../src/core/worldgen';
 import { Game, type GameEvent } from '../../src/game/game';
+import { resolveHold } from '../../src/input/tap';
 
 function flatWorld(): World {
   const world = new World(48, 16, 48);
@@ -53,14 +54,38 @@ describe('Game', () => {
     expect(game.inventory.hotbar()).toEqual([]);
   });
 
-  it('a hold walkNear intent walks next to the block', () => {
+  it('a hold walkNear intent walks beside the block, not onto it, so a second hold digs it', () => {
     const { world, game, events } = setup();
+    // Ground block 5 away, held on its top face (the old rule walked onto it).
+    game.applyIntent({ kind: 'walkNear', block: [10, 0, 5] });
+    expect(events.some(e => e.type === 'walking')).toBe(true);
+    for (let i = 0; i < 200; i++) game.update(0.05);
+    const feet = game.player.feetCell();
+    expect([feet[0], feet[2]]).not.toEqual([10, 5]);
+    expect(Math.max(Math.abs(feet[0] - 10), Math.abs(feet[1] - 0), Math.abs(feet[2] - 5))).toBeLessThanOrEqual(3);
+    expect(resolveHold({ cell: [10, 0, 5], normal: [0, 1, 0] }, feet, world, game.occupied()))
+      .toEqual({ kind: 'dig', cell: [10, 0, 5] });
+    game.applyIntent(resolveHold({ cell: [10, 0, 5], normal: [0, 1, 0] }, feet, world, game.occupied()));
+    expect(world.get(10, 0, 5)).toBe(BlockId.Air);
+    expect(game.inventory.count(BlockId.Grass)).toBe(1);
+  });
+
+  it('a hold walkNear on a wall block stops beside it', () => {
+    const { world, game } = setup();
     world.set(12, 1, 5, BlockId.Stone);
-    game.applyIntent({ kind: 'walkNear', to: [11, 1, 5] });
-    expect(events).toContainEqual({ type: 'walking', to: [11, 1, 5] });
+    game.applyIntent({ kind: 'walkNear', block: [12, 1, 5] });
     for (let i = 0; i < 200; i++) game.update(0.05);
     expect(game.player.feetCell()).toEqual([11, 1, 5]);
     expect(world.get(12, 1, 5)).toBe(BlockId.Stone);
+  });
+
+  it('a hold walkNear on a pillar top stops beside the pillar', () => {
+    const { world, game } = setup();
+    for (let y = 1; y <= 2; y++) world.set(15, y, 5, BlockId.Stone);
+    game.applyIntent({ kind: 'walkNear', block: [15, 2, 5] });
+    for (let i = 0; i < 300; i++) game.update(0.05);
+    const [x, , z] = game.player.feetCell();
+    expect([x, z]).not.toEqual([15, 5]);
   });
 
   it('collect at 99 emits full and keeps block', () => {

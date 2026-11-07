@@ -145,8 +145,8 @@ document.addEventListener('visibilitychange', () => {
 });
 window.addEventListener('pagehide', flushUsage);
 
-// Touches on the canvas (spec §7a): a quick tap walks or builds, a press and hold digs.
-// HUD buttons stop propagation, so they never reach here.
+// Touches on the canvas (spec §7a, fix round 1): a release before ½ s walks or builds,
+// a press and hold digs. HUD buttons stop propagation, so they never reach here.
 const allowTap = createDebouncer();
 const gesture = new GestureClassifier();
 const canvas = scene.renderer.domElement;
@@ -164,48 +164,51 @@ function handleGesture(events: GestureEvent[]): void {
       case 'holdStart':
       case 'holdProgress': {
         const intent = holdNow(pressHit);
-        if (intent.kind !== 'dig') { endHoldVisuals(); break; } // e.g. Pip stepped onto it
+        if (intent.kind !== 'dig') { endHoldVisuals(); break; }
         hud.showDigRing(ev.x, ev.y, ev.progress);
         scene.showOutline(intent.cell);
         break;
       }
       case 'holdComplete':
         endHoldVisuals();
-        // Checked again now: he may have walked while holding.
-        game.applyIntent(holdNow(pressHit));
+        // Resolved again now: he may have walked while holding. Too far → walk beside it.
+        if (allowTap('hold', performance.now())) game.applyIntent(holdNow(pressHit));
         break;
       case 'tap':
         endHoldVisuals();
         if (!allowTap('tap', performance.now())) break;
-        game.applyIntent(resolveTap(pressHit, game.effectiveSelected(), game.player.feetCell(), world, occupied()));
+        game.applyIntent(resolveTap(scene.pick(ev.x, ev.y), game.effectiveSelected(), game.player.feetCell(), world, occupied()));
         break;
-      case 'longRelease': {
-        // A long press that could not dig: too far away walks next to it; otherwise nothing.
-        const intent = holdNow(pressHit);
-        if (intent.kind === 'walkNear' && allowTap('tap', performance.now())) game.applyIntent(intent);
-        break;
-      }
+      case 'holdStop':
       case 'cancel':
         endHoldVisuals();
         break;
     }
   }
 }
+const cancelPress = (id?: number): void => handleGesture(gesture.cancel(id));
 
 canvas.addEventListener('pointerdown', e => {
   sfx.unlock();
   greetOnce();
-  if (hud.blockingOverlayOpen || gesture.busy) return;
+  if (hud.blockingOverlayOpen) return;
+  handleGesture(gesture.down(e.pointerId, e.clientX, e.clientY, performance.now()));
+  if (gesture.activeId !== e.pointerId) return; // a second finger: ignored
   try { canvas.setPointerCapture(e.pointerId); } catch { /* not every pointer can be captured */ }
   pressHit = scene.pick(e.clientX, e.clientY);
-  handleGesture(gesture.down(e.pointerId, e.clientX, e.clientY, performance.now(), holdNow(pressHit).kind === 'dig'));
 });
-canvas.addEventListener('pointermove', e => handleGesture(gesture.move(e.pointerId, e.clientX, e.clientY, performance.now())));
+canvas.addEventListener('pointermove', e => {
+  if (hud.blockingOverlayOpen) { cancelPress(); return; }
+  handleGesture(gesture.move(e.pointerId, e.clientX, e.clientY, performance.now()));
+});
 canvas.addEventListener('pointerup', e => {
-  if (hud.blockingOverlayOpen) { handleGesture(gesture.cancel(e.pointerId)); return; }
+  if (hud.blockingOverlayOpen) { cancelPress(e.pointerId); return; }
   handleGesture(gesture.up(e.pointerId, e.clientX, e.clientY, performance.now()));
 });
-canvas.addEventListener('pointercancel', e => handleGesture(gesture.cancel(e.pointerId)));
+// A lost release must never leave a press stuck (the classifier also drops presses over 2 s old).
+canvas.addEventListener('pointercancel', e => cancelPress(e.pointerId));
+canvas.addEventListener('lostpointercapture', e => cancelPress(e.pointerId));
+window.addEventListener('blur', () => cancelPress());
 // A long press must not open a menu or select anything.
 canvas.addEventListener('contextmenu', e => e.preventDefault());
 // Capture phase: HUD buttons stop propagation, but a first tap on them must still unlock audio and greet.
@@ -280,8 +283,8 @@ function frame(now: number): void {
     for (const action of pressed) game.padAction(action);
   }
 
-  if (hud.blockingOverlayOpen) handleGesture(gesture.cancel());
-  else handleGesture(gesture.tick(now));
+  if (hud.blockingOverlayOpen) cancelPress();
+  else if (gesture.busy) handleGesture(gesture.tick(now, holdNow(pressHit).kind === 'dig'));
   game.update(dt);
   // Usage is counted once a second, not every frame (it caps each tick at 5 s anyway).
   usageMs += rawMs;

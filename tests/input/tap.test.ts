@@ -119,16 +119,16 @@ describe('resolveHold', () => {
     world.set(2, 5, 3, BlockId.Dirt);
     expect(resolveHold({ cell: [2, 4, 2], normal: [0, -1, 0] }, feet, world, occupied)).toEqual({ kind: 'dig', cell: [2, 4, 2] });
     expect(resolveHold({ cell: [2, 5, 3], normal: [0, -1, 0] }, feet, world, occupied))
-      .toEqual({ kind: 'walkNear', to: [2, 4, 3] });
+      .toEqual({ kind: 'walkNear', block: [2, 5, 3] });
   });
 
   it('holding on a block out of reach walks next to it instead', () => {
     const world = flatWorld();
     world.set(8, 1, 8, BlockId.Wood);
     expect(resolveHold({ cell: [8, 1, 8], normal: [-1, 0, 0] }, feet, world, occupied))
-      .toEqual({ kind: 'walkNear', to: [7, 1, 8] });
+      .toEqual({ kind: 'walkNear', block: [8, 1, 8] });
     expect(resolveHold({ cell: [6, 0, 2], normal: up }, feet, world, occupied))
-      .toEqual({ kind: 'walkNear', to: [6, 1, 2] });
+      .toEqual({ kind: 'walkNear', block: [6, 0, 2] });
   });
 
   it('never digs the block under his own feet', () => {

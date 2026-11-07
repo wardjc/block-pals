@@ -1,26 +1,29 @@
 /**
- * Tells a quick tap from a press and hold (spec §7a). Pure and clock-free: every call
- * takes the time in ms, so tests drive it with fake time and main.ts with performance.now().
+ * Tells a tap from a press and hold (spec §7a, fix round 1). Pure and clock-free: every
+ * call takes the time in ms, so tests drive it with fake time and main.ts with performance.now().
  *
- * - Released within TAP_MS, moved less than SLOP_PX → 'tap'.
- * - Held (and allowed to dig): after RING_DELAY_MS 'holdStart', then 'holdProgress' on each
- *   tick, and 'holdComplete' at HOLD_MS. Releasing before that, sliding more than SLOP_PX or
- *   a pointercancel gives 'cancel'.
- * - Held where holding cannot dig: no ring; a release after TAP_MS gives 'longRelease'.
- * - Only the first finger counts; others are ignored until it lifts.
+ * - Any release before HOLD_MS that never slid more than SLOP_PX → 'tap' (at the release point),
+ *   whether or not the ring had started.
+ * - Each frame `tick(t, canDig)` is told whether holding here would dig right now. While it
+ *   would, from RING_DELAY_MS the ring shows ('holdStart', then 'holdProgress'); if it stops
+ *   being diggable the ring goes ('holdStop'). The block may come into reach mid-hold.
+ * - At HOLD_MS 'holdComplete' whatever canDig says: the game decides (dig, walk beside a far
+ *   block, or nothing).
+ * - Sliding more than SLOP_PX, a pointercancel or cancel() → 'cancel'.
+ * - Only the first finger counts. A press older than STALE_MS is assumed to have lost its
+ *   release and is dropped when a new finger lands.
  */
-export const TAP_MS = 250;
 export const HOLD_MS = 500;
 export const SLOP_PX = 12;
-/** The ring appears a moment after the finger lands, so plain taps hardly flash it. */
-export const RING_DELAY_MS = 150;
+export const RING_DELAY_MS = 200;
+export const STALE_MS = 2000;
 
 export type GestureEvent =
   | { type: 'tap'; x: number; y: number }
   | { type: 'holdStart'; x: number; y: number; progress: number }
   | { type: 'holdProgress'; x: number; y: number; progress: number }
+  | { type: 'holdStop' }
   | { type: 'holdComplete'; x: number; y: number }
-  | { type: 'longRelease'; x: number; y: number }
   | { type: 'cancel' };
 
 interface Press {
@@ -28,7 +31,6 @@ interface Press {
   x: number;
   y: number;
   t0: number;
-  canHold: boolean;
   ringShown: boolean;
   /** Finished (completed, slid away or cancelled): waits silently for the finger to lift. */
   over: boolean;
@@ -42,35 +44,41 @@ export class GestureClassifier {
     return this.press !== null;
   }
 
-  down(id: number, x: number, y: number, t: number, canHold: boolean): GestureEvent[] {
-    if (this.press) return [];
-    this.press = { id, x, y, t0: t, canHold, ringShown: false, over: false };
-    return [];
+  /** The finger being followed, if any. */
+  get activeId(): number | null {
+    return this.press?.id ?? null;
   }
 
-  move(id: number, x: number, y: number, t: number): GestureEvent[] {
+  down(id: number, x: number, y: number, t: number): GestureEvent[] {
+    const out: GestureEvent[] = [];
+    if (this.press) {
+      if (t - this.press.t0 <= STALE_MS) return [];
+      if (!this.press.over) out.push({ type: 'cancel' });
+    }
+    this.press = { id, x, y, t0: t, ringShown: false, over: false };
+    return out;
+  }
+
+  move(id: number, x: number, y: number, _t: number): GestureEvent[] {
     const p = this.press;
     if (!p || p.id !== id || p.over) return [];
     if (Math.hypot(x - p.x, y - p.y) > SLOP_PX) {
       p.over = true;
       return [{ type: 'cancel' }];
     }
-    return this.tick(t);
+    return [];
   }
 
-  up(id: number, _x: number, _y: number, t: number): GestureEvent[] {
+  up(id: number, x: number, y: number, t: number): GestureEvent[] {
     const p = this.press;
     if (!p || p.id !== id) return [];
     this.press = null;
     if (p.over) return [];
-    const held = t - p.t0;
-    if (held <= TAP_MS) return [{ type: 'tap', x: p.x, y: p.y }];
-    if (!p.canHold) return [{ type: 'longRelease', x: p.x, y: p.y }];
-    if (held >= HOLD_MS) return [{ type: 'holdComplete', x: p.x, y: p.y }];
-    return [{ type: 'cancel' }];
+    if (t - p.t0 >= HOLD_MS) return [{ type: 'holdComplete', x: p.x, y: p.y }];
+    return [{ type: 'tap', x, y }];
   }
 
-  /** pointercancel for that finger; with no id, ends whatever is down (an overlay opened). */
+  /** pointercancel for that finger; with no id, ends whatever is down. */
   cancel(id?: number): GestureEvent[] {
     const p = this.press;
     if (!p || (id !== undefined && p.id !== id)) return [];
@@ -78,14 +86,19 @@ export class GestureClassifier {
     return p.over ? [] : [{ type: 'cancel' }];
   }
 
-  /** Call every frame: fills the ring and completes the hold even when the finger is still. */
-  tick(t: number): GestureEvent[] {
+  /** Call every frame with whether holding here would dig now. */
+  tick(t: number, canDig: boolean): GestureEvent[] {
     const p = this.press;
-    if (!p || p.over || !p.canHold) return [];
+    if (!p || p.over) return [];
     const held = t - p.t0;
     if (held >= HOLD_MS) {
       p.over = true;
       return [{ type: 'holdComplete', x: p.x, y: p.y }];
+    }
+    if (!canDig) {
+      if (!p.ringShown) return [];
+      p.ringShown = false;
+      return [{ type: 'holdStop' }];
     }
     if (held < RING_DELAY_MS) return [];
     const progress = held / HOLD_MS;
