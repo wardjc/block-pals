@@ -5,10 +5,12 @@ walks around a small friendly world by tapping the ground, digs and collects
 blocks, builds with them, and crafts new ones. A little pal called Pip follows along and
 talks, preferring a British voice. There is no way to lose, no scary bits, no
 adverts, no accounts and no tracking, and the game itself makes no network
-calls once it has loaded. Progress is saved on the tablet. Pip's voice comes
-from the tablet's own speech; it prefers a British voice but may use another
-English voice, and on some tablets there may be no voice at all (the game still
-works in silence, with pictures).
+calls once it has loaded. Progress is saved on the tablet. Pip's voice is pre-recorded with a free,
+open-source voice (Kokoro), so it sounds the same on every tablet and works
+offline. If a recording is ever missing, the game falls back to the tablet's own
+speech (it prefers a British voice), and with no voice at all it still works in
+silence, with pictures. To change what Pip says and re-record it, see
+`tools/voice/README.md`. Credits are in `THIRD_PARTY_NOTICES.md`.
 
 It is made to be played on a Galaxy Tab A8 in Chrome, installed to the home
 screen, and it works in aeroplane mode.

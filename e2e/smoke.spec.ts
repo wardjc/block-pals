@@ -12,6 +12,7 @@ type Dbg = {
   screenOf(x: number, y: number, z: number): { x: number; y: number };
   pick(x: number, y: number): { cell: Cell; normal: Cell } | null;
   outlineVisible(): boolean;
+  voiceLast(): { source: 'clip' | 'tts' | 'none'; key: string };
   digSound(): { starts: number; stops: number; active: boolean };
   camera(): { position: { x: number; y: number; z: number }; yaw: number; pitch: number; distance: number; close: boolean };
   game: {
@@ -198,4 +199,35 @@ test('works offline after first load', async ({ page, context }) => {
   await expect(page.locator('.hotbar')).toBeVisible();
   // The service worker cache served this reload, not the HTTP cache.
   expect(await page.evaluate(() => navigator.serviceWorker.controller !== null)).toBe(true);
+});
+
+test('Pip speaks from a pre-generated clip, also offline', async ({ page, context }) => {
+  const errors: string[] = [];
+  page.on('console', m => { if (m.type() === 'error') errors.push(m.text()); });
+  page.on('pageerror', e => errors.push(String(e)));
+  const clipOk: boolean[] = [];
+  page.on('response', r => { if (r.url().endsWith('.ogg')) clipOk.push(r.ok()); });
+
+  await page.goto(URL);
+  await expect(page.locator('canvas')).toBeVisible();
+  await page.evaluate(() => navigator.serviceWorker.ready.then(() => true));
+  await page.reload();
+  await page.waitForFunction(() => !!navigator.serviceWorker.controller);
+  // The first tap greets (and unlocks audio).
+  await page.locator('canvas').click({ position: { x: 640, y: 120 } });
+  await expect.poll(() => page.evaluate(() => window.__debug.voiceLast().source), { timeout: 15_000 }).toBe('clip');
+  expect(clipOk.length).toBeGreaterThan(0);
+  expect(clipOk.every(Boolean)).toBe(true);
+
+  // Offline: a new page load plays a (precached) clip again, not the tablet voice.
+  await context.setOffline(true);
+  const fromSw: boolean[] = [];
+  page.on('response', r => { if (r.url().endsWith('.ogg')) fromSw.push(r.fromServiceWorker()); });
+  await page.reload();
+  await expect(page.locator('canvas')).toBeVisible();
+  await page.locator('canvas').click({ position: { x: 640, y: 120 } });
+  await expect.poll(() => page.evaluate(() => window.__debug.voiceLast().source), { timeout: 15_000 }).toBe('clip');
+  expect(fromSw.length).toBeGreaterThan(0);
+  expect(fromSw.every(Boolean)).toBe(true);
+  expect(errors).toEqual([]);
 });

@@ -149,6 +149,11 @@ function play(fn: () => void): void {
 }
 
 export const sfx = {
+  /** The shared AudioContext and its master gain, for voice clips. Null when Web Audio is unavailable. */
+  audioOut: (): { ctx: AudioContext; out: AudioNode } | null => {
+    const c = ensure();
+    return c && master ? { ctx: c, out: master } : null;
+  },
   pop: () => play(() => blip(520, 0, 0.12, 'sine', 0.4, 780)),
   place: () => play(() => blip(400, 0, 0.1, 'triangle', 0.35, 330)),
   craft: () => play(() => [523, 659, 784].forEach((f, i) => blip(f, i * 0.09, 0.18, 'triangle', 0.3))),

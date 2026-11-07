@@ -14,7 +14,7 @@ import { sfx } from './audio/sfx';
 import { CraftScreen } from './ui/craft';
 import { Hud } from './ui/hud';
 import { Voice } from './audio/voice';
-import { LINE_ICONS, pickLine, type LineKey } from './content/lines';
+import { LINES, LINE_ICONS, pickLine, type LineKey } from './content/lines';
 import { Pal } from './game/pal';
 import { UsageTracker } from './core/usage';
 import { GrownUps } from './ui/grownups';
@@ -41,7 +41,11 @@ scene.add(pip);
 let pipHop = 0; // seconds into the happy hop; 0 = not hopping
 const BUBBLE_WORDS: Partial<Record<LineKey, string>> = { hello: 'Hi!', welcomeBack: 'Hi!', crafted: 'Yay!', collectedFirst: 'Yay!', upYouCome: 'Up!' };
 let bubbleTimer = 0;
-const voice = new Voice();
+const voice = new Voice(undefined, {
+  fetch: (...a) => fetch(...a),
+  base: import.meta.env.BASE_URL,
+  audio: () => sfx.audioOut(),
+});
 const lastSpoken: Partial<Record<LineKey, string>> = {};
 const speakVariant = (key: LineKey): void => {
   const text = pickLine(key, lastSpoken[key]);
@@ -222,6 +226,8 @@ window.addEventListener('blur', () => cancelPress());
 canvas.addEventListener('contextmenu', e => e.preventDefault());
 // Capture phase: HUD buttons stop propagation, but a first tap on them must still unlock audio and greet.
 window.addEventListener('pointerdown', () => { sfx.unlock(); greetOnce(); }, { once: true, capture: true });
+// Clips are fetched on first use; only the greetings are warmed once the first tap has unlocked audio.
+window.addEventListener('pointerdown', () => voice.prefetch([...LINES.hello, ...LINES.welcomeBack]), { once: true, capture: true });
 
 const camDir = { x: 0, z: 1 };
 
@@ -263,6 +269,7 @@ if (debugOn) {
     },
     dragging: () => gesture.dragging,
     digSound: () => sfx.digState(),
+    voiceLast: () => ({ ...voice.last }),
     game,
     usage,
     pal,
