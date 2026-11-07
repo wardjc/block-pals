@@ -13,7 +13,7 @@ import { GameScene } from './render/scene';
 import { sfx } from './audio/sfx';
 import { CraftScreen } from './ui/craft';
 import { Hud } from './ui/hud';
-import { Voice } from './audio/voice';
+import { Voice, audioLocked } from './audio/voice';
 import { LINES, LINE_ICONS, pickLine, type LineKey } from './content/lines';
 import { Pal } from './game/pal';
 import { LeadToVillage } from './game/lead';
@@ -255,7 +255,7 @@ window.addEventListener('blur', () => cancelPress());
 // A long press must not open a menu or select anything.
 canvas.addEventListener('contextmenu', e => e.preventDefault());
 // Capture phase: HUD buttons stop propagation, but a first tap on them must still unlock audio and greet.
-window.addEventListener('pointerdown', () => { sfx.unlock(); greetOnce(); }, { once: true, capture: true });
+window.addEventListener('pointerdown', () => { sfx.unlock(); greetOnce(); tapped = true; }, { once: true, capture: true });
 // Clips are fetched on first use; only the greetings are warmed once the first tap has unlocked audio.
 window.addEventListener('pointerdown', () => voice.prefetch([...LINES.hello, ...LINES.welcomeBack]), { once: true, capture: true });
 
@@ -276,8 +276,18 @@ function padStick(stick: [number, number]): [number, number] {
 
 // Neighbours greet on their own when he walks near; Pip leads him there once (until he has arrived).
 const greet = new GreetTracker();
+const villagerById = Object.fromEntries(VILLAGERS.map(v => [v.id, v])) as Record<VillagerId, (typeof VILLAGERS)[number]>;
 const lastHello: Partial<Record<VillagerId, string>> = {};
 const warmed = new Set<VillagerId>();
+// Neighbour lookups done once, not per frame.
+const warmZones = VILLAGERS.flatMap(def => {
+  const house = village.houses.find(h => h.id === def.house);
+  return house ? [{ def, rect: house.greetRect }] : [];
+});
+let currentHello: { text: string; speaker: string } | null = null;
+let tapped = false; // the first tap / button unlocks audio
+const feet: Cell = [0, 0, 0]; // reused every frame
+const isAudioLocked = (): boolean => audioLocked(tapped, sfx.audioOut()?.ctx.state);
 const lead = new LeadToVillage(village.route, village.square, flags.ledToVillage);
 let acted = false;
 game.on(e => { if (e.type !== 'idle') acted = true; });
@@ -288,7 +298,9 @@ const saveNow = (): void => { storeSave(storage, serialise(game, seed, flags)); 
 
 function updateVillage(dt: number): void {
   const paused = game.paused || hud.blockingOverlayOpen;
-  const cell = game.player.feetCell();
+  const pp = game.player.pos;
+  feet[0] = Math.floor(pp.x); feet[1] = Math.floor(pp.y); feet[2] = Math.floor(pp.z);
+  const cell = feet;
   const ev = lead.update(dt, cell, acted, paused);
   acted = false;
   if (ev === 'start') { pal.setLead(village.route, () => lead.targetIndex()); pendingPip = 'letsMeetNeighbours'; }
@@ -301,16 +313,20 @@ function updateVillage(dt: number): void {
   }
   if (paused) return;
   // Warm the clips of a neighbour he is walking towards.
-  for (const def of VILLAGERS) {
-    const house = village.houses.find(h => h.id === def.house);
-    if (!house || warmed.has(def.id)) continue;
-    const r = house.greetRect;
+  for (const { def, rect: r } of warmZones) {
+    if (warmed.has(def.id)) continue;
     if (cell[0] >= r.x0 - 12 && cell[0] <= r.x1 + 12 && cell[2] >= r.z0 - 12 && cell[2] <= r.z1 + 12) {
       warmed.add(def.id);
       voice.prefetch(VILLAGER_LINES[def.id], def.speaker);
     }
   }
-  if (greet.takeCancel()) { voice.stop(); hud.hideBubble(); }
+  // Walking away stops the hello itself, never a Pip line or break reminder that has replaced it.
+  if (greet.takeCancel() && currentHello) {
+    if (voice.stopIfCurrent(currentHello.text, currentHello.speaker)) hud.hideBubble();
+    currentHello = null;
+  }
+  // Audio still locked (before the first tap): hold hellos and Pip's queued line instead of spending them silently.
+  if (isAudioLocked()) return;
   const speaking = voice.speaking();
   // Pip waits for a neighbour to finish (and the other way round): nobody talks over anybody.
   if (pendingPip && !speaking) {
@@ -320,9 +336,10 @@ function updateVillage(dt: number): void {
   }
   const hello = greet.update(cell, village.houses, speaking || pendingPip !== null || gesture.busy);
   if (hello) {
-    const def = VILLAGERS.find(v => v.id === hello)!;
+    const def = villagerById[hello];
     const text = pickVillagerLine(hello, lastHello[hello]);
     lastHello[hello] = text;
+    currentHello = { text, speaker: def.speaker };
     voice.say(text, def.speaker);
     hud.showBubble(def.icon, 'Hi!');
     clearTimeout(bubbleTimer);
@@ -413,6 +430,7 @@ function frame(now: number): void {
     } else {
       game.player.setStick(0, 0);
     }
+    if (pressed.length > 0) { sfx.unlock(); tapped = true; }
     for (const action of pressed) game.padAction(action);
     if (look[0] !== 0 || look[1] !== 0) {
       scene.rig.turn(look[0], look[1], dt);

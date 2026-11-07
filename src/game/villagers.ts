@@ -24,34 +24,47 @@ export class GreetTracker {
 
   constructor(private readonly now: () => number = () => performance.now()) {}
 
-  /** Call every frame. Returns the villager to greet, or null. */
+  private zonesFor: HouseInfo[] | null = null;
+  private zones: Array<{ id: VillagerId; house: HouseInfo }> = [];
+
+  private static inZone(house: HouseInfo, c: Cell): boolean {
+    const r = house.greetRect;
+    return c[0] >= r.x0 && c[0] <= r.x1 && c[2] >= r.z0 && c[2] <= r.z1 && Math.abs(c[1] - house.groundY) <= 8;
+  }
+
+  /** Call every frame. Returns the villager to greet, or null. No allocation after the first call per house list. */
   update(playerCell: Cell, houses: HouseInfo[], busy: boolean): VillagerId | null {
+    if (this.zonesFor !== houses) { // the house list is fixed for a world: look each villager's house up once
+      this.zonesFor = houses;
+      this.zones = [];
+      for (const v of VILLAGERS) {
+        const house = houses.find(h => h.id === v.house);
+        if (house) this.zones.push({ id: v.id, house });
+      }
+    }
     const t = this.now();
-    const inZone = (house: HouseInfo): boolean => {
-      const r = house.greetRect;
-      return playerCell[0] >= r.x0 && playerCell[0] <= r.x1 && playerCell[2] >= r.z0 && playerCell[2] <= r.z1
-        && Math.abs(playerCell[1] - house.groundY) <= 8;
-    };
 
     // Walked away from the one who is still talking: stop that line.
     if (this.active) {
-      const house = houses.find(h => h.id === VILLAGERS.find(v => v.id === this.active!.id)!.house);
+      const activeId = this.active.id;
       if (t - this.active.at >= GREET_SPEAK_MS) this.active = null;
-      else if (!house || !inZone(house)) {
-        this.cancel = true;
-        this.active = null;
+      else {
+        let zone: HouseInfo | undefined;
+        for (const z of this.zones) if (z.id === activeId) zone = z.house;
+        if (!zone || !GreetTracker.inZone(zone, playerCell)) {
+          this.cancel = true;
+          this.active = null;
+        }
       }
     }
 
     let chosen: VillagerId | null = null;
-    for (const v of VILLAGERS) {
-      const house = houses.find(h => h.id === v.house);
-      if (!house) continue;
-      if (!inZone(house)) { this.visited.delete(v.id); continue; }
-      if (chosen || busy || this.visited.has(v.id)) continue;
+    for (const { id, house } of this.zones) {
+      if (!GreetTracker.inZone(house, playerCell)) { this.visited.delete(id); continue; }
+      if (chosen || busy || this.visited.has(id)) continue;
       if (t - this.lastAny < GREET_GAP_MS) continue;
-      if (t - (this.lastGreeted.get(v.id) ?? -Infinity) < GREET_COOLDOWN_MS) { this.visited.add(v.id); continue; }
-      chosen = v.id;
+      if (t - (this.lastGreeted.get(id) ?? -Infinity) < GREET_COOLDOWN_MS) { this.visited.add(id); continue; }
+      chosen = id;
     }
     if (chosen) {
       this.visited.add(chosen);

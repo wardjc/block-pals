@@ -3,7 +3,7 @@ import { DOOR_EMBLEMS, VILLAGER_LINES, VILLAGERS, pickVillagerLine } from '../..
 import { GreetTracker } from '../../src/game/villagers';
 import { generateWorld } from '../../src/core/worldgen';
 import { clipKey } from '../../src/audio/voiceKey';
-import { Voice } from '../../src/audio/voice';
+import { Voice, audioLocked } from '../../src/audio/voice';
 
 const { village } = generateWorld(2026);
 const houses = village.houses;
@@ -146,5 +146,44 @@ describe('Voice.say speaker', () => {
     expect(voice.speaking()).toBe(false);
     await Promise.resolve();
     expect(calls[0]).toContain('manifest');
+  });
+});
+
+describe('hello cancelling and locked audio', () => {
+  const fake = () => new Voice(null, { fetch: async () => ({ ok: false }) as Response, base: '/', audio: () => null });
+
+  it('walking away stops the hello itself', () => {
+    const voice = fake();
+    voice.say('Hello, neighbour! Welcome to my bakery.', 'bramble');
+    expect(voice.stopIfCurrent('Hello, neighbour! Welcome to my bakery.', 'bramble')).toBe(true);
+    expect(voice.speaking()).toBe(false);
+  });
+
+  it('never cuts a Pip line or break reminder that replaced the hello', () => {
+    const voice = fake();
+    voice.say('Hello, neighbour! Welcome to my bakery.', 'bramble');
+    voice.say("Let's have a stretch! Wiggle your arms!"); // Pip's break reminder took over
+    expect(voice.stopIfCurrent('Hello, neighbour! Welcome to my bakery.', 'bramble')).toBe(false);
+    expect(voice.speaking()).toBe(true);
+    // Same words from another speaker are not the same line either.
+    expect(voice.stopIfCurrent("Let's have a stretch! Wiggle your arms!", 'bramble')).toBe(false);
+    expect(voice.speaking()).toBe(true);
+  });
+
+  it('holds one-shot lines while audio is locked, releases them once it runs', () => {
+    expect(audioLocked(false, null)).toBe(true); // before the first tap
+    expect(audioLocked(false, 'running')).toBe(true);
+    expect(audioLocked(true, 'suspended')).toBe(true); // tapped, context still waking up
+    expect(audioLocked(true, 'running')).toBe(false);
+    expect(audioLocked(true, null)).toBe(false); // no Web Audio at all: speech fallback still works
+  });
+
+  it('a held hello keeps its cooldown and visit unspent', () => {
+    const houses = generateWorld(2026).village.houses;
+    const g = new GreetTracker(() => 0);
+    const r = houses.find(h => h.id === 'bakery')!.rect;
+    const cell: [number, number, number] = [r.x0 + 3, 6, r.z0 + 3];
+    // The caller does not call update at all while locked; once unlocked the greeting is still there.
+    expect(g.update(cell, houses, false)).toBe('bramble');
   });
 });

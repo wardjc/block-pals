@@ -1,5 +1,14 @@
 import { clipKey } from './voiceKey';
 
+/**
+ * True while speech cannot be heard yet: before the first tap, or while a created context is still
+ * suspended. Callers hold their one-shot lines (hellos, Pip's lead) until it is false instead of
+ * spending them silently. Without Web Audio at all (state null after a tap) speech still works.
+ */
+export function audioLocked(tapped: boolean, ctxState: string | null | undefined): boolean {
+  return !tapped || (ctxState != null && ctxState !== 'running');
+}
+
 export function pickVoice(voices: SpeechSynthesisVoice[]): SpeechSynthesisVoice | null {
   const gb = voices.filter((v) => v.lang.replace('_', '-').toLowerCase() === 'en-gb');
   const en = voices.filter((v) => /^en([-_]|$)/i.test(v.lang));
@@ -57,6 +66,7 @@ export class Voice {
   private current: { src: AudioBufferSourceNode; gain: GainNode } | null = null;
   private token = 0;
   private endsAt = 0;
+  private requested = '';
 
   constructor(synth?: SpeechSynthesis | null, private deps?: ClipDeps) {
     this.synth = synth === undefined ? (typeof speechSynthesis !== 'undefined' ? speechSynthesis : null) : synth;
@@ -87,14 +97,25 @@ export class Voice {
 
   /** Stops whatever is being spoken now (clip or speech). */
   stop(): void {
+    this.requested = '';
     this.token++;
     this.endsAt = 0;
     this.stopClip();
     try { this.synth?.cancel(); } catch { /* speech is optional */ }
   }
 
+  /** Stops the speech only if `text` by `speaker` is still the latest thing asked for (nothing replaced it). */
+  stopIfCurrent(text: string, speaker = 'pip'): boolean {
+    let key = '';
+    try { key = clipKey(speaker, text); } catch { return false; }
+    if (key !== this.requested) return false;
+    this.stop();
+    return true;
+  }
+
   say(text: string, speaker = 'pip'): void {
     if (!text) return; // never an empty utterance: it would cancel the line that is playing
+    try { this.requested = clipKey(speaker, text); } catch { this.requested = ''; }
     // Provisional until the clip's real length is known; plain speech is estimated from its length.
     this.endsAt = performance.now() + Math.max(2500, text.length * 75);
     if (!this.deps) {
