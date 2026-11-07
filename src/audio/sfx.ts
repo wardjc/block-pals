@@ -10,7 +10,22 @@ function ensure(): AudioContext | null {
     ctx = new Ctor();
     master = ctx.createGain();
     master.gain.value = 0.5;
-    master.connect(ctx.destination);
+    // Safety limiter: a voice clip (peak ~0.54 after master) plus a pop or two (~0.2 each) can approach
+    // full scale. Threshold -6 dB with a hard ratio keeps the sum from clipping; it does nothing at normal levels.
+    let sink: AudioNode = ctx.destination;
+    try {
+      const lim = ctx.createDynamicsCompressor();
+      lim.threshold.value = -6;
+      lim.knee.value = 6;
+      lim.ratio.value = 12;
+      lim.attack.value = 0.003;
+      lim.release.value = 0.15;
+      lim.connect(ctx.destination);
+      sink = lim;
+    } catch {
+      /* no compressor: connect straight through */
+    }
+    master.connect(sink);
   } catch {
     ctx = null;
     master = null;

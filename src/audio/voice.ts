@@ -20,13 +20,31 @@ export interface ClipDeps {
   audio: () => { ctx: AudioContext; out: AudioNode } | null;
   /** How long to wait for a just-unlocked context to start running before falling back. */
   resumeWaitMs?: number;
+  /** Give up on a manifest/clip fetch after this long (default 4000). */
+  timeoutMs?: number;
 }
 
 interface ManifestEntry { file: string; text: string; duration: number }
 type Manifest = Record<string, ManifestEntry>;
 export interface VoiceLast { source: 'clip' | 'tts' | 'none'; key: string }
 
-const CLIP_GAIN = 1.8; // clips are normalised to 0.9 peak and the master gain is 0.5
+// Clips are normalised to a 0.9 peak and the master gain is 0.5, so 1.2 puts speech peaks near 0.54: clearly
+// louder than the sfx blips (about 0.2 after master) without leaving room to clip when a pop lands mid-sentence.
+// The master also feeds a limiter (sfx.ts) as a safety net.
+const CLIP_GAIN = 1.2;
+const FETCH_TIMEOUT_MS = 4000;
+
+/** fetch that gives up after FETCH_TIMEOUT_MS (a stalled network must fall back to speech, not wait forever). */
+function timedFetch(d: ClipDeps, url: string): Promise<Response> {
+  return new Promise((resolve, reject) => {
+    const ac = typeof AbortController !== 'undefined' ? new AbortController() : null;
+    const t = setTimeout(() => { ac?.abort(); reject(new Error('timeout')); }, d.timeoutMs ?? FETCH_TIMEOUT_MS);
+    d.fetch(url, ac ? { signal: ac.signal } : undefined).then(
+      (r) => { clearTimeout(t); resolve(r); },
+      (e) => { clearTimeout(t); reject(e); },
+    );
+  });
+}
 
 export class Voice {
   readonly available: boolean;
@@ -62,6 +80,7 @@ export class Voice {
   }
 
   say(text: string, speaker = 'pip'): void {
+    if (!text) return; // never an empty utterance: it would cancel the line that is playing
     if (!this.deps) {
       this.speak(text);
       return;
@@ -104,7 +123,7 @@ export class Voice {
     if (!this.manifest) {
       const d = this.deps!;
       this.manifest = (async () => {
-        const res = await d.fetch(`${d.base}voice/manifest.json`);
+        const res = await timedFetch(d, `${d.base}voice/manifest.json`);
         if (!res.ok) throw new Error('manifest');
         return (await res.json()) as Manifest;
       })();
@@ -123,7 +142,7 @@ export class Voice {
         if (!entry) throw new Error('no clip');
         const out = d.audio();
         if (!out) throw new Error('no audio');
-        const res = await d.fetch(`${d.base}voice/${entry.file}`);
+        const res = await timedFetch(d, `${d.base}voice/${entry.file}`);
         if (!res.ok) throw new Error('clip');
         return await out.ctx.decodeAudioData(await res.arrayBuffer());
       })();

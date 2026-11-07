@@ -8,7 +8,7 @@ const manifest = JSON.parse(readFileSync('public/voice/manifest.json', 'utf8')) 
 
 describe('voice clips', () => {
   it('no line contains a cheer or sound-effect word (the voice would read it out)', () => {
-    for (const l of all) expect(l).not.toMatch(/\b(whee+|yippee|woo-?hoo|yay|hooray|hee hee|wahoo)\b/i);
+    for (const l of all) expect(l).not.toMatch(/\b(whee+|yippee|woo-?hoo|yay|hooray|hee hee|ha ha|wahoo|ooh+|hmm+|ta-?da|hup)\b/i);
   });
   it('every line has a clip in the manifest (run `npm run voice:lines` then tools/voice/generate.py)', () => {
     const missing = all.filter((l) => !manifest[clipKey('pip', l)]);

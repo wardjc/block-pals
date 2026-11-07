@@ -14,6 +14,11 @@
   "text": "Wonderful! One more for your bag!",
   "duration": 2.52
  },
+ "pip/11d3afc7feae": {
+  "file": "pip/11d3afc7feae.ogg",
+  "text": "I can't get there. Let's try another way!",
+  "duration": 3.09
+ },
  "pip/128a2de9e6c6": {
   "file": "pip/128a2de9e6c6.ogg",
   "text": "Let's use some of those to make room!",
@@ -48,11 +53,6 @@
   "file": "pip/293f3438b325.ogg",
   "text": "What shall we build today?",
   "duration": 1.53
- },
- "pip/2ab439f58ab9": {
-  "file": "pip/2ab439f58ab9.ogg",
-  "text": "Hup! Up you come!",
-  "duration": 1.84
  },
  "pip/3d3f19e02046": {
   "file": "pip/3d3f19e02046.ogg",
@@ -99,25 +99,25 @@
   "text": "We need a little bit more first.",
   "duration": 1.89
  },
- "pip/64dd1df5f78a": {
-  "file": "pip/64dd1df5f78a.ogg",
-  "text": "Ooh, what are you making?",
-  "duration": 1.41
+ "pip/6bd21f6c0080": {
+  "file": "pip/6bd21f6c0080.ogg",
+  "text": "Look at your new thing!",
+  "duration": 1.33
  },
  "pip/6c85102e2c41": {
   "file": "pip/6c85102e2c41.ogg",
   "text": "Oops, I can't reach that. Let's try again!",
   "duration": 3.25
  },
+ "pip/744ce6e3148a": {
+  "file": "pip/744ce6e3148a.ogg",
+  "text": "Lovely! You got one!",
+  "duration": 2.0
+ },
  "pip/808948b8ae82": {
   "file": "pip/808948b8ae82.ogg",
   "text": "Whoops-a-daisy! Up you come!",
   "duration": 2.42
- },
- "pip/833a137acefd": {
-  "file": "pip/833a137acefd.ogg",
-  "text": "Ta-da! Look at your new thing!",
-  "duration": 2.5
  },
  "pip/848e18d7e860": {
   "file": "pip/848e18d7e860.ogg",
@@ -194,10 +194,10 @@
   "text": "Hold your finger on a tree to get wood!",
   "duration": 2.13
  },
- "pip/cffdf0e1acb6": {
-  "file": "pip/cffdf0e1acb6.ogg",
-  "text": "Hmm, I can't get there. Let's try another way!",
-  "duration": 3.41
+ "pip/c47a010be57a": {
+  "file": "pip/c47a010be57a.ogg",
+  "text": "What are you making?",
+  "duration": 1.25
  },
  "pip/d293ee33a54c": {
   "file": "pip/d293ee33a54c.ogg",
@@ -249,14 +249,14 @@
   "text": "Let's stretch up high! Reach for the sky!",
   "duration": 2.93
  },
- "pip/f925275cc5a1": {
-  "file": "pip/f925275cc5a1.ogg",
-  "text": "Ooh, lovely! You got one!",
-  "duration": 2.16
- },
  "pip/f9296dfd9799": {
   "file": "pip/f9296dfd9799.ogg",
   "text": "Let's collect the blocks we need!",
   "duration": 1.71
+ },
+ "pip/fb5c4ec5a61f": {
+  "file": "pip/fb5c4ec5a61f.ogg",
+  "text": "Up you come!",
+  "duration": 0.91
  }
 }

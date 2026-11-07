@@ -4,7 +4,12 @@ import { clipKey } from '../../src/audio/voiceKey';
 
 const TEXT = 'Hiya! Ready for an adventure?';
 const KEY = clipKey('pip', TEXT);
-const manifest = { [KEY]: { file: `${KEY}.ogg`, text: TEXT, duration: 2 } };
+const TEXT2 = 'Hello! Shall we play?';
+const KEY2 = clipKey('pip', TEXT2);
+const manifest = {
+  [KEY]: { file: `${KEY}.ogg`, text: TEXT, duration: 2 },
+  [KEY2]: { file: `${KEY2}.ogg`, text: TEXT2, duration: 2 },
+};
 
 interface Src { start: ReturnType<typeof vi.fn>; stop: ReturnType<typeof vi.fn>; onended: (() => void) | null }
 interface Rig {
@@ -15,7 +20,7 @@ interface Rig {
   deps: ClipDeps;
 }
 
-function rig(opts: { manifest?: unknown; manifestFails?: boolean; clip?: 'ok' | 'missing'; decodeFails?: boolean; state?: string; noAudio?: boolean } = {}): Rig {
+function rig(opts: { manifest?: unknown; manifestFails?: boolean; clip?: 'ok' | 'missing'; decodeFails?: boolean; state?: string; noAudio?: boolean; gate?: (url: string) => Promise<void> | undefined; hang?: boolean } = {}): Rig {
   const sources: Src[] = [];
   const ctx = {
     state: opts.state ?? 'running',
@@ -31,9 +36,13 @@ function rig(opts: { manifest?: unknown; manifestFails?: boolean; clip?: 'ok' | 
     }),
     createGain: vi.fn(() => ({ gain: { value: 1 }, connect: vi.fn(), disconnect: vi.fn() })),
   };
+  let manifestCalls = 0;
   const fetchFn = vi.fn(async (url: string) => {
+    if (opts.hang) return new Promise<Response>(() => {});
+    await opts.gate?.(url);
     if (url.endsWith('manifest.json')) {
-      if (opts.manifestFails) throw new Error('offline');
+      manifestCalls++;
+      if (opts.manifestFails && manifestCalls === 1) throw new Error('offline');
       return { ok: true, json: async () => opts.manifest ?? manifest } as Response;
     }
     if (opts.clip === 'missing') return { ok: false, status: 404 } as Response;
@@ -45,6 +54,7 @@ function rig(opts: { manifest?: unknown; manifestFails?: boolean; clip?: 'ok' | 
     base: '/block-pals/',
     audio: () => (opts.noAudio ? null : { ctx: ctx as unknown as AudioContext, out: {} as AudioNode }),
     resumeWaitMs: 5,
+    timeoutMs: 50,
   };
   vi.stubGlobal('SpeechSynthesisUtterance', class { constructor(public text: string) {} });
   return { voice: new Voice(synth as unknown as SpeechSynthesis, deps), synth, sources, fetch: fetchFn, deps };
@@ -63,8 +73,8 @@ describe('Voice clips', () => {
     expect(r.sources[0].start).toHaveBeenCalled();
     expect(r.synth.speak).not.toHaveBeenCalled();
     expect(r.voice.last).toEqual({ source: 'clip', key: KEY });
-    expect(r.fetch).toHaveBeenCalledWith('/block-pals/voice/manifest.json');
-    expect(r.fetch).toHaveBeenCalledWith(`/block-pals/voice/${KEY}.ogg`);
+    expect(r.fetch).toHaveBeenCalledWith('/block-pals/voice/manifest.json', expect.anything());
+    expect(r.fetch).toHaveBeenCalledWith(`/block-pals/voice/${KEY}.ogg`, expect.anything());
   });
   it('fetches the manifest once and each clip once (decode cache)', async () => {
     const r = rig();
@@ -154,5 +164,54 @@ describe('Voice clips', () => {
     await settle();
     expect(r.fetch).toHaveBeenCalledTimes(2); // manifest + clip, once each
     expect(r.sources).toHaveLength(1);
+  });
+  it('an empty line returns early: current clip keeps playing, nothing cancelled', async () => {
+    const r = rig();
+    r.voice.say(TEXT);
+    await settle();
+    r.synth.cancel.mockClear();
+    r.voice.say('');
+    await settle();
+    expect(r.synth.cancel).not.toHaveBeenCalled();
+    expect(r.sources[0].stop).not.toHaveBeenCalled();
+    expect(r.synth.speak).not.toHaveBeenCalled();
+  });
+  it('out of order: the first load finishing late never plays and never speaks', async () => {
+    let release!: () => void;
+    const held = new Promise<void>((res) => { release = res; });
+    const r = rig({ gate: (url) => (url.endsWith(`${KEY}.ogg`) ? held : undefined) });
+    r.voice.say(TEXT); // slow
+    await settle();
+    r.voice.say(TEXT2); // fast
+    await settle();
+    expect(r.sources).toHaveLength(1);
+    release();
+    await settle();
+    expect(r.sources).toHaveLength(1);
+    expect(r.synth.speak).not.toHaveBeenCalled();
+    expect(r.voice.last).toEqual({ source: 'clip', key: KEY2 });
+  });
+  it('a stalled network times out and falls back to speech', async () => {
+    vi.useFakeTimers();
+    try {
+      const r = rig({ hang: true });
+      r.voice.say(TEXT);
+      await vi.advanceTimersByTimeAsync(60);
+      expect(r.synth.speak).toHaveBeenCalledTimes(1);
+      expect(r.sources).toHaveLength(0);
+    } finally {
+      vi.useRealTimers();
+    }
+  });
+  it('retries the manifest after a failed load', async () => {
+    const r = rig({ manifestFails: true });
+    r.voice.say(TEXT);
+    await settle();
+    expect(r.synth.speak).toHaveBeenCalledTimes(1);
+    r.voice.say(TEXT);
+    await settle();
+    expect(r.sources).toHaveLength(1);
+    expect(r.synth.speak).toHaveBeenCalledTimes(1);
+    expect(r.voice.last.source).toBe('clip');
   });
 });

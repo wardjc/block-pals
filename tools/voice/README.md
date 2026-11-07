@@ -16,12 +16,12 @@ tools/voice/.venv/bin/pip install -r tools/voice/requirements.txt
 Then, after changing any line in `src/content/lines.ts`:
 
 ```
-npm run voice:lines          # writes tools/voice/lines.json (git-ignored)
+npm run voice:lines          # writes tools/voice/lines.json (committed, so review shows which lines changed)
 tools/voice/.venv/bin/python tools/voice/generate.py --speaker pip --lines tools/voice/lines.json --out public/voice --prune
 ```
 
 The model files (`kokoro-v1.0.int8.onnx`, `voices-v1.0.bin`, about 100 MB) are downloaded on the first run into the
-git-ignored `.voice-cache/`. Or pass your own with `--model` and `--voices`.
+git-ignored `.voice-cache/`. Or pass your own with `--model` and `--voices`. Both files are checked against pinned SHA-256 sums; the tool stops on a mismatch.
 Only missing clips are generated (`--no-only-missing` redoes everything). `--prune` deletes clips no line uses.
 
 A unit test fails if any line has no clip in `public/voice/manifest.json`, so you cannot forget this step.
@@ -31,7 +31,7 @@ A unit test fails if any line has no clip in `public/voice/manifest.json`, so yo
 - `voices.json`: one entry per speaker (voice blend, tempo, pitch lift). Only `pip` has lines today.
 - `pronunciations.json`: word to respelling, used only when making audio; the text on screen is unchanged.
   An empty respelling means "say it as written". **Please listen for these names** on the tablet:
-  Pip, Bramble, Pebble, Fern, Willow, Cog, and the phrases "Whoops-a-daisy" and "Ta-da". If one sounds odd,
+  Pip, Bramble, Pebble, Fern, Willow, Cog, and the phrase "Whoops-a-daisy". If one sounds odd,
   put a phonetic respelling in the file (for example `"Cog": "Kogg"`) and regenerate.
 - Clip name = first 12 hex digits of the SHA-1 of the line text (whitespace collapsed, curly quotes straightened):
   `public/voice/pip/<hash>.ogg`. Editing a line changes its hash, so it is regenerated, and the old file shows up as stale.

@@ -35,14 +35,32 @@ def respell(text: str, prons: dict) -> str:
     return text
 
 
+SHA256 = {
+    MODEL_NAME: "6e742170d309016e5891a994e1ce1559c702a2ccd0075e67ef7157974f6406cb",
+    VOICES_NAME: "bca610b8308e8d99f32e6fe4197e7ec01679264efed0cac9140fe9c29f1fbf7d",
+}
+
+
+def verify(path, name: str) -> None:
+    h = hashlib.sha256()
+    with open(path, "rb") as f:
+        for block in iter(lambda: f.read(1 << 20), b""):
+            h.update(block)
+    if h.hexdigest() != SHA256[name]:
+        sys.exit(f"SHA-256 mismatch for {path}\n  expected {SHA256[name]}\n  got      {h.hexdigest()}\n"
+                 "Delete it (or fix --model/--voices) so the pinned Kokoro v1.0 file is used.")
+
+
 def ensure_model(path, name: str) -> str:
     if path:
+        verify(path, name)
         return path
     CACHE.mkdir(exist_ok=True)
     p = CACHE / name
     if not p.exists():
         print(f"downloading {name} -> {p}")
         urllib.request.urlretrieve(BASE + name, p)
+    verify(p, name)
     return str(p)
 
 
