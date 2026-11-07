@@ -64,9 +64,28 @@ export class Hud {
     ok.setAttribute('aria-label', 'Carry on');
     this.breakBubble.append(pic, ok);
     root.appendChild(this.breakBubble);
+
+    // Fills around the finger while a press and hold digs (spec §7a). Never takes taps.
+    this.digRing.className = 'dig-ring';
+    this.digRing.hidden = true;
+    root.appendChild(this.digRing);
+  }
+
+  /** Shows the dig ring centred on the finger, filled to `progress` (0..1). */
+  showDigRing(x: number, y: number, progress: number): void {
+    const p = Math.max(0, Math.min(1, progress));
+    this.digRing.style.left = `${x}px`;
+    this.digRing.style.top = `${y}px`;
+    this.digRing.style.setProperty('--p', String(p));
+    this.digRing.hidden = false;
+  }
+
+  hideDigRing(): void {
+    this.digRing.hidden = true;
   }
 
   private readonly breakBubble = document.createElement('div');
+  private readonly digRing = document.createElement('div');
   private onBreakDone: (() => void) | undefined;
 
   /** Stays until the big tick is tapped; never blocks play. */
