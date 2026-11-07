@@ -1,6 +1,6 @@
 import { describe, expect, it } from 'vitest';
-import { BlockId } from '../../src/core/blocks';
-import { findPath, isStandable, nearestStandable, pathTowards, type Cell } from '../../src/core/pathfind';
+import { BLOCKS, BlockId } from '../../src/core/blocks';
+import { canStep, findPath, isStandable, nearestStandable, pathTowards, smoothPath, type Cell } from '../../src/core/pathfind';
 import { World } from '../../src/core/world';
 
 function flatWorld(): World {
@@ -57,7 +57,7 @@ describe('findPath', () => {
     let previous: Cell = [1, 1, 3];
     for (const cell of path!) {
       expect(isStandable(world, cell)).toBe(true);
-      expect(Math.abs(cell[0] - previous[0]) + Math.abs(cell[2] - previous[2])).toBe(1);
+      expect(canStep(world, previous, cell)).toBe(true);
       expect(Math.abs(cell[1] - previous[1])).toBeLessThanOrEqual(1);
       previous = cell;
     }
@@ -67,7 +67,7 @@ describe('findPath', () => {
   it('respects maxNodes', () => {
     const world = flatWorld();
     expect(findPath(world, [1, 1, 1], [7, 1, 7], 2)).toBeNull();
-    expect(findPath(world, [1, 1, 1], [7, 1, 7], 100)).toHaveLength(12);
+    expect(findPath(world, [1, 1, 1], [7, 1, 7], 100)).toHaveLength(6);
     expect(findPath(world, [1, 1, 1], [2, 1, 1], 0)).toBeNull();
   });
 
@@ -135,5 +135,112 @@ describe('pathTowards', () => {
 
   it('returns null from a cell that cannot be stood on', () => {
     expect(pathTowards(flatWorld(), [1, 0, 1], [4, 1, 1])).toBeNull();
+  });
+});
+
+
+describe('natural routes', () => {
+  it('diagonal route is shorter than the old 4-neighbour route', () => {
+    const world = flatWorld();
+    const start: Cell = [1, 1, 1];
+    const end: Cell = [7, 1, 5];
+    const path = findPath(world, start, end)!;
+    let cost = 0;
+    let previous = start;
+    for (const cell of path) {
+      expect(canStep(world, previous, cell)).toBe(true);
+      cost += Math.hypot(cell[0] - previous[0], cell[2] - previous[2]);
+      previous = cell;
+    }
+    expect(cost).toBeCloseTo(2 + 4 * Math.SQRT2);
+    expect(cost).toBeLessThan(pathTowards(world, start, end)!.path.length);
+    expect(findPath(world, start, end)).toEqual(path);
+  });
+
+  it('no corner cutting between two diagonal solids', () => {
+    const world = flatWorld();
+    for (const [x, z] of [[3, 2], [2, 3]]) {
+      for (const y of [1, 2]) world.set(x, y, z, BlockId.Stone);
+    }
+    expect(canStep(world, [2, 1, 2], [3, 1, 3])).toBe(false);
+    const path = findPath(world, [2, 1, 2], [3, 1, 3])!;
+    expect(path.length).toBeGreaterThan(1);
+    expect(path[0]).not.toEqual([3, 1, 3]);
+  });
+
+  it('diagonal respects head room / step <=1, with flanks at either level', () => {
+    const world = flatWorld();
+    world.set(3, 1, 3, BlockId.Stone);
+    world.set(3, 1, 2, BlockId.Stone);
+    expect(canStep(world, [2, 1, 2], [3, 2, 3])).toBe(true);
+    expect(canStep(world, [3, 2, 3], [2, 1, 2])).toBe(true);
+    world.set(2, 3, 3, BlockId.Stone); // lower flank ceiling blocks ascent
+    expect(canStep(world, [2, 1, 2], [3, 2, 3])).toBe(false);
+    world.set(2, 3, 3, BlockId.Air);
+    world.set(3, 2, 3, BlockId.Stone);
+    expect(canStep(world, [2, 1, 2], [3, 3, 3])).toBe(false);
+  });
+});
+
+describe('smoothPath', () => {
+  it('checks the segment from the excluded start and reduces open ground to the goal', () => {
+    const world = flatWorld();
+    const from: Cell = [1, 1, 1];
+    const path = findPath(world, from, [7, 1, 5])!;
+    const original = structuredClone(path);
+    expect(smoothPath(world, path, from)).toEqual([[7, 1, 5]]);
+    const withoutStart = smoothPath(world, path);
+    expect(withoutStart[0]).toEqual(path[0]);
+    expect(withoutStart.at(-1)).toEqual(path.at(-1));
+    expect(path).toEqual(original);
+    expect(smoothPath(world, [], from)).toEqual([]);
+  });
+
+  it('smoothing keeps endpoints and never clips a solid (random worlds, seeded)', () => {
+    let seed = 7391;
+    const random = () => ((seed = (Math.imul(seed, 1664525) + 1013904223) >>> 0) / 2 ** 32);
+    let routes = 0;
+    for (let trial = 0; trial < 40; trial++) {
+      const world = flatWorld();
+      for (let x = 1; x < 8; x++) for (let z = 1; z < 8; z++) {
+        if ((x === 1 && z === 1) || (x === 7 && z === 7)) continue;
+        if (random() < 0.22) for (const y of [1, 2]) world.set(x, y, z, BlockId.Stone);
+        else if (random() < 0.08) world.set(x, 0, z, BlockId.Air);
+      }
+      const from: Cell = [1, 1, 1];
+      const path = findPath(world, from, [7, 1, 7]);
+      if (!path) continue;
+      routes++;
+      const smooth = smoothPath(world, path, from);
+      expect(smooth.at(-1)).toEqual(path.at(-1));
+      expect(smooth.length).toBeLessThanOrEqual(path.length);
+      let a = from;
+      for (const b of smooth) {
+        const count = Math.ceil(Math.hypot(b[0] - a[0], b[2] - a[2]) / 0.025);
+        for (let i = 0; i <= count; i++) {
+          const x = a[0] + 0.5 + (b[0] - a[0]) * i / count;
+          const z = a[2] + 0.5 + (b[2] - a[2]) * i / count;
+          expect(isStandable(world, [Math.floor(x), 1, Math.floor(z)])).toBe(true);
+          for (let bx = Math.floor(x - 0.3); bx <= Math.floor(x + 0.3); bx++) {
+            for (let bz = Math.floor(z - 0.3); bz <= Math.floor(z + 0.3); bz++) {
+              const gap = Math.hypot(Math.max(bx - x, 0, x - bx - 1), Math.max(bz - z, 0, z - bz - 1));
+              if (gap < 0.3 - 1e-8) {
+                expect(BLOCKS[world.get(bx, 1, bz)].solid).toBe(false);
+                expect(BLOCKS[world.get(bx, 2, bz)].solid).toBe(false);
+              }
+            }
+          }
+        }
+        a = b;
+      }
+    }
+    expect(routes).toBeGreaterThan(20);
+  });
+
+  it('smoothing keeps a waypoint at a height change, even when the end returns to the start height', () => {
+    const world = flatWorld();
+    world.set(4, 1, 3, BlockId.Stone);
+    const path: Cell[] = [[2, 1, 3], [3, 1, 3], [4, 2, 3], [5, 1, 3], [6, 1, 3]];
+    expect(smoothPath(world, path, [1, 1, 3])).toEqual([[3, 1, 3], [4, 2, 3], [5, 1, 3], [6, 1, 3]]);
   });
 });

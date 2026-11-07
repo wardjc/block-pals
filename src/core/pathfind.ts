@@ -12,14 +12,30 @@ export function isStandable(world: World, [x, y, z]: Cell): boolean {
     && world.get(x, y, z) !== BlockId.Water;
 }
 
-/** A cardinal step needs clearance over the lower end as well as at both feet cells. */
-export function canStep(world: World, from: Cell, to: Cell): boolean {
-  if (Math.abs(from[0] - to[0]) + Math.abs(from[2] - to[2]) !== 1
+/** Every step clears both bodies and the lower ceiling; diagonals also clear both flanks. */
+export function canStep(world: World, from: Cell, to: Cell, allowed: (cell: Cell) => boolean = () => true): boolean {
+  return checkStep(world, from, to, allowed, cell => isStandable(world, cell));
+}
+
+function checkStep(
+  world: World, from: Cell, to: Cell, allowed: (cell: Cell) => boolean,
+  standable: (cell: Cell) => boolean,
+): boolean {
+  const dx = Math.abs(from[0] - to[0]);
+  const dz = Math.abs(from[2] - to[2]);
+  if (Math.max(dx, dz) !== 1
     || Math.abs(from[1] - to[1]) > 1
-    || !isStandable(world, from) || !isStandable(world, to)) return false;
-  if (from[1] === to[1]) return true;
-  const lower = from[1] < to[1] ? from : to;
-  return !BLOCKS[world.get(lower[0], lower[1] + 2, lower[2])].solid;
+    || !allowed(to) || !standable(from) || !standable(to)) return false;
+  if (from[1] !== to[1]) {
+    const lower = from[1] < to[1] ? from : to;
+    if (BLOCKS[world.get(lower[0], lower[1] + 2, lower[2])].solid) return false;
+  }
+  if (dx === 0 || dz === 0) return true;
+  return [[to[0], from[2]], [from[0], to[2]]].every(([x, z]) =>
+    [0, 1, -1].some(dy => {
+      const side: Cell = [x, from[1] + dy, z];
+      return checkStep(world, from, side, allowed, standable) && checkStep(world, side, to, allowed, standable);
+    }));
 }
 
 export function nearestStandable(world: World, x: number, z: number): Cell | null {
@@ -66,12 +82,30 @@ class Frontier {
   }
 }
 
-export function findPath(world: World, from: Cell, to: Cell, maxNodes = 4000): Cell[] | null {
-  if (!isStandable(world, from) || !isStandable(world, to)) return null;
+export function findPath(
+  world: World, from: Cell, to: Cell, maxNodes = 4000,
+  allowed: (cell: Cell) => boolean = () => true,
+): Cell[] | null {
+  if (!isStandable(world, from) || !isStandable(world, to) || !allowed(to)) return null;
   const key = ([x, y, z]: Cell): number => x + world.sizeX * (z + world.sizeZ * y);
-  const heuristic = ([x, y, z]: Cell): number => Math.max(
-    Math.abs(x - to[0]) + Math.abs(z - to[2]), Math.abs(y - to[1]),
-  );
+  // Neighbours and diagonal flanks revisit the same columns many times per search.
+  const standCache = new Map<number, boolean>();
+  const standable = (cell: Cell): boolean => {
+    if (!world.inBounds(cell[0], cell[1] - 1, cell[2])) return false;
+    const k = key(cell);
+    let value = standCache.get(k);
+    if (value === undefined) {
+      value = isStandable(world, cell);
+      standCache.set(k, value);
+    }
+    return value;
+  };
+  const heuristic = ([x, y, z]: Cell): number => {
+    const dx = Math.abs(x - to[0]);
+    const dz = Math.abs(z - to[2]);
+    // Height can change during a horizontal step, so adding dy would overestimate.
+    return Math.max(Math.max(dx, dz) + (Math.SQRT2 - 1) * Math.min(dx, dz), Math.abs(y - to[1]));
+  };
   const target = key(to);
   if (key(from) === target) return [];
   const frontier = new Frontier();
@@ -90,11 +124,11 @@ export function findPath(world: World, from: Cell, to: Cell, maxNodes = 4000): C
       return path.reverse();
     }
     const [x, y, z] = current.cell;
-    for (const [dx, dz] of [[1, 0], [-1, 0], [0, 1], [0, -1]]) {
+    for (const [dx, dz] of [[1, 0], [-1, 0], [0, 1], [0, -1], [1, 1], [1, -1], [-1, 1], [-1, -1]]) {
       for (const dy of [0, 1, -1]) {
         const cell: Cell = [x + dx, y + dy, z + dz];
-        if (!canStep(world, current.cell, cell)) continue;
-        const g = current.g + 1;
+        if (!checkStep(world, current.cell, cell, allowed, standable)) continue;
+        const g = current.g + (dx !== 0 && dz !== 0 ? Math.SQRT2 : 1);
         if (g >= (costs.get(key(cell)) ?? Infinity)) continue;
         costs.set(key(cell), g);
         frontier.push({ cell, g, f: g + heuristic(cell), parent: current });
@@ -102,6 +136,66 @@ export function findPath(world: World, from: Cell, to: Cell, maxNodes = 4000): C
     }
   }
   return null;
+}
+
+/** Circle-versus-block clearance at a world-space feet position. */
+function bodyClear(world: World, x: number, y: number, z: number, radius: number): boolean {
+  for (let bx = Math.floor(x - radius); bx <= Math.floor(x + radius); bx++) {
+    for (let bz = Math.floor(z - radius); bz <= Math.floor(z + radius); bz++) {
+      const dx = Math.max(bx - x, 0, x - bx - 1);
+      const dz = Math.max(bz - z, 0, z - bz - 1);
+      if (dx * dx + dz * dz >= radius * radius) continue;
+      if (BLOCKS[world.get(bx, y, bz)].solid || BLOCKS[world.get(bx, y + 1, bz)].solid) return false;
+    }
+  }
+  return true;
+}
+
+function lineClear(world: World, from: Cell, to: Cell, allowed: (cell: Cell) => boolean): boolean {
+  if (from[1] !== to[1]) return false;
+  const length = Math.hypot(to[0] - from[0], to[2] - from[2]);
+  const samples = Math.max(1, Math.ceil(length / 0.1));
+  // Half a sampling interval of padding also protects the body between samples.
+  const radius = 0.3 + length / samples / 2;
+  let previous = from;
+  for (let i = 0; i <= samples; i++) {
+    const x = from[0] + 0.5 + (to[0] - from[0]) * i / samples;
+    const z = from[2] + 0.5 + (to[2] - from[2]) * i / samples;
+    const cell: Cell = [Math.floor(x), from[1], Math.floor(z)];
+    if (!allowed(cell) || !isStandable(world, cell) || !bodyClear(world, x, cell[1], z, radius)) return false;
+    if ((cell[0] !== previous[0] || cell[2] !== previous[2]) && !canStep(world, previous, cell, allowed)) return false;
+    previous = cell;
+  }
+  return true;
+}
+
+/**
+ * Shortcuts level runs only, preserving both sides of every height change.
+ * Paths exclude the start: pass `from` to check and simplify the first segment.
+ * Without it, the first path cell is kept as the starting endpoint. Inputs are untouched.
+ */
+export function smoothPath(
+  world: World, path: Cell[], from?: Cell, allowed: (cell: Cell) => boolean = () => true,
+): Cell[] {
+  if (path.length === 0) return [];
+  const points = from ? [from, ...path] : path;
+  const result: Cell[] = from ? [] : [[...points[0]]];
+  for (let anchor = 0; anchor < points.length - 1;) {
+    let end = anchor + 1;
+    if (points[anchor][1] === points[end][1]) {
+      let last = end;
+      while (last + 1 < points.length && points[last + 1][1] === points[anchor][1]) last++;
+      for (let candidate = last; candidate > end; candidate--) {
+        if (lineClear(world, points[anchor], points[candidate], allowed)) {
+          end = candidate;
+          break;
+        }
+      }
+    }
+    result.push([...points[end]]);
+    anchor = end;
+  }
+  return result;
 }
 
 export interface Approach {
@@ -125,7 +219,7 @@ export function goalDistance([x, y, z]: Cell, goal: Cell): number {
 }
 
 /**
- * One breadth-first flood from the player, using the same steps as findPath.
+ * One four-neighbour breadth-first flood from the player, using cardinal canStep rules.
  * Picks the reachable standable cell nearest the goal (goalDistance); ties go to the
  * cell fewest steps from the player, which BFS order gives for free. Stops early once
  * the goal itself is reached. `allowed` keeps the flood inside the soft wall.

@@ -1,6 +1,6 @@
 import { describe, expect, it } from 'vitest';
 import { BLOCKS, BlockId } from '../../src/core/blocks';
-import { findPath, isStandable, type Cell } from '../../src/core/pathfind';
+import { canStep, findPath, isStandable, type Cell } from '../../src/core/pathfind';
 import { mulberry32, valueNoise2D } from '../../src/core/rng';
 import { World } from '../../src/core/world';
 import { generateWorld } from '../../src/core/worldgen';
@@ -206,7 +206,7 @@ describe('generateWorld', () => {
           let previous = from;
           for (const cell of path!) {
             expect(isStandable(world, cell)).toBe(true);
-            expect(Math.abs(cell[0] - previous[0]) + Math.abs(cell[2] - previous[2])).toBe(1);
+            expect(canStep(world, previous, cell)).toBe(true);
             expect(Math.abs(cell[1] - previous[1])).toBeLessThanOrEqual(1);
             previous = cell;
           }

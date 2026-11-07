@@ -1,6 +1,5 @@
 import type { LineKey } from '../content/lines';
-import { BLOCKS } from '../core/blocks';
-import { findPath, isStandable, type Cell } from '../core/pathfind';
+import { canStep, findPath, isStandable, smoothPath, type Cell } from '../core/pathfind';
 import type { World } from '../core/world';
 import type { GameEvent } from './game';
 import type { Player } from './player';
@@ -109,10 +108,9 @@ export class Pal {
     const playerCell = player.feetCell();
     const here = this.feetCell();
     const inPlayer = here[0] === playerCell[0] && here[2] === playerCell[2];
-    const inSolid = BLOCKS[world.get(here[0], here[1], here[2])].solid
-      || BLOCKS[world.get(here[0], here[1] + 1, here[2])].solid;
+    const unsupported = !isStandable(world, here);
 
-    if (dist > TELEPORT_DIST || inPlayer || inSolid || Math.abs(player.pos.y - this.pos.y) > 4) {
+    if (dist > TELEPORT_DIST || inPlayer || unsupported || Math.abs(player.pos.y - this.pos.y) > 4) {
       this.teleport(world, player);
       return;
     }
@@ -152,7 +150,7 @@ export class Pal {
           if (Math.max(Math.abs(ox), Math.abs(oz)) !== r) continue;
           const x = px + ox;
           const z = pz + oz;
-          if (!world.inBounds(x, 0, z)) continue;
+          if (!this.insideWall(world, [x, 0, z])) continue;
           for (const y of [py, py - 1, py + 1]) {
             const cell: Cell = [x, y, z];
             if (!isStandable(world, cell)) continue;
@@ -173,9 +171,9 @@ export class Pal {
     this.repathCooldown = 1;
     const from = this.feetCell();
     for (const goal of this.spots(world, player, [2, 1], this.pos).slice(0, 6)) {
-      const p = findPath(world, from, goal, 1500);
+      const p = findPath(world, from, goal, 1500, cell => this.insideWall(world, cell));
       if (p) {
-        this.path = p;
+        this.path = smoothPath(world, p, from, cell => this.insideWall(world, cell));
         return;
       }
     }
@@ -191,26 +189,40 @@ export class Pal {
         this.repath(world, player);
         return;
       }
-      // Step up first (the column above is clear); step down on entering the lower cell.
-      if (cy > this.pos.y) this.pos.y = cy;
-      const tx = cx + 0.5;
-      const tz = cz + 0.5;
-      const dx = tx - this.pos.x;
-      const dz = tz - this.pos.z;
+      const dx = cx + 0.5 - this.pos.x;
+      const dz = cz + 0.5 - this.pos.z;
       const d = Math.hypot(dx, dz);
-      if (d > 1e-6) this.heading = Math.atan2(dx, dz);
-      if (d <= remaining) {
-        this.pos = { x: tx, y: cy, z: tz };
-        remaining -= d;
+      if (d < 1e-8) {
         this.waypoint++;
-      } else {
-        this.pos.x += (dx / d) * remaining;
-        this.pos.z += (dz / d) * remaining;
-        if (Math.floor(this.pos.x) === cx && Math.floor(this.pos.z) === cz) this.pos.y = cy;
-        remaining = 0;
+        continue;
+      }
+      const step = Math.min(0.2, remaining, d);
+      const x = this.pos.x + dx / d * step;
+      const z = this.pos.z + dz / d * step;
+      const from = this.feetCell();
+      const nx = Math.floor(x);
+      const nz = Math.floor(z);
+      const destination = nx === from[0] && nz === from[2] ? from
+        : [0, 1, -1].map((dy): Cell => [nx, from[1] + dy, nz])
+          .find(to => canStep(world, from, to, cell => this.insideWall(world, cell)));
+      if (!destination || !this.insideWall(world, destination) || !isStandable(world, destination)) {
+        this.repath(world, player);
+        return;
+      }
+      this.heading = Math.atan2(dx, dz);
+      this.pos = { x, y: destination[1], z };
+      remaining -= step;
+      if (step === d) {
+        this.pos.x = cx + 0.5;
+        this.pos.z = cz + 0.5;
+        this.waypoint++;
       }
     }
     if (this.waypoint >= this.path.length) this.path = [];
+  }
+
+  private insideWall(world: World, [x, , z]: Cell): boolean {
+    return x >= 1 && x <= world.sizeX - 2 && z >= 1 && z <= world.sizeZ - 2;
   }
 
   private teleport(world: World, player: Player): void {

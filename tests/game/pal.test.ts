@@ -184,3 +184,32 @@ describe('Pal', () => {
     expect(said).toEqual(['noPath', 'breakTime']);
   });
 });
+
+
+describe('natural following', () => {
+  it('Pip follows with diagonals', () => {
+    const { world, player, pal } = setup();
+    pal.pos = { x: 5.5, y: 1, z: 5.5 };
+    const before = { ...pal.pos };
+    pal.update(world, player, 0.1);
+    expect(pal.pos.x).toBeGreaterThan(before.x);
+    expect(pal.pos.z).toBeGreaterThan(before.z);
+    expect(dist(pal.pos, before)).toBeCloseTo(0.45);
+    let previous = { ...pal.pos };
+    for (let i = 0; i < 120; i++) {
+      pal.update(world, player, 1 / 60);
+      expect(dist(pal.pos, previous)).toBeLessThanOrEqual(4.5 / 60 + 1e-8);
+      previous = { ...pal.pos };
+    }
+    expect(dist(pal.pos, player.pos)).toBeLessThanOrEqual(3);
+  });
+
+  it('recovers when support disappears even when already close to the player', () => {
+    const { world, player, pal } = setup();
+    world.set(12, 1, 10, BlockId.Stone);
+    pal.pos.y = 2;
+    world.set(12, 1, 10, BlockId.Air);
+    pal.update(world, player, 0.02);
+    expect(pal.pos.y).toBe(1);
+  });
+});

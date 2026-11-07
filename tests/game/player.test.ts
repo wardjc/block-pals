@@ -1,8 +1,9 @@
 import { describe, expect, it } from 'vitest';
 import { BlockId } from '../../src/core/blocks';
-import { findPath, isStandable, type Cell } from '../../src/core/pathfind';
+import { findPath, isStandable, smoothPath, type Cell } from '../../src/core/pathfind';
 import { World } from '../../src/core/world';
-import { Player } from '../../src/game/player';
+import { generateWorld } from '../../src/core/worldgen';
+import { easeHeading, Player } from '../../src/game/player';
 
 function flatWorld(): World {
   const world = new World(48, 16, 48);
@@ -161,7 +162,7 @@ describe('Player', () => {
     }
   });
 
-  it('stops if the next path cell becomes blocked or the path skips cells', () => {
+  it('stops when a blocked cell lies between waypoints', () => {
     const world = flatWorld();
     const player = playerAt();
     player.setPath(findPath(world, player.feetCell(), [5, 1, 3]));
@@ -211,4 +212,80 @@ describe('Player', () => {
     player.update(world, 0.3);
     expect(player.pos.z).toBeGreaterThan(z);
   });
+});
+
+
+describe('natural walking', () => {
+  it('player walks a straight line across open ground (max deviation < 0.15 blocks)', () => {
+    const world = flatWorld();
+    const player = playerAt();
+    const start = { ...player.pos };
+    const goal: Cell = [15, 1, 8];
+    player.setPath(smoothPath(world, findPath(world, player.feetCell(), goal)!, player.feetCell()));
+    let deviation = 0;
+    for (let i = 0; i < 300; i++) {
+      player.update(world, 1 / 60);
+      deviation = Math.max(deviation, Math.abs((player.pos.x - start.x) * 5 - (player.pos.z - start.z) * 12) / 13);
+      expect(isStandable(world, player.feetCell())).toBe(true);
+    }
+    expect(deviation).toBeLessThan(0.15);
+    expect(player.pos.x).toBeCloseTo(15.5);
+    expect(player.pos.z).toBeCloseTo(8.5);
+  });
+
+  it('heading eases and takes the shortest way round the +-pi wrap', () => {
+    expect(easeHeading(0, Math.PI / 2, 0.1)).toBeCloseTo(0.1);
+    const angle = easeHeading(Math.PI - 0.1, -Math.PI + 0.1, 0.05);
+    expect(Math.atan2(Math.sin(angle - (Math.PI - 0.1)), Math.cos(angle - (Math.PI - 0.1)))).toBeCloseTo(0.05);
+    const reverse = easeHeading(-Math.PI + 0.1, Math.PI - 0.1, 0.05);
+    expect(Math.atan2(Math.sin(reverse + Math.PI - 0.1), Math.cos(reverse + Math.PI - 0.1))).toBeCloseTo(-0.05);
+    expect(easeHeading(0, 0.02, 0.1)).toBeCloseTo(0.02);
+    for (const stick of [false, true]) {
+      const player = playerAt();
+      if (stick) player.setStick(1, 0);
+      else player.setPath([[10, 1, 3]]);
+      player.update(flatWorld(), 0.02);
+      expect(player.heading).toBeCloseTo(0.2);
+      expect(player.pos.x).toBeCloseTo(3.57);
+    }
+  });
+
+  it('sweeps a long waypoint through a doorway without entering its walls', () => {
+    const world = flatWorld();
+    for (let z = 0; z < 48; z++) if (z !== 5) {
+      for (const y of [1, 2, 3]) world.set(8, y, z, BlockId.Stone);
+    }
+    const player = playerAt(3.5, 1, 5.5);
+    player.setPath([[12, 1, 5]]);
+    player.update(world, 3);
+    expect(player.pos).toEqual({ x: 12.5, y: 1, z: 5.5 });
+  });
+});
+
+
+it('reaches smoothed waypoints across generated terrain without getting stuck', () => {
+  let routes = 0;
+  for (const seed of [17, 83, 2026]) {
+    const { world, spawn } = generateWorld(seed);
+    const start: Cell = [Math.floor(spawn.x), Math.floor(spawn.y), Math.floor(spawn.z)];
+    for (const [dx, dz] of [[7, 3], [-6, 5], [5, -7], [-7, -4]]) {
+      const x = start[0] + dx;
+      const z = start[2] + dz;
+      const end: Cell = [x, world.topSolidY(x, z) + 1, z];
+      const path = findPath(world, start, end);
+      if (!path) continue;
+      routes++;
+      const player = new Player(spawn);
+      player.setPath(smoothPath(world, path, start));
+      for (let tick = 0; tick < 600; tick++) {
+        const before = { ...player.pos };
+        player.update(world, 1 / 30);
+        expect(isStandable(world, player.feetCell())).toBe(true);
+        expect(Math.abs(player.pos.y - before.y)).toBeLessThanOrEqual(1);
+        expect(Math.hypot(player.pos.x - before.x, player.pos.z - before.z)).toBeLessThanOrEqual(3.5 / 30 + 1e-8);
+      }
+      expect(player.feetCell()).toEqual(end);
+    }
+  }
+  expect(routes).toBeGreaterThanOrEqual(6);
 });
