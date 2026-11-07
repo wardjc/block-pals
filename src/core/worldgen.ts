@@ -1,7 +1,7 @@
 import { BlockId } from './blocks';
 import { insideWall, LEGACY_WORLD, WORLD } from './bounds';
 import { mulberry32, valueNoise2D } from './rng';
-import { emptyVillage, type Rect, type VillageLayout } from './village';
+import { buildVillage, type Rect, type VillageLayout } from './village';
 import { World } from './world';
 
 /** Bump when later steps add stamps, so saves can tell which generator made the world. */
@@ -141,7 +141,7 @@ export function generateWorld(seed = 2026): GeneratedWorld {
   const { world, spawn, heights, trees } = generateMeadowStage(seed);
 
   // Stage 3: pads, houses and the path (Task 5).
-  const village = emptyVillage();
+  const village = buildVillage(world, spawn);
 
   // Stage 4: edge ring and scatter on the new ground, from its own stream.
   const random = mulberry32((seed ^ 0x5eed) >>> 0);
@@ -154,7 +154,7 @@ export function generateWorld(seed = 2026): GeneratedWorld {
 
   const lastEdge = world.sizeX - 1;
   for (let side = 0; side < 4; side++) {
-    for (const anchor of [12, 36, 60, 84]) {
+    for (const anchor of [8, 20, 32, 44, 56, 68, 80, 88]) {
       const along = anchor + Math.floor(random() * 5) - 2;
       const inset = 2 + Math.floor(random() * 3);
       if (side === 0) plant(along, inset);

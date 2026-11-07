@@ -300,4 +300,21 @@ describe('worldgen stages', () => {
     }
     expect(trunks).toBeGreaterThan(5);
   });
+
+  it('final world differs from the meadow only at stamps', () => {
+    const meadow = generateMeadowStage(2026).world;
+    const { world, village } = generateWorld(2026);
+    let differing = 0;
+    for (let x = 0; x < 48; x++) {
+      for (let z = 0; z < 48; z++) {
+        for (let y = 0; y < world.sizeY; y++) {
+          if (world.get(x, y, z) === meadow.get(x, y, z)) continue;
+          differing++;
+          expect(village.stampedRects.some(r => x >= r.x0 && x <= r.x1 && z >= r.z0 && z <= r.z1), `${x},${y},${z}`).toBe(true);
+        }
+      }
+    }
+    expect(differing).toBeGreaterThan(0);
+    expect(differing).toBeLessThanOrEqual(900);
+  });
 });
