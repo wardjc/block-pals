@@ -1,12 +1,13 @@
 import * as THREE from 'three';
-import { BlockId } from '../core/blocks';
 import type { World } from '../core/world';
 import { createAtlas } from './atlas';
+import { CameraRig } from './cameraRig';
+import { castVoxelRay, type VoxelHit } from './voxelRay';
 import { buildChunkGeometry, CHUNK_SIZE, type MeshArrays } from './mesher';
 
 const FOLLOW_K = 4; // exponential smoothing rate, per second
-const BACK = 6;
-const UP = 4.5;
+/** The camera orbits his head: feet + EYE_HEIGHT (spec §7c). */
+export const EYE_HEIGHT = 1.6;
 const PICK_RANGE = 40;
 const MARKER_SECONDS = 0.9;
 // Three r155+ no longer pre-multiplies light intensity by PI, so scale to get the classic bright look.
@@ -36,8 +37,13 @@ export class GameScene {
   private readonly chunks = new Map<string, ChunkMeshes>();
   private readonly solidMat: THREE.MeshLambertMaterial;
   private readonly transMat: THREE.MeshLambertMaterial;
-  private readonly smoothPos = new THREE.Vector3();
-  private smoothHeading = 0;
+  /** Yaw, pitch and the wall-aware distance of the camera (spec §7c). */
+  readonly rig = new CameraRig();
+  private readonly smoothEye = new THREE.Vector3();
+  private readonly realEye = new THREE.Vector3();
+  private readonly lookPoint = new THREE.Vector3();
+  private readonly hit: VoxelHit = { x: 0, y: 0, z: 0, nx: 0, ny: 0, nz: 0, t: 0 };
+  private readonly ndc = new THREE.Vector2();
   private followed = false;
   private readonly raycaster = new THREE.Raycaster();
   private readonly marker: THREE.Mesh<THREE.RingGeometry, THREE.MeshBasicMaterial>;
@@ -56,7 +62,8 @@ export class GameScene {
     sun.position.set(0.5, 1, 0.3);
     this.scene.add(sun);
 
-    this.camera = new THREE.PerspectiveCamera(60, 1, 0.1, 80);
+    // A close near plane: in a tunnel the camera can sit CAMERA_CLEARANCE from a wall.
+    this.camera = new THREE.PerspectiveCamera(60, 1, 0.05, 80);
 
     this.solidMat = new THREE.MeshLambertMaterial({ map: this.atlas.texture });
     this.transMat = new THREE.MeshLambertMaterial({
@@ -148,71 +155,45 @@ export class GameScene {
     return n;
   }
 
-  followTarget(pos: THREE.Vector3, heading: number, dt: number): void {
+  /**
+   * Follows his position (not his heading: the camera stays where he turned it) and keeps the
+   * camera out of the terrain. The smoothed eye lags a little; if a block ever comes between it
+   * and his real head, it snaps to his head so the camera never orbits a point inside the ground.
+   */
+  followTarget(pos: THREE.Vector3, dt: number): void {
+    const real = this.realEye.set(pos.x, pos.y + EYE_HEIGHT, pos.z);
     if (!this.followed) {
-      this.smoothPos.copy(pos);
-      this.smoothHeading = heading;
+      this.smoothEye.copy(real);
       this.followed = true;
     } else {
-      const a = 1 - Math.exp(-FOLLOW_K * dt);
-      this.smoothPos.lerp(pos, a);
-      let d = heading - this.smoothHeading;
-      d = Math.atan2(Math.sin(d), Math.cos(d));
-      this.smoothHeading += d * a;
+      this.smoothEye.lerp(real, 1 - Math.exp(-FOLLOW_K * dt));
+      const dx = this.smoothEye.x - real.x, dy = this.smoothEye.y - real.y, dz = this.smoothEye.z - real.z;
+      const len = Math.hypot(dx, dy, dz);
+      if (len > 1e-6 && castVoxelRay(this.world, real.x, real.y, real.z, dx / len, dy / len, dz / len, len, false, this.hit)) {
+        this.smoothEye.copy(real);
+      }
     }
-    const h = this.smoothHeading;
-    this.camera.position.set(
-      this.smoothPos.x - Math.sin(h) * BACK,
-      this.smoothPos.y + UP,
-      this.smoothPos.z - Math.cos(h) * BACK,
-    );
-    this.camera.lookAt(this.smoothPos.x, this.smoothPos.y + 1, this.smoothPos.z);
+    this.rig.update(this.world, this.smoothEye, dt);
+    const c = this.rig.position;
+    const f = this.rig.forward;
+    this.camera.position.set(c.x, c.y, c.z);
+    this.camera.lookAt(this.lookPoint.set(c.x + f.x, c.y + f.y, c.z + f.z));
   }
 
   pick(clientX: number, clientY: number): { cell: [number, number, number]; normal: [number, number, number] } | null {
     const rect = this.renderer.domElement.getBoundingClientRect();
-    const ndc = new THREE.Vector2(
+    this.ndc.set(
       ((clientX - rect.left) / rect.width) * 2 - 1,
       -(((clientY - rect.top) / rect.height) * 2 - 1),
     );
     this.camera.updateMatrixWorld();
-    this.raycaster.setFromCamera(ndc, this.camera);
+    this.raycaster.setFromCamera(this.ndc, this.camera);
     const o = this.raycaster.ray.origin;
     const d = this.raycaster.ray.direction;
-    const w = this.world;
-
-    let x = Math.floor(o.x);
-    let y = Math.floor(o.y);
-    let z = Math.floor(o.z);
-    const stepX = d.x > 0 ? 1 : -1;
-    const stepY = d.y > 0 ? 1 : -1;
-    const stepZ = d.z > 0 ? 1 : -1;
-    const tDeltaX = d.x === 0 ? Infinity : Math.abs(1 / d.x);
-    const tDeltaY = d.y === 0 ? Infinity : Math.abs(1 / d.y);
-    const tDeltaZ = d.z === 0 ? Infinity : Math.abs(1 / d.z);
-    let tMaxX = d.x === 0 ? Infinity : (d.x > 0 ? x + 1 - o.x : o.x - x) * tDeltaX;
-    let tMaxY = d.y === 0 ? Infinity : (d.y > 0 ? y + 1 - o.y : o.y - y) * tDeltaY;
-    let tMaxZ = d.z === 0 ? Infinity : (d.z > 0 ? z + 1 - o.z : o.z - z) * tDeltaZ;
-    let normal: [number, number, number] = [0, 0, 0];
-
-    for (let i = 0; i < PICK_RANGE * 3; i++) {
-      if (w.inBounds(x, y, z)) {
-        const id = w.get(x, y, z);
-        if (id !== BlockId.Air && id !== BlockId.Water && (normal[0] || normal[1] || normal[2])) {
-          return { cell: [x, y, z], normal };
-        }
-      }
-      let t: number;
-      if (tMaxX < tMaxY && tMaxX < tMaxZ) {
-        t = tMaxX; x += stepX; tMaxX += tDeltaX; normal = [-stepX, 0, 0];
-      } else if (tMaxY < tMaxZ) {
-        t = tMaxY; y += stepY; tMaxY += tDeltaY; normal = [0, -stepY, 0];
-      } else {
-        t = tMaxZ; z += stepZ; tMaxZ += tDeltaZ; normal = [0, 0, -stepZ];
-      }
-      if (t > PICK_RANGE) break;
-    }
-    return null;
+    const h = this.hit;
+    // The start cell is skipped: only a block entered through a face can be picked.
+    if (!castVoxelRay(this.world, o.x, o.y, o.z, d.x, d.y, d.z, PICK_RANGE, true, h)) return null;
+    return { cell: [h.x, h.y, h.z], normal: [h.nx, h.ny, h.nz] };
   }
 
   /** Shows the walk marker on the floor of a feet cell; it fades out by itself. */
