@@ -1,8 +1,10 @@
 # Water Step 1: Flowing Channels and Swimming Implementation Plan
 
+**Status: planned, not yet scheduled. Build after Village step 1 has merged and after the whole Village version (steps 1–4: bigger world, eating and the farm, shops and coins, friendship and quests).**
+
 > **For agentic workers:** REQUIRED SUB-SKILL: Use superpowers:subagent-driven-development (recommended) or superpowers:executing-plans to implement this plan task-by-task. Steps use checkbox (`- [ ]`) syntax for tracking.
 
-**Goal:** Ponds stay still until our player lets water out. Digging a gap in a pond bank makes water run gently downhill a few blocks, thin out and settle; plugging the gap with a block makes it drain away again. He can swim: tap to swim across the pond, drag to turn, slower in water, floating up by himself when he stops, never drowning, always able to climb out (including out of a flooded pit). Underwater the view has a soft blue tint, never dark, and the camera's close mode keeps working. Pip waits at the shore and cheers; villagers never enter water. The flow rules are built so that a walled channel can later carry water to a farm field. The bucket is **not** in this step (outline only, step 2).
+**Goal:** Ponds stay still until our player lets water out. Digging a gap in a pond bank makes water run gently downhill a few blocks, thin out and settle; plugging the gap with a block, or pressing and holding on the flowing water, makes it drain away again. He can swim: tap to swim across the pond or down to the pond bed, drag to turn, slower in water, floating up by himself when he stops, never drowning, always able to climb out (including out of a flooded pit). Underwater the view has a soft blue tint, never dark, and the camera's close mode keeps working. Pip swims alongside him and gets out when he does; villagers never enter water. The flow rules are built so that a walled channel can later carry water to a farm field. The bucket is **not** in this step (outline only, step 2).
 
 **Architecture:** Same layering as v1. Water behaviour is **pure, DOM-free logic in `src/core/water.ts`** (a deterministic solver) and `src/core/waterSim.ts` (a bounded ticker that applies the solver's answer to the world a few cells at a time). Both are unit-tested with Vitest, including on the real generated pond. **Flowing water is derived state:** it is a pure function of the solid blocks and the water sources (the pond), so it is recomputed on load and never saved. The world gets `setDerived()` (writes a cell and notifies the renderer but is not recorded as an edit). Swimming is a new mode of `Player` plus swim-aware pathfinding; the camera rig needs no change because rays already ignore water. Rendering gains a separate water mesh per chunk (rebuilt alone, so flow ticks never rebuild the solid mesh), an animated water material and an underwater tint. `main.ts` only wires.
 
@@ -11,6 +13,7 @@
 **Spec:** `docs/superpowers/specs/2026-11-05-block-pals-design.md` (§4 anti-goals, §5 constraints, §7a hold-to-dig, §7c smart camera, §7e water).
 
 **Dependencies (must be merged to `main` first):**
+- **The whole Village version (steps 1 to 4)** is built before this, per the parent. The farm only has to leave its small pool as ordinary `Water` source blocks.
 - **Village step 1 (`docs/superpowers/plans/2026-11-07-village-step1-bigger-world.md`) must land first.** It brings the 96 × 20 × 96 world, `core/bounds.ts` (no more 46/47 literals in `player.ts`/`game.ts`), save version 2 with migration, and block ids 12 to 15. This plan appends its ids after them (16 to 18), and its tests use `generateWorld()` so they follow the world size. The pond stays at (14, 32), clear of every village stamp.
 - Already on `main`: `cameraRig.ts` (§7c), hold-to-dig (§7a), 99-per-kind bag.
 - If water must land before the village: use ids 12 to 14 and let the village renumber its four. This is safe because flowing water is never saved and the source block keeps its id 7.
@@ -37,9 +40,11 @@ Copied from the spec and the village plan, with what water adds marked **changed
 - **Flood bound:** digging every bank block round the pond, digging a long trench downhill, removing a pond-bed block, and removing a plug repeatedly must all stay under 400 flow cells and settle. The solver is the only place that decides water, so the cap lives there (Tasks 3, 4, 5).
 - **Order independence and determinism:** the same blocks give the same water, whatever order the edits came in. Reloading gives the same water as before the reload (Tasks 3 and 11).
 - **Losing his builds or his bag:** flow ids must never reach `edits()`, the saved file or the inventory. A flow cell may never replace a solid block (Tasks 2, 4, 11).
-- **Existing controls:** tap never digs, hold digs, drag turns, in water as on land. Hold on water still does nothing (no scooping before the bucket).
+- **Existing controls:** tap never digs, hold digs, drag turns, in water as on land. Hold on **flowing** water drains it (Task 15); hold on a pond/source block never drains it.
 - **Camera:** the camera must never end up inside a block while swimming near a bank, and close mode must engage and release in a flooded pit (Task 10).
 - **Tablet performance:** tick cost, water mesh rebuild count per frame and triangle budget are unit-tested; fps is checked by hand (checklist).
+- **Draining by accident:** the original pond and every source block can never be drained or removed by a hold, a drain, a settle or a reload (Tasks 4, 5, 15).
+- **Pip in water:** Pip uses the same swim body as the player; his teleport and the stuck-rescue must never leave him in deep water unless the player is swimming nearby (Task 8).
 - **Pathfinding side effects:** `isStandable` changes meaning for deep water only. Pip, villagers and the pit lift all use it; none may place anything in deep water (Task 6).
 
 ## Decisions made in this plan
@@ -55,21 +60,22 @@ Marked **(my call)** where the spec leaves room. The open ones are at the end as
 | Channel reach | A trench walled on both sides keeps its level, so it can be as long as he digs it (bounded by the 400-cell cap). This is how a channel from the pond later reaches a field. At an open end the water thins out over 3 cells. (my call) |
 | Cap | The solver visits cells in a canonical order (shortest step count from a source, then cell index) and stops adding cells at `MAX_FLOW_CELLS = 400`. (my call) |
 | Digging opens a channel | He holds on a bank block next to the pond (existing hold-to-dig). The block becomes Air; the solver sees a non-solid cell beside a source and the water appears over the next ticks. The pond shore is sand at the pond's own surface height, so a one-block dig lets water out immediately. |
-| Plug and drain | Placing any block (existing quick tap with a block selected) into a flow cell or the gap makes the solver remove everything that no longer connects to a source. The water **retreats from the far end first**, at most 24 cells per tick, so it drains in a second or two. Removing the plug lets it run again. There is no other drain tool in this step. (my call) |
+| Plug | Placing any block (existing quick tap with a block selected) into a flow cell or the gap makes the solver remove everything that no longer connects to a source. The water **retreats from the far end first**, at most 24 cells per tick, so it drains in a second or two. Removing the plug lets it run again. |
+| Drain by hold (parent's decision) | Press and hold on **flowing** water (any `WaterFlow` cell, never a `Water` source) with the usual ring, about half a second. This drains the whole stream that cell belongs to: the stream's *mouth cells* (flow cells fed directly by a source, found by a bounded walk over the connected flow cells, at most 400) are put in a **dry set** the solver treats as blocked, so everything downstream retreats farthest-first as for a plug. A small splash sound (existing style). No block is added or removed. A cell leaves the dry set when any block changes at that cell or beside it (so plugging and unplugging the gap, or digging beside it, lets water run again). The dry set is saved (Task 11), capped at 64 cells (oldest dropped). Sources are protected: a hold on a pond/source block never drains it (the hold pick looks through source water to the bed, so it digs the bed as before). A sponge block stays a later idea. |
 | Applying the answer | `WaterSim` keeps the world's flow cells equal to `T` by changes at most 24 per tick, 4 ticks per second: growing nearest-the-source first, shrinking farthest-first. When equal and nothing has changed it does no work. |
 | Solid blocks stop water | Water passes through non-solid blocks (Air; later plants). Leaves, glass and every solid block stop it. |
 | Wet states | `shallow`: a flow cell with solid below and no water above (at most 0.75 tall). Walkable and slow ("wading"). `deep`: a source cell, or a flow cell with water above, or a flow cell with no solid below (a falling column or a flooded pit). **Swimming.** (my call) |
 | Swimming speed | 55 % of walking speed (1.9 blocks/s). Wading 80 % (2.8). Controller stick the same factors. |
-| Buoyancy | No input: he floats to the surface. Surface = top of the water column at his x, z (top of the highest wet cell). He floats with his feet 0.9 below the surface (eyes 0.7 above the water at EYE_HEIGHT 1.6). After he stops, he first sinks gently for up to 0.6 s (at most 0.5 block, 0.6 b/s) and then rises at 1.0 b/s, a little bob. No dive control in this step: underwater views come from the bob, flooded pits and deep ponds. (my call) |
+| Buoyancy | No input: he floats to the surface. Surface = top of the water column at his x, z (top of the highest wet cell). He floats with his feet 0.9 below the surface (eyes 0.7 above the water at EYE_HEIGHT 1.6). After he stops, he first sinks gently for up to 0.6 s (at most 0.5 block, 0.6 b/s) and then rises at 1.0 b/s, a little bob. **No dive button (parent's decision):** tapping a point under the water (the pick sees through water, so a tap on the pond bed hits the bed) swims him down to the water cell above that spot; when he stops there, after a 0.4 s grace he floats back up by himself. The rise is paused while a hold ring is active, so hold-to-dig works at the bottom. |
 | Climbing out | From a swim cell he steps to an adjacent dry standable cell whose floor is at most **1 block above the water surface** (so a bank one block higher than the pond works). Stepping in from the shore: any walkable neighbour whose feet cell is a wet cell at the same height or one lower. |
 | Rescue | If he has been in deep water for 4 s without a way out (no swim route to a climb-out cell within 12 steps, found by the same bounded search the tap uses), or for 10 s in any case without moving, the game lifts him to the nearest dry standable cell (the existing pit lift, generalised) and Pip says "Up you come!". The lift uses the same search as the pit lift (radius 8, never a tree top, never deep water). Nothing is taken from him. |
-| Pathfinding | `isStandable` is unchanged except it now also rejects deep water (it already rejected `Water`). New `isSwimmable`. A tap first searches the dry route (`pathTowards`, existing); only if that does not reach the tapped spot, or is longer than 20 steps, a swim-enabled search runs and the route with the lower cost wins (swim step cost 2, dry step cost 1). So he walks round a small pond but swims a big gap; a tap on the water swims there. Tapping submerged ground swims to the surface above it (never forces a dive). (my call) |
-| Pip | Pip never swims in this step: he uses dry/wading routes, waits at the nearest shore cell to him and says one line the first time he enters the water. His teleport (existing) never puts him in deep water. (my call) |
+| Pathfinding | `isStandable` is unchanged except it now also rejects deep water (it already rejected `Water`). New `isSwimmable`. A tap first searches the dry route (`pathTowards`, existing); only if that does not reach the tapped spot, or is longer than 20 steps, a swim-enabled search runs and the route with the lower cost wins (swim step cost 2, dry step cost 1). So he walks round a small pond but swims a big gap; a tap on the water swims there. Tapping submerged ground swims **down** to the water cell above that ground (a 3D swim path: swim steps also go straight up and down; the swim goal may be at any depth). |
+| Pip (parent's decision) | **Pip swims alongside him** using the same swim body as the player (shared `src/game/swimBody.ts`: speed factors, buoyancy, climb-out), floats at the surface, and gets out when he does. Pip's rescue: if Pip has been in deep water 4 s with no way out he is moved with the existing teleport. His teleport only puts him in water when the player is swimming within 3 cells (then at the surface beside him); otherwise on the nearest dry standable cell. Pip says one water line the first time he enters. |
 | Villagers | Any path or placement for villagers uses `isDry(cell)` (no wet cell at feet or head). Villagers are still at this stage, so this is a rule plus a test for the farm and quest steps. |
 | Rendering water | A separate `water` geometry per chunk, rebuilt on its own. Top faces are lowered by level (1.0, 0.75, 0.5, 0.25). Side faces are drawn only against non-water neighbours or a lower neighbour. Flowing cells use a streak texture oriented towards the lower neighbour; sources use the existing ripple. Two animation frames swapped by time on one material: no rebuild, no shader. The material is double sided so the surface shows from underneath. |
-| Underwater look | When the camera point is in a wet cell: a full-screen overlay `rgba(70, 160, 255, 0.28)` fades in over 0.15 s and fog becomes a bright blue (`0x6fc3ff`) with near 3 and far 26. Out of water it fades back. Never darker than the sky. |
+| Underwater look | When the camera point **or his eye** is in a wet cell (so the tint also shows when the camera hangs above the surface behind a diver): a full-screen overlay `rgba(70, 160, 255, 0.28)` fades in over 0.15 s and fog becomes a bright blue (`0x6fc3ff`) with near 3 and far 26. Out of water it fades back. Never darker than the sky. |
 | Sounds | Short, quiet, in the existing `blip` style: `sfx.splash` on entering deep water (a falling pair of bubbly blips), `sfx.trickle` when water starts to flow from his dig (three tiny falling notes). No ambient loop. Throttled: splash at most once per 0.6 s, trickle at most once per 2 s. (my call) |
-| Saving | **Not saved. Recomputed.** Justification: the water is a pure function of the blocks and the sources, both already saved (seed plus edits); so saving it too would be redundant data that could disagree with the blocks (a plug removed in an old save with water still saved). On load, edits replay and then `WaterSim.settleAll()` runs the solver and applies the whole answer at once, before the first frame. No version bump and no migration. A save written during a flow is the same as one written after it. (my call) |
+| Saving | **Not saved. Recomputed.** Justification: the water is a pure function of the blocks, the sources and the small dry set (the only extra thing saved), all in the save (seed, edits, `dry`); so saving it too would be redundant data that could disagree with the blocks (a plug removed in an old save with water still saved). On load, edits replay and then `WaterSim.settleAll()` runs the solver and applies the whole answer at once, before the first frame. No version bump and no migration (`dry` is optional). A save written during a flow is the same as one written after it. (my call) |
 | Bucket (step 2, outline only) | A craftable `Bucket` item that can be filled by tapping a source or deep flow cell, carried (shown in the hotbar with a full or empty picture), and poured onto a cell to make a new source. Pouring is an ordinary edit of id 7, so saving, solving and draining (plug) need no new rules. Scooping a source that feeds a channel dries it, which is the real drain tool. Details in its own plan. |
 
 ## Who builds what
@@ -92,6 +98,7 @@ Every task is reviewed by the other agent before merging. Codex is used only for
 | 12 Sounds and Pip lines | Claude | Codex |
 | 13 Wire it together | Claude | Codex |
 | 14 Browser story (e2e) | Claude | Codex |
+| 15 Hold on flowing water drains it | Codex (resolveHold, pick rule) + Claude (wiring) | each other |
 
 ## File Structure
 
@@ -105,9 +112,12 @@ src/core/waterSim.ts        NEW  WaterSim: ticker, settleAll, stats
 src/core/pathfind.ts        CHG  isDeepWater, isSwimmable, isDry, swim option for pathTowards/findPath
 src/core/placement.ts       CHG  placing into flow cells allowed; canCollect refuses water
 src/core/save.ts            CHG  applySave calls settleAll; serialise filters flow ids (defensive)
-src/game/player.ts          CHG  swim state, speeds, buoyancy, climb out
+src/game/swimBody.ts        NEW  shared swim physics for Player and Pal
+src/game/player.ts          CHG  uses swimBody; dive-to-spot, hold pause
+src/input/tap.ts            CHG  resolveHold: 'drain' intent; resolveTap: dive target
+src/render/voxelRay.ts      CHG  holdBlocksRay: flow cells stop a hold pick, sources do not
 src/game/game.ts            CHG  swim policy for taps, rescue timer, events 'splashed' 'rescued'
-src/game/pal.ts             CHG  never in deep water; one water line
+src/game/pal.ts             CHG  swims with swimBody; water teleport rule; one water line
 src/content/lines.ts        CHG  new Pip LineKeys (waterSplash, waterTrickle)
 src/audio/sfx.ts            CHG  splash, trickle
 src/render/atlas.ts         CHG  water textures (ripple frames A/B, streak frames A/B)
@@ -116,7 +126,7 @@ src/render/scene.ts         CHG  water mesh per chunk, dirty-chunk queue, water 
 src/render/underwater.ts    NEW  UnderwaterState (pure): in-water test for camera point, fade value, fog numbers
 src/main.ts                 CHG  WaterSim wiring, tick, overlay div, debug hooks
 tests/core/{water,waterSim,pathfindSwim,pondStory,save}.test.ts
-tests/game/{playerSwim,gameSwim,pal}.test.ts
+tests/game/{playerSwim,gameSwim,pal}.test.ts, tests/input/drainHold.test.ts
 tests/render/{mesherWater,underwater,cameraWater}.test.ts, tests/content/lines.test.ts
 e2e/water.spec.ts
 ```
@@ -215,11 +225,16 @@ export class WaterSim {
   /** Apply the whole answer now, no animation. For load and tests. Returns the number of cells changed. */
   settleAll(): number;
   stats(): WaterStats;
+  /** Drain the stream containing this flow cell: false for sources, solids and non-water. */
+  drain(cell: Cell3): boolean;
+  /** Cells drained and not yet re-opened (saved, max 64). */
+  dryCells(): Cell3[];
+  loadDryCells(cells: Cell3[]): void;
   /** Fires with 'started' when the first flow cell appears after a quiet period (for the trickle sound) and 'drained' when the last one goes. */
   onEvent(cb: (e: 'started' | 'drained') => void): void;
 }
 ```
-Behaviour: the sim listens with `world.onChange` (any solid/air edit) and `world.onWaterChange` for source cells appearing or disappearing, and marks itself `needsSolve`. A tick with `needsSolve` or `pending > 0` solves once, then applies up to 24 differences: **additions sorted nearest-source-first** (step count then index), **removals farthest-first**; a removal of a flow cell that is no longer in the target and an addition are both `world.setDerived`. A tick with nothing pending and `needsSolve === false` returns immediately without touching the world (zero cost when settled). The set of flow cells is maintained incrementally (by listening), with `findSources` and a flow scan only at construction and `settleAll`.
+Behaviour: the sim listens with `world.onChange` (any solid/air edit) and `world.onWaterChange` for source cells appearing or disappearing, and marks itself `needsSolve`. A tick with `needsSolve` or `pending > 0` solves once, then applies up to 24 differences: **additions sorted nearest-source-first** (step count then index), **removals farthest-first**; a removal of a flow cell that is no longer in the target and an addition are both `world.setDerived`. A tick with nothing pending and `needsSolve === false` returns immediately without touching the world (zero cost when settled). `drain` finds the stream by a bounded walk (at most 400 cells) over connected flow cells, adds its mouth cells to the dry set, and the next tick retreats it. The solver takes the dry set as blocked cells. A world change at or beside a dry cell removes it from the set. The set of flow cells is maintained incrementally (by listening), with `findSources` and a flow scan only at construction and `settleAll`.
 
 - [ ] **Step 1:** Tests:
   - `settled world costs nothing`: after `settleAll`, 1000 `update(0.25)` calls make zero solver calls (spy on `solveWater` through an injectable function) and zero world writes.
@@ -231,6 +246,9 @@ Behaviour: the sim listens with `world.onChange` (any solid/air edit) and `world
   - `dt handling`: `update(NaN)`, `update(-1)`, `update(100)` do at most one tick and never throw.
   - `events`: 'started' once when the first cell appears, 'drained' once when the last goes, not repeatedly.
   - `settleAll equals the ticked end state`: ticking until settled gives the same cells as `settleAll` from the same start (order independence in time).
+  - `drain removes the stream, farthest first`; `drain` on a Water source returns false and changes nothing; on a solid or Air returns false.
+  - `drained cells recompute`: after a drain, placing then removing a block in the mouth cell, or digging beside it, lets the water run again; without that it stays dry across 1000 ticks.
+  - `the dry set is capped at 64` (oldest first) and `loadDryCells` restores a drained state with `settleAll`.
   - `pending is bounded`: `stats().pending` never exceeds `MAX_FLOW_CELLS`.
 - [ ] **Step 2:** Run `npx vitest run tests/core/waterSim.test.ts`, FAIL; implement; PASS.
 - [ ] **Step 3:** `npm test`. Commit `feat: bounded water simulation with tick cap`.
@@ -249,7 +267,8 @@ Behaviour: the sim listens with `world.onChange` (any solid/air edit) and `world
   - `digging round the whole shore` (every shore cell, one after another): flow cells never exceed 400 and the world settles; the pond cells (sources) are all still Water.
   - `a long trench downhill`: dig a 2-wide, 12-long trench along the meadow slope away from the pond's lowest bank, the water stays within 400, and runs down no more than the terrain allows (never above a cell's source height).
   - `removing a pond bed block` makes water fall into the hole and the pond surface is unchanged; refilling the hole drains the fall.
-  - `water cannot be dug or collected`: `canCollect` is false on `Water` and on every flow id; a hold on one does nothing (no inventory change).
+  - `water cannot be collected into the bag`: `canCollect` is false on `Water` and on every flow id (a hold on flowing water drains it, Task 15, and never gives an item).
+  - `the pond sources survive everything`: after every scenario in this file, every original `Water` cell is still `Water`.
   - `placing into water is allowed` on source and flow cells (`canPlace`), and the player cannot place a block inside his own body (existing rule).
   - `the bag is never given water`.
 - [ ] **Step 2:** Run `npx vitest run tests/core/pondStory.test.ts`. Expected: FAIL only where a rule is missing; fix in `placement.ts`. PASS.
@@ -277,7 +296,7 @@ export function pathTowards(world: World, from: Cell, goal: Cell, allowed?: (c: 
 /** The tap policy: dry first; swim only if dry does not arrive or is longer than DRY_LONG = 20 steps, and the cheaper route wins. */
 export function routeTowards(world: World, from: Cell, goal: Cell, allowed?: (c: Cell) => boolean): Approach | null;
 ```
-Rules: `opts.swim` defaults to false, so every existing caller (Pip, `walk` for villagers) is unchanged. A goal cell that is a swim cell is valid in swim mode. A goal on submerged ground is replaced by the surface swim cell above it (feet 0.9 below the surface, so the swim cell is the topmost wet cell of the column). Cost: dry step 1, swim step `swimCost ?? 2`.
+Rules: `opts.swim` defaults to false, so every existing caller (Pip, `walk` for villagers) is unchanged. A goal cell that is a swim cell is valid in swim mode. A goal on submerged ground is replaced by the surface swim cell above it (feet 0.9 below the surface, so the swim cell is the topmost wet cell of the column). Cost: dry step 1, swim step `swimCost ?? 2`. In swim mode neighbours also include straight up and straight down between swim cells. `resolveTap` (in `src/input/tap.ts`) turns a hit on submerged ground whose face points up into the water cell above it as the swim goal.
 
 - [ ] **Step 1:** Tests (hand-built pond worlds):
   - `isStandable keeps its old answers on dry land and rejects deep water`; accepts a shallow flow cell with floor; rejects a flow cell over Air (falling column) and a flow cell with water above.
@@ -285,7 +304,9 @@ Rules: `opts.swim` defaults to false, so every existing caller (Pip, `walk` for 
   - `isDry` rejects shallow puddles and deep water, accepts the shore.
   - `dry route preferred`: a 5-wide pond with the shore 8 steps round; a tap on the far side takes the dry route when the walk is under 20 steps (assert no swim cell in the path).
   - `swim when the dry route is long or missing`: a 12-wide lake with no way round: the path crosses water and ends on the far shore; with an island target it ends on the island.
-  - `tap on water swims to the surface above it` (never down to the bed).
+  - `tap on water swims to a spot`: a tap whose goal is a surface swim cell ends there.
+  - `dive to the bed`: a goal one cell above the pond bed is reachable by a path that goes down (vertical swim steps); the path ends in the goal cell and never passes through the bed.
+  - `3D swim goals`: a goal at any depth of a 5-deep flooded pit is reachable; a goal in a water cell with a solid head cell is rejected; the 4000-node cap holds in a 5-deep lake.
   - `climb out`: from a swim cell next to a bank one block above the surface the path continues onto the bank; for a bank two blocks above it does not (and `pathTowards` returns the nearest reachable).
   - `a flooded pit` with a 1-wide route out along the water exists in `swim` mode and the path ends on the dry rim.
   - `performance`: `routeTowards` across the real pond visits at most 4000 nodes (the same cap as today) and takes well under a few ms on desktop.
@@ -318,6 +339,8 @@ class Player {
 `pos.y` stays a whole number on land (unchanged) and becomes continuous while swimming. Rules inside `update`:
 - Speed is multiplied by `SWIM_FACTOR` in swim mode and `WADE_FACTOR` in wade mode, for stick and path alike.
 - In swim mode the path follows `canSwimStep`. A dry standable next cell at most 1 above the surface is the climb-out: he moves onto it and `pos.y` snaps to its integer floor; the transition is a short ease (≤ 0.2 s) so he does not teleport.
+- The physics live in `src/game/swimBody.ts` (pure, used by Player now and Pal in Task 8): mode, speed factors, buoyancy, climb-out, `wetSeconds`.
+- `Player.setHolding(on: boolean)`: while a hold ring is active the rise is paused (he keeps his depth to dig the bed). A hold does not move him.
 - Buoyancy: target `y = surface - FLOAT_DEPTH`; clamped to the column floor so he never sinks into the bed (min `floor + 0.05`) and never above the surface. With no input: 0.6 s of gentle sinking (at most 0.5 block), then rising at 1.0 b/s. While moving: rises/sinks to target at 1.5 b/s.
 - Entering water from a bank or a jump-off lands at the surface target; he never falls through the world.
 - `recover()` treats a swim cell as valid: a player in water is no longer "not standable, so search". Recover still runs if the feet cell is solid.
@@ -326,6 +349,8 @@ class Player {
 - [ ] **Step 1:** Tests (hand-built 12 × 12 pond, 3 deep):
   - `walking into the pond starts swimming` after crossing the shore; `mode === 'swim'`, speed measured over 2 s is `3.5 * 0.55 ± 5 %`.
   - `wading in a puddle` is 80 % speed and `mode === 'wade'`.
+  - `dives to a tapped bed spot` and `floats back up by himself` 0.4 s after arriving, at 1.0 b/s.
+  - `a hold keeps him down`: with `setHolding(true)` he stays at the bed for 2 s; released, he rises.
   - `floats up on his own`: placed at the bed of the 3-deep pond, no input, after 3 s his feet are within 0.1 of `surface - 0.9`.
   - `the bob`: with no input from the surface, the lowest feet height in the next 2 s is between `surface - 0.9 - 0.5` and `surface - 0.9`; never below the bed + 0.05; and he is back at the float height after 1.5 s.
   - `never drowns`: simulate 10 minutes of dt = 1/30 in the middle of the pond: still in the world, still at the float height, no exception, `pos` finite.
@@ -351,20 +376,22 @@ export const RESCUE_ANY_SECONDS = 10;
 ```
 - `Game.walk` uses `routeTowards` (Task 6) instead of the dry-only search. The result path is handed to `player.setPath` as today. `walkNear` (used by hold-to-dig on a block he must stand beside) keeps its dry preference.
 - `Game.update`: `player.takeSplash()` emits `splashed`. If `player.wetSeconds >= RESCUE_STUCK_SECONDS` and no climb-out cell is reachable within 12 swim steps, or `>= RESCUE_ANY_SECONDS` with no input, run `liftOut` (generalised to skip deep-water cells) and emit `rescued`. `liftOut` is the existing pit lift; it also learns `isDeepWater`.
-- `Pal`: a `rescued` event says `upYouCome`; the first `splashed` per session says a `waterSplash` line. Pip's own movement never targets deep water (default routing, as before). His teleport chooses a standable (not deep) cell. If the player is swimming, Pip's follow goal is the nearest dry standable cell to the player (pathTowards already returns the nearest reachable cell), so he waits at the shore.
+- `Pal`: moves with `swimBody` (55 % speed in deep water, floats at the surface, climbs out by the same rule) and follows with swim-enabled routes (`routeTowards`) so he swims alongside; when the player is on land Pip gets out of the water by the same search. A `rescued` event says `upYouCome`; the first `splashed` per session says a `waterSplash` line. Pip's stuck-rescue: 4 s in deep water with no climb-out, or 10 s in any case, uses the teleport. **Teleport rule:** the target is a dry standable cell; only if the player is swimming and within 3 cells does it choose the surface cell beside the player. Pip never dives: his swim goal is clamped to the surface.
 - Villagers (later steps) pass `isDry` as the `allowed` filter of their path searches; `isDry` is exported from `src/core/pathfind.ts` (Task 6), so this task only adds the test that proves the rule.
 
 - [ ] **Step 1:** Tests:
   - `tap on the pond swims there`: `applyIntent({kind:'walk', to: surfaceCellInPond})` ends with him at the cell, mode swim.
   - `tap across a lake swims, tap round a puddle walks`.
-  - `tap on submerged ground does not dive`.
+  - `tap on submerged ground dives`: tapping the pond bed swims him down to the cell above it and he floats up by himself afterwards.
+  - `hold at the bottom digs`: at the bed, a hold on the bed block completes and the block is collected; he does not rise during the ring.
   - `rescue stuck`: a flooded 3×3 pit with the water 3 blocks below the rim and no climb-out: after 4 s (simulated) `rescued` is emitted once, he stands on dry land (`isStandable` and not deep), his inventory is unchanged, and Pip's line is `upYouCome`.
   - `rescue any`: in the middle of a big lake with no input for 10 s he is lifted to the nearest shore; with input he is not.
   - `no rescue when he can get out`: a pond he is swimming in with a bank at hand never triggers a rescue before 10 s.
   - `rescue is never into water, a tree top or a wall` (property test on the real pond and the real village, 200 random water cells).
   - `cannot be lifted into the sky`: the rescue target is within 8 cells and `y` within 4 of his old `y` when a nearer option exists.
-  - `Pip never ends in deep water`: 60 s of simulated frames with the player swimming round the pond; Pip's feet cell is never deep; he stays within 12 cells of the player; when the player leaves the water Pip rejoins.
-  - `Pip teleport` while the player floats mid-pond lands on the shore.
+  - `Pip swims alongside`: 60 s of frames with the player swimming round the pond; Pip is in deep water only while the player is, stays within 6 cells of him and at the surface; when the player climbs out Pip climbs out within 5 s.
+  - `Pip's teleport` with the player on land never lands in water; with the player swimming within 3 cells it lands at the surface beside him; with the player swimming farther away it lands on the nearest shore.
+  - `Pip's stuck-rescue`: Pip in a flooded pit with no exit is on dry land within 4.5 s; the player is not moved.
   - `villagers never enter water`: a path search with `isDry` from the village square to a house across the pond ends at the nearest dry cell.
 - [ ] **Step 2:** Run `npx vitest run tests/game/`. Expected: new FAIL, old PASS. Implement. Expected: PASS.
 - [ ] **Step 3:** `npm test`. Commit `feat: swim taps, water rescue, Pip and villagers keep out of deep water`.
@@ -402,8 +429,8 @@ Rules: water cells no longer go in `transparent`. A water top face is at `y + le
 export const UNDERWATER_FOG = { color: 0x6fc3ff, near: 3, far: 26 } as const;
 export const TINT = { r: 70, g: 160, b: 255, a: 0.28, fadeSeconds: 0.15 } as const;
 export class UnderwaterState {
-  /** Feed the camera point each frame. Returns the fade 0..1. */
-  update(world: World, cam: { x: number; y: number; z: number }, dt: number): number;
+  /** Feed the camera point and his eye each frame; either in water counts. Returns the fade 0..1. */
+  update(world: World, cam: { x: number; y: number; z: number }, eye: { x: number; y: number; z: number }, dt: number): number;
   readonly fade: number;
 }
 // scene.ts
@@ -419,6 +446,7 @@ Behaviour: `main` subscribes `world.onWaterChange` to `markWaterDirty` and `worl
 - [ ] **Step 1:** Tests:
   - `UnderwaterState`: camera point in a source or flow cell gives fade 1 within 0.15 s; out of water 0 within 0.15 s; at the surface boundary it does not flicker (hysteresis of 0.1 block); NaN positions give 0.
   - `never dark`: `UNDERWATER_FOG.color` and `TINT` over white give a luminance above 0.5 (computed in the test) and the fog `far >= 20`.
+  - `underwater at depth`: eye 1.5 below the surface with the camera hanging above the surface behind him: fade reaches 1 (the eye counts); camera at the bed of a 2-deep pond never ends inside the bed; close mode engages when the floor or wall is closer than 1.2 and releases when he rises; tint and fog never go below the brightness floor.
   - `cameraWater`: with the real `CameraRig` and a world with a pond, for 500 random (yaw, pitch, eye) with the eye in water, `clampDistance` never returns a camera point inside a solid cell; a camera looking along the water surface is not pulled in by water (water does not block); in a flooded 3×3 pit close mode engages when the wall is closer than 1.2 and releases when he floats up out of it; no one-frame glitch where `distance` jumps by more than the existing ease allows.
   - `water rebuilds are bounded`: mark 40 chunks' water dirty in one frame (use the pure queue class exported for testing); at most 2 are rebuilt per frame; all are rebuilt within 20 frames; the same chunk marked 10 times is rebuilt once.
   - `a flow tick rebuilds no solid mesh` (spy on the solid builder; 0 calls during a pure flow tick).
@@ -429,7 +457,7 @@ Behaviour: `main` subscribes `world.onWaterChange` to `markWaterDirty` and `worl
 
 **Files:** Modify `src/core/save.ts`. Test `tests/core/save.test.ts` (extend).
 
-**Interfaces:** none new. `serialise` filters edits whose id is a flow id; `applySave` runs `new WaterSim(world).settleAll()` after the edits replay and before returning (the game constructs its own `WaterSim` from the same world; `settleAll` is idempotent). `isSaveData` accepts a v1 or v2 save exactly as village step 1 left it.
+**Interfaces:** SaveData gains one optional field `dry?: Array<[number, number, number]>` (the drained cells, at most 64, validated like edits; absent in older saves, ignored by older builds). `serialise` writes `waterSim.dryCells()`; `applySave` calls `loadDryCells` before `settleAll`. `serialise` filters edits whose id is a flow id; `applySave` runs `new WaterSim(world).settleAll()` after the edits replay and before returning (the game constructs its own `WaterSim` from the same world; `settleAll` is idempotent). `isSaveData` accepts a v1 or v2 save exactly as village step 1 left it.
 
 - [ ] **Step 1:** Tests:
   - `a save never contains a flow id`: run the pond story (dig, flow, settle), `serialise`, scan `edits` and `JSON.stringify`: no id 16, 17, 18.
@@ -438,6 +466,7 @@ Behaviour: `main` subscribes `world.onWaterChange` to `markWaterDirty` and `worl
   - `an old save (version 1 and 2) loads with the pond still` (use the legacy fixture and a v2 fixture).
   - `a save written mid-flow` (serialise at tick 1 of 5) loads to the same final water as the one that ran to the end.
   - `a hostile save` containing edits with flow ids is accepted without crashing, and the flow ids are treated as Air (never as saved water), or rejected as an invalid cell, whichever the existing `isSaveData` does with unknown ids; the test pins the choice.
+  - `a drained stream stays drained across a reload`; a save without `dry` loads with water flowing as before; an invalid `dry` entry (out of range, not integers) is dropped and the rest of the save loads; more than 64 entries are cut to 64.
   - `load time`: `applySave` on the 96 × 96 world with 5000 edits including an open bank stays within the existing load budget (print ms; assert the water part under 10 ms on desktop).
 - [ ] **Step 2:** Run `npx vitest run tests/core/save.test.ts`. FAIL; implement; PASS.
 - [ ] **Step 3:** `npm test`. Commit `feat: water is recomputed on load, never saved`.
@@ -449,14 +478,14 @@ Behaviour: `main` subscribes `world.onWaterChange` to `markWaterDirty` and `worl
 **Interfaces:**
 ```ts
 // sfx
-splash: () => void;   // two soft falling bubbly blips, ~0.2 s, peak 0.2; throttled to once per 600 ms
+splash: () => void;   // two soft falling bubbly blips, ~0.2 s, peak 0.2; throttled to once per 600 ms; also used, quieter (peak 0.12), for a drain
 trickle: () => void;  // three tiny falling notes ~0.25 s, peak 0.12; throttled to once per 2000 ms
 // lines
 type LineKey = /* ... */ | 'waterSplash' | 'waterTrickle';   // four variants each, short, British
 ```
-Lines (examples, final wording in the PR): `waterSplash` icon 💦: "Splash! Look at you swim!", "Wheee, a swim!", "Paddle, paddle!", "You're swimming!". `waterTrickle` icon 💧: "Ooh, the water is running!", "Look, it's trickling out!", "A little river!", "Whoosh, there it goes!". Pip never speaks an empty line (existing rule).
+Lines (examples, final wording in the PR): `waterSplash` icon 💦: "Look at you swim!", "What a lovely swim!", "You're swimming!", "Swimming along together!". `waterTrickle` icon 💧: "Look, the water is running!", "A little stream!", "The water is moving!", "What a little river!". **No cheers and no onomatopoeia in any water line** (the parent's rule). Pip never speaks an empty line (existing rule).
 
-- [ ] **Step 1:** Tests: lines are non-empty, British, no more than 8 words, four variants each, each has an icon; with a fake `AudioContext` the throttle holds (two `splash()` calls inside 600 ms make one sound); no sound plays without a context (silent, no throw); no looping oscillator remains after 3 s (nothing left running).
+- [ ] **Step 1:** Tests: no water line contains a cheer or sound word (banned list: splash, whoosh, wheee, wahoo, yay, hooray, ooh, paddle, glug, plop, drip, and any repeated-letter exclamation); lines are non-empty, British, no more than 8 words, four variants each, each has an icon; with a fake `AudioContext` the throttle holds (two `splash()` calls inside 600 ms make one sound); no sound plays without a context (silent, no throw); no looping oscillator remains after 3 s (nothing left running).
 - [ ] **Step 2:** Run `npx vitest run tests/content/lines.test.ts tests/audio/water.test.ts`. FAIL; implement; PASS.
 - [ ] **Step 3:** `npm test`. Commit `feat: splash and trickle sounds and Pip's water lines`.
 
@@ -480,9 +509,11 @@ Wiring: create `WaterSim` after `applySave`/`generateWorld`; call `waterSim.upda
   1. Load `/block-pals/?debug` (fresh storage). `__debug.water().flowCells === 0` (the pond is still).
   2. Walk beside a shore block next to the pond (tap), hold on it until it is dug. Wait for the condition `water().flowCells > 0` (poll, no fixed sleeps). Assert it settles (`pending === 0`), `1 <= flowCells <= 12`, and `trickle` was requested once.
   3. `giveItem` planks, select them, quick-tap the gap: assert `flowCells` returns to 0 and `world.get` of the gap is Planks.
-  4. Dig the plug again; water runs again; leave it.
+  4. Dig the plug again; water runs again. Then press and hold on a flowing cell: the ring fills, the stream drains (`flowCells` falls to 0) and the pond is untouched. Hold on the pond surface: the bed is dug, not the water, and every source is still Water. Re-open the gap (place and dig a block there): water runs again; leave it.
   5. Tap the middle of the pond: wait until `swimming() === 'swim'`; assert the player's speed is below walking speed (position delta over 1 s); `underwaterFade()` rises during the bob and returns to 0; assert the tint overlay has `pointer-events: none`.
   6. While swimming, drag to turn: `camera().yaw` changes; the player does not walk.
+  6b. Tap the pond bed: he swims down to it; wait: he floats back up by himself; hold on a bed block while down there: it is collected and he stays down until he lets go.
+  6c. Pip: while he swims, Pip is in deep water only while he is, and out of the water within 5 s of his climbing out.
   7. Tap the far shore: he swims and climbs out (`swimming() === 'walk'`, feet on a standable cell).
   8. Dig a 3×3 pit beside the water, open it to the pond, tap into the pit water: wait up to 6 s: he is on dry land (rescue or climb-out), `rescueCount()` is 0 or 1, never more than one.
   9. Reload the page: same `flowCells` as before the reload (water recomputed), the plug state kept, no console errors.
@@ -492,15 +523,42 @@ Wiring: create `WaterSim` after `applySave`/`generateWorld`; call `waterSim.upda
 
 ---
 
+### Task 15: Hold on flowing water drains it
+
+**Files:** Modify `src/input/tap.ts`, `src/render/voxelRay.ts`, `src/game/game.ts`, `src/main.ts` (wiring only). Tests `tests/input/drainHold.test.ts` (new), `tests/game/gameSwim.test.ts` (extend).
+
+**Interfaces:**
+```ts
+// tap.ts
+export type HoldIntent = /* ... */ | { kind: 'drain'; cell: Cell };
+// resolveHold: a hit on a flow id (never Water) within reach gives 'drain'; out of reach gives walkNear (dry side);
+// a hit on a Water source never gives a drain (the pick for holds looks through sources, so it resolves to the bed block and digs as before).
+// voxelRay.ts: holdBlocksRay(id): true for anything blocksRay accepts, and for the flow ids; false for Water (sources) and Air.
+// game.ts: applyIntent handles 'drain' by calling waterSim.drain(cell) and emitting { type: 'drained' }.
+```
+The hold ring, the outline and the cancel rules (lift early, slide away) are exactly those of digging. Taps keep the existing pick, which looks through all water, so a tap never drains.
+
+- [ ] **Step 1:** Tests:
+  - `hold on flowing water gives a drain intent` (in reach), `walkNear` when too far, `none` when the flow cell is under his or Pip's feet.
+  - `hold on a source gives no drain`: on the pond surface the pick resolves to the bed (a dig intent) or to nothing, never a drain of a `Water` cell; after completing it every source cell is still `Water`.
+  - `a drained stream stays gone and drained cells recompute` (the Task 4 rules, through `Game`): hold-drain, 1000 ticks, still dry; plug and unplug the mouth, water runs again.
+  - `drain gives no item and changes no edit`: inventory and `edits()` unchanged.
+  - `a tap on flowing water walks or wades; it never drains`.
+  - `drain emits 'drained' once`; the sfx is the quiet splash, throttled.
+- [ ] **Step 2:** Run `npx vitest run tests/input/drainHold.test.ts tests/game/gameSwim.test.ts`. FAIL; implement; PASS.
+- [ ] **Step 3:** `npm test`. Commit `feat: hold on flowing water drains it`.
+
+---
+
 ## Self-review against the spec
 
 - Ponds stay still; flow only after he digs a bank: Tasks 3 to 5 (`the pond is still`, `digging a shore block lets water out`).
 - Limited spread, settles, never floods: level thinning, the 400-cell cap, tests in Tasks 3, 4, 5.
-- Plug to stop, drain what he let out, nothing permanent: Tasks 4 and 5; ponds never drain by design.
+- Plug to stop, hold to drain what he let out, nothing permanent: Tasks 4, 5, 15; ponds and sources never drain by design.
 - Bucket later: outlined in the decisions table only; no code.
 - Swimming without drowning, slower, floating, tap to swim, drag to turn: Tasks 6, 7, 8, 14.
 - Blue tint, never dark, close mode underwater: Task 10 and the e2e.
-- Pip swims or waits (waits), villagers stay out: Task 8.
+- Pip swims alongside and climbs out with him, villagers stay out: Task 8.
 - Never stuck: climb-out rule (Task 7) plus the rescue (Task 8) with property tests.
 - Saves: recomputed, tested including the old fixtures (Task 11).
 - Farm irrigation: the channel rule (Task 3 `walled channel keeps its level`).
@@ -530,24 +588,24 @@ If the tablet misses 30 fps with water running (decide from the checklist, do no
 Use `?debug` once for the fps counter, then play without it. Write down the lowest fps you see.
 
 1. **Still pond.** Walk to the pond. It looks as it always did and does not move. fps 30 or above.
-2. **Let the water out.** Press and hold on a sand block at the pond edge. The block goes and water runs out a few blocks, gets thinner and stops. You hear a tiny trickle and Pip says a happy line. The fps stays at 30 or above while it runs.
-3. **Stop it.** Put any block in the gap. The water drains away from the far end in a second or two. Dig the block again and it runs again. Do it five times; nothing breaks and nothing is left behind.
+2. **Let the water out.** Press and hold on a sand block at the pond edge. The block goes and water runs out a few blocks, gets thinner and stops. You hear a tiny trickle and Pip says a short line (no cheers). The fps stays at 30 or above while it runs.
+3. **Stop it.** Put any block in the gap. The water drains away from the far end in a second or two. Dig the block again and it runs again. Do it five times; nothing breaks and nothing is left behind. Then press and hold on the running water: a ring fills, a small splash sounds and the water drains away. Press and hold on the pond itself: the pond stays full.
 4. **Do not flood.** Dig out four or five blocks round the pond, then a long ditch away from it. The water stays near the pond, never fills the meadow and never spreads over the world. The tablet stays smooth.
 5. **Ditch to a field.** Dig a straight narrow ditch with a block on each side of it, 10 blocks long, from the pond. The water runs all the way along it. Open the far end and it spreads a little and stops.
-6. **Swim.** Tap in the middle of the pond. He swims there, slowly, with a little splash sound. Stop touching: he bobs and floats up. Tap the far bank: he swims across and climbs out. Try both a flat bank and a bank one block higher.
-7. **Turn the view in the water.** Drag with one finger while swimming. The view turns; he does not walk. The picture is a soft bright blue under the water, never dark, and never goes through a block.
+6. **Swim.** Tap in the middle of the pond. He swims there, slowly, with a little splash sound. Stop touching: he bobs and floats up. Tap the pond bed: he swims down to it, then floats back up by himself; hold on a block down there and it digs. Tap the far bank: he swims across and climbs out. Try both a flat bank and a bank one block higher.
+7. **Turn the view in the water.** Drag with one finger while swimming. The view turns; he does not walk. The picture is a soft bright blue under the water (also when he is at the bottom), never dark, and never goes through a block; at the bottom the view comes in close and still looks fine.
 8. **Flooded pit.** Dig a pit beside the pond and let the water in. Walk into the water in the pit. He can get out by tapping the edge, or if not, he is lifted out after a few seconds and Pip says "Up you come!". He never feels stuck and nothing is lost from the bag.
-9. **Pip.** Pip waits on the shore while he swims, then comes back. Pip never ends up in the water.
+9. **Pip.** Pip swims along beside him and climbs out when he does. He never stays in the water after he has left it.
 10. **Save.** Let some water out, leave the plug off, reload the page: the water is there again as before. Plug it, reload: no water. His blocks are all there.
 11. **Controller.** Swim and climb out with the pad stick; the camera follows as before.
 12. **Heat and battery.** After 10 minutes of playing with water the tablet is not hot and the fps is the same as at the start.
 
-## Questions for the parent
+## Decisions from the parent (answers to the five questions)
 
-Most important first. Each has my answer built in, so none of them blocks the work.
+1. **Farm water:** walled ditches carry water unthinned; the farm step adds a small pool by the field; the bucket comes in step 2. (As planned.)
+2. **Undo:** plugging a gap with a block **and** press-and-hold on flowing water drains it (Task 15). Pond and source blocks are protected. A sponge block is a later idea.
+3. **Pip swims** alongside him and gets out when he does, using the same swim physics; his rescue and teleport rules are in Task 8.
+4. **No dive button:** tapping a point under the water swims him down to it; he floats back up by himself; hold-to-dig works at the bottom (Tasks 6, 7, 8).
+5. **Wading:** thin flowing water is waded, deep water is swum. (As planned.)
 
-1. **A channel to a far field.** The pond is about 60 blocks from the farm field. Water thins out over 3 blocks in the open, but runs without thinning along a ditch that has a wall on each side, so a long ditch can reach a field (it is a lot of digging). Is that the right feel, or should the farm step also put a small irrigation pool by the field, with the bucket as the easy way to carry water there? *(My call: walled ditches carry water; the farm step adds a small pool by the field; the bucket comes in step 2.)*
-2. **Undoing the water.** Until the bucket exists, the only way to stop or drain water he let out is to plug it with a block (everything downstream drains by itself). Holding on water does nothing. Is that enough for now? *(My call: yes, the bucket is the scoop.)*
-3. **Pip in the water.** Pip waits on the shore and cheers rather than swimming alongside. Swimming Pip is more fun but needs his own float, path and animation, and is a risk to his reliability. Do you want him to swim in this step? *(My call: waits on the shore; swim later.)*
-4. **Diving.** He bobs a little below the surface when he stops but there is no control to dive deeper. Underwater views come from the bob, deep ponds and flooded pits. Should there be a dive in this step, for example a hold on the water? *(My call: no dive yet.)*
-5. **Wading.** Thin flowing water (up to a puddle) can be walked through slowly instead of swum, so ditches never block him. Do you want all flowing water to be "swim only"? *(My call: puddles can be waded.)*
+No questions are open.
