@@ -51,6 +51,50 @@
     "Up you come! There we go!",
     "Whoops-a-daisy! Up you come!",
     "Up you come!",
-    "Whoops! Let me help you up!"
+    "Whoops! Let me help you up!",
+    "Let's go and meet the neighbours!",
+    "Shall we go and meet our neighbours?",
+    "Let's visit the neighbours. Follow me!",
+    "There are neighbours to meet. Come with me!",
+    "I'll wait for you. Come along!",
+    "Come along, no rush!",
+    "I'm waiting right here for you!",
+    "Come along. Slowly does it!",
+    "This way, follow me!",
+    "Follow me along the path!",
+    "The path goes this way!",
+    "I'll show you the way!",
+    "Here we are! This is the village!",
+    "We're in the village! Let's say hello!",
+    "This is the village. Lots of neighbours live here!",
+    "Here we are, at the village!",
+    "This is your very own cottage!",
+    "What a cosy little home!",
+    "Your own cottage. How lovely!",
+    "Home sweet home!"
+  ],
+  "bramble": [
+    "Hello, neighbour! Welcome to my bakery.",
+    "Mind my floury hat. It wobbles when I laugh!",
+    "Hello, hello! My bakery smells of warm bread.",
+    "A visitor! How lovely to meet you."
+  ],
+  "pebble": [
+    "Hello, neighbour! Mind the shiny stones.",
+    "Welcome to my shop, friend. I love a good stone.",
+    "Shiny stones are my favourite thing in the world.",
+    "Hello there, friend. My moustache says hello too."
+  ],
+  "fern": [
+    "Hello, hello! My carrots say hello too.",
+    "Welcome to my farm. It is a lovely place.",
+    "Do you like my hat? It has a carrot!",
+    "Nice to meet you, neighbour. Come and visit again!"
+  ],
+  "granny": [
+    "Hello, dear. What a lovely surprise.",
+    "Hello, dear. I am knitting a very long scarf.",
+    "Mind my scarf, dear. It is rather long!",
+    "How lovely to meet you, dear."
   ]
 }

@@ -56,6 +56,7 @@ export class Voice {
   private buffers = new Map<string, Promise<AudioBuffer>>();
   private current: { src: AudioBufferSourceNode; gain: GainNode } | null = null;
   private token = 0;
+  private endsAt = 0;
 
   constructor(synth?: SpeechSynthesis | null, private deps?: ClipDeps) {
     this.synth = synth === undefined ? (typeof speechSynthesis !== 'undefined' ? speechSynthesis : null) : synth;
@@ -79,8 +80,23 @@ export class Voice {
     }
   }
 
+  /** True while a line is (probably) still being spoken: lets callers avoid talking over each other. */
+  speaking(): boolean {
+    return performance.now() < this.endsAt;
+  }
+
+  /** Stops whatever is being spoken now (clip or speech). */
+  stop(): void {
+    this.token++;
+    this.endsAt = 0;
+    this.stopClip();
+    try { this.synth?.cancel(); } catch { /* speech is optional */ }
+  }
+
   say(text: string, speaker = 'pip'): void {
     if (!text) return; // never an empty utterance: it would cancel the line that is playing
+    // Provisional until the clip's real length is known; plain speech is estimated from its length.
+    this.endsAt = performance.now() + Math.max(2500, text.length * 75);
     if (!this.deps) {
       this.speak(text);
       return;
@@ -179,6 +195,7 @@ export class Voice {
       if (this.current?.src === src) this.current = null;
     };
     src.start();
+    this.endsAt = performance.now() + buf.duration * 1000 + 150;
     this.current = { src, gain };
     this.last = { source: 'clip', key };
     return true;

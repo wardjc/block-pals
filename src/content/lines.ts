@@ -11,7 +11,12 @@ export type LineKey =
   | 'craftNeedMore'
   | 'breakTime'
   | 'welcomeBack'
-  | 'upYouCome';
+  | 'upYouCome'
+  | 'letsMeetNeighbours'
+  | 'comeOn'
+  | 'thisWay'
+  | 'weAreHere'
+  | 'cosyHome';
 
 /** Lines spoken by Pip. British English, short and warm. */
 export const LINES: Record<LineKey, string[]> = {
@@ -93,6 +98,37 @@ export const LINES: Record<LineKey, string[]> = {
     'Up you come!',
     'Whoops! Let me help you up!',
   ],
+  // Pip leading him to the village (first time only). Each is true wherever it can fire.
+  letsMeetNeighbours: [
+    "Let's go and meet the neighbours!",
+    'Shall we go and meet our neighbours?',
+    "Let's visit the neighbours. Follow me!",
+    'There are neighbours to meet. Come with me!',
+  ],
+  comeOn: [
+    "I'll wait for you. Come along!",
+    'Come along, no rush!',
+    "I'm waiting right here for you!",
+    'Come along. Slowly does it!',
+  ],
+  thisWay: [
+    'This way, follow me!',
+    'Follow me along the path!',
+    'The path goes this way!',
+    "I'll show you the way!",
+  ],
+  weAreHere: [
+    'Here we are! This is the village!',
+    "We're in the village! Let's say hello!",
+    'This is the village. Lots of neighbours live here!',
+    'Here we are, at the village!',
+  ],
+  cosyHome: [
+    'This is your very own cottage!',
+    'What a cosy little home!',
+    'Your own cottage. How lovely!',
+    'Home sweet home!',
+  ],
 };
 
 /** Pick a variant for a key, never the same one twice in a row. */
@@ -119,4 +155,9 @@ export const LINE_ICONS: Record<LineKey, string> = {
   breakTime: '🤸',
   welcomeBack: '🥰',
   upYouCome: '⬆️',
+  letsMeetNeighbours: '🏘️',
+  comeOn: '👋',
+  thisWay: '➡️',
+  weAreHere: '🎉',
+  cosyHome: '🏠',
 };
