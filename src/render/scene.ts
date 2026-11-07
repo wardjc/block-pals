@@ -83,7 +83,7 @@ export class GameScene {
     );
     const glow = new THREE.Mesh(
       box,
-      new THREE.MeshBasicMaterial({ color: 0xffffff, transparent: true, opacity: 0.28, depthWrite: false }),
+      new THREE.MeshBasicMaterial({ color: 0xffffff, transparent: true, opacity: 0.3, depthWrite: false, depthTest: false }),
     );
     edges.renderOrder = glow.renderOrder = 3;
     this.outline.add(glow, edges);
