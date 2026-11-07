@@ -23,7 +23,7 @@ describe('lines', () => {
     expect(LINES.letsFindWood[0]).toBe("Let's find some wood. Press and hold a tree!");
     expect(LINES.crafted[0]).toBe('Brilliant! You made it!');
     expect(LINES.full[0]).toBe("That's plenty of those! Let's use some.");
-    expect(LINES.noPath[0]).toBe("Hmm, I can't get there. Let's try another way!");
+    expect(LINES.noPath[0]).toBe("I can't get there. Let's try another way!");
     expect(LINES.breakTime[0]).toBe("Let's have a stretch! Wiggle your arms!");
     expect(LINES.welcomeBack[0]).toBe("You're back! I missed you!");
   });

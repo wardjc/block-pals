@@ -10,7 +10,22 @@ function ensure(): AudioContext | null {
     ctx = new Ctor();
     master = ctx.createGain();
     master.gain.value = 0.5;
-    master.connect(ctx.destination);
+    // Safety limiter: a voice clip (peak ~0.45 after master, more after the compressor's automatic makeup gain of roughly +3 dB) plus a pop or two (~0.2 each) can approach
+    // full scale. Threshold -6 dB with a hard ratio keeps the sum from clipping; it is not a no-op: the compressor adds makeup gain, which is why CLIP_GAIN is a modest 1.0.
+    let sink: AudioNode = ctx.destination;
+    try {
+      const lim = ctx.createDynamicsCompressor();
+      lim.threshold.value = -6;
+      lim.knee.value = 6;
+      lim.ratio.value = 12;
+      lim.attack.value = 0.003;
+      lim.release.value = 0.15;
+      lim.connect(ctx.destination);
+      sink = lim;
+    } catch {
+      /* no compressor: connect straight through */
+    }
+    master.connect(sink);
   } catch {
     ctx = null;
     master = null;
@@ -149,6 +164,11 @@ function play(fn: () => void): void {
 }
 
 export const sfx = {
+  /** The shared AudioContext and its master gain, for voice clips. Null when Web Audio is unavailable. */
+  audioOut: (): { ctx: AudioContext; out: AudioNode } | null => {
+    const c = ensure();
+    return c && master ? { ctx: c, out: master } : null;
+  },
   pop: () => play(() => blip(520, 0, 0.12, 'sine', 0.4, 780)),
   place: () => play(() => blip(400, 0, 0.1, 'triangle', 0.35, 330)),
   craft: () => play(() => [523, 659, 784].forEach((f, i) => blip(f, i * 0.09, 0.18, 'triangle', 0.3))),

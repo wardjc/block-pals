@@ -29,14 +29,14 @@ export const LINES: Record<LineKey, string[]> = {
   ],
   collectedFirst: [
     'Well done! You collected a block!',
-    'Ooh, lovely! You got one!',
-    'Hooray! You found a lovely block!',
+    'Lovely! You got one!',
+    'Smashing! You found a lovely block!',
     "Super! That one's in your bag!",
   ],
   collectedMore: [
     'Nice one! Keep going!',
     'Super! You got another!',
-    'Hooray! Look at that!',
+    'Goodness! Look at that!',
     'Wonderful! One more for your bag!',
   ],
   full: [
@@ -49,16 +49,16 @@ export const LINES: Record<LineKey, string[]> = {
     'Brilliant! You made it!',
     'Wow, look what you made!',
     'Fantastic! Well done!',
-    'Ta-da! Look at your new thing!',
+    'Look at your new thing!',
   ],
   placed: [
     'Lovely building!',
-    'Ooh, what are you making?',
+    'What are you making?',
     'What a lovely spot for it!',
     'Great building! Keep going!',
   ],
   noPath: [
-    "Hmm, I can't get there. Let's try another way!",
+    "I can't get there. Let's try another way!",
     "That's tricky! Let's go a different way.",
     "Oops, I can't reach that. Let's try again!",
     "That's a bit tricky. Shall we go round?",
@@ -83,14 +83,14 @@ export const LINES: Record<LineKey, string[]> = {
   ],
   welcomeBack: [
     "You're back! I missed you!",
-    'Hiya! Yay, you came back!',
+    'Hiya! You came back!',
     "Hello again! I'm so happy you're here!",
     'Welcome back! Pip missed you!',
   ],
   upYouCome: [
     'Up you come! There we go!',
     'Whoops-a-daisy! Up you come!',
-    'Hup! Up you come!',
+    'Up you come!',
     'Whoops! Let me help you up!',
   ],
 };
