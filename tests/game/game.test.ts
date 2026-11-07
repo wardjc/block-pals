@@ -1,6 +1,7 @@
-import { describe, expect, it } from 'vitest';
+import { describe, expect, it, vi } from 'vitest';
 import { BlockId } from '../../src/core/blocks';
 import { Inventory } from '../../src/core/inventory';
+import * as pathfinding from '../../src/core/pathfind';
 import { World } from '../../src/core/world';
 import { generateWorld } from '../../src/core/worldgen';
 import { Game, type GameEvent } from '../../src/game/game';
@@ -355,4 +356,31 @@ describe('Game pause', () => {
     game.update(0.5);
     expect(game.player.pos.x).not.toBe(x);
   });
+});
+
+
+it('walks the final BFS goal in a straight line on open ground', () => {
+  const { game, events } = setup();
+  game.applyIntent({ kind: 'walk', to: [17, 1, 10] });
+  expect(events).toContainEqual({ type: 'walking', to: [17, 1, 10] });
+  for (let tick = 0; tick < 250; tick++) {
+    game.update(1 / 60);
+    const { x, z } = game.player.pos;
+    expect(Math.abs((x - 5.5) * 5 - (z - 5.5) * 12) / 13).toBeLessThan(0.15);
+  }
+  expect(game.player.feetCell()).toEqual([17, 1, 10]);
+});
+
+it('falls back to the BFS route if A* exhausts its search', () => {
+  const { game, events } = setup();
+  const search = vi.spyOn(pathfinding, 'findPath').mockReturnValue(null);
+  try {
+    game.applyIntent({ kind: 'walk', to: [10, 1, 8] });
+    expect(search).toHaveBeenCalled();
+    expect(events).toContainEqual({ type: 'walking', to: [10, 1, 8] });
+    for (let tick = 0; tick < 200; tick++) game.update(1 / 30);
+    expect(game.player.feetCell()).toEqual([10, 1, 8]);
+  } finally {
+    search.mockRestore();
+  }
 });

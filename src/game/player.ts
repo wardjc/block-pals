@@ -7,6 +7,13 @@ const SPEED = 3.5;
 const MAX_STEP = 0.2;
 const EPSILON = 1e-8;
 
+/** Turn along the shortest arc, bounded by the time available this frame. */
+export function easeHeading(current: number, target: number, maxDelta: number): number {
+  const delta = Math.atan2(Math.sin(target - current), Math.cos(target - current));
+  const next = current + Math.max(-maxDelta, Math.min(maxDelta, delta));
+  return Math.atan2(Math.sin(next), Math.cos(next));
+}
+
 export class Player {
   // Feet position in world units. Cell centres are at x + 0.5 and z + 0.5.
   pos: { x: number; y: number; z: number };
@@ -14,6 +21,7 @@ export class Player {
   heading = 0;
   private path: Cell[] = [];
   private waypoint = 0;
+  private centring = false;
   private stick = { x: 0, z: 0 };
 
   constructor(spawn: { x: number; y: number; z: number }) {
@@ -27,6 +35,7 @@ export class Player {
   setPath(path: Cell[] | null): void {
     this.path = path?.map(cell => [...cell] as Cell) ?? [];
     this.waypoint = 0;
+    this.centring = false;
     this.stick = { x: 0, z: 0 };
   }
 
@@ -51,8 +60,10 @@ export class Player {
         const distance = Math.min(MAX_STEP, remaining);
         const dx = this.stick.x / magnitude * distance;
         const dz = this.stick.z / magnitude * distance;
+        const stepTime = distance / (SPEED * magnitude);
         // Blocked on a diagonal? Slide along the wall: try x alone, then z alone.
-        if (!this.move(world, dx, dz) && !this.move(world, dx, 0) && !this.move(world, 0, dz)) break;
+        if (!this.move(world, dx, dz, stepTime)
+          && !this.move(world, dx, 0, stepTime) && !this.move(world, 0, dz, stepTime)) break;
         remaining -= distance;
       }
       return;
@@ -60,10 +71,7 @@ export class Player {
 
     while (remaining > EPSILON && this.waypoint < this.path.length) {
       const target = this.path[this.waypoint];
-      const current = this.feetCell();
-      const sameCell = current.every((value, i) => value === target[i]);
-      if (!this.insideWall(world, target)
-        || (!sameCell && !canStep(world, current, target))) {
+      if (!this.insideWall(world, target) || !isStandable(world, target)) {
         this.path = [];
         break;
       }
@@ -71,19 +79,35 @@ export class Player {
       const dz = target[2] + 0.5 - this.pos.z;
       const distance = Math.hypot(dx, dz);
       if (distance < EPSILON) {
+        this.pos.x = target[0] + 0.5;
+        this.pos.z = target[2] + 0.5;
         this.waypoint++;
         continue;
       }
       const step = Math.min(MAX_STEP, remaining, distance);
-      if (!this.move(world, dx / distance * step, dz / distance * step)) {
-        this.path = [];
-        break;
+      const mx = dx / distance * step;
+      const mz = dz / distance * step;
+      const t = step / SPEED;
+      // Blocked? Slide along the wall (x then z), as the stick does; failing that, step back
+      // to the cell centre once so a sub-cell start cannot leave him stopped dead.
+      if (!this.move(world, mx, mz, t) && !this.move(world, mx, 0, t) && !this.move(world, 0, mz, t)) {
+        const here = this.feetCell();
+        const cx = here[0] + 0.5;
+        const cz = here[2] + 0.5;
+        if (this.centring || Math.hypot(cx - this.pos.x, cz - this.pos.z) < 0.01) {
+          this.path = [];
+          break;
+        }
+        this.centring = true;
+        this.path.splice(this.waypoint, 0, here);
+        continue;
       }
       remaining -= step;
       if (step === distance) {
         this.pos.x = target[0] + 0.5;
         this.pos.z = target[2] + 0.5;
         this.waypoint++;
+        this.centring = false;
       }
     }
   }
@@ -139,7 +163,7 @@ export class Player {
   }
 
   /** Small horizontal sweeps prevent a long frame from tunnelling through a wall. */
-  private move(world: World, dx: number, dz: number): boolean {
+  private move(world: World, dx: number, dz: number, dt: number): boolean {
     const { x, z } = clampToWall(world, this.pos.x + dx, this.pos.z + dz);
     const from = this.feetCell();
     const nextX = Math.floor(x);
@@ -161,18 +185,11 @@ export class Player {
     const travelledZ = z - this.pos.z;
     if (Math.hypot(travelledX, travelledZ) < EPSILON) return false;
     this.pos = { x, y: destination[1], z };
-    this.heading = Math.atan2(travelledX, travelledZ);
+    this.heading = easeHeading(this.heading, Math.atan2(travelledX, travelledZ), 10 * dt);
     return true;
   }
 
   private canMove(world: World, from: Cell, to: Cell): boolean {
-    if (from[0] === to[0] || from[2] === to[2]) return canStep(world, from, to);
-    if (!isStandable(world, to)) return false;
-    // Diagonal motion must clear both adjoining columns, including their ceilings.
-    return [[to[0], from[2]], [from[0], to[2]]].every(([x, z]) =>
-      [0, 1, -1].some(dy => {
-        const side: Cell = [x, from[1] + dy, z];
-        return canStep(world, from, side) && canStep(world, side, to);
-      }));
+    return canStep(world, from, to, cell => this.insideWall(world, cell));
   }
 }
