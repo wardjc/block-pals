@@ -85,7 +85,7 @@ The smallest version he can play and enjoy:
 
 Plus, in v1: voice for everything, British English, touch and controller, local save, and the grown-up area with usage time and break reminders.
 
-**Later versions** (rough order, to confirm at planning time): bad guys and friendly weapons → villagers, quests, trading and friendship hearts → beat blocks and music quests → STEM quests → more pals and areas → same-screen two-player.
+**Later versions** (updated 2026-11-07, see §7d): the Village version (in four steps) → Underground bases → bad guys and friendly weapons → beat blocks and music quests → STEM quests → more pals and areas → same-screen two-player.
 
 ### 7a. v1.1: separate moving from digging (agreed 2026-11-07)
 
@@ -120,6 +120,38 @@ When our player dug down, the camera (fixed behind and above him) went inside th
 5. **Drag to turn.** A one-finger drag on the world (anything past the 12 px slide that already cancels a tap or hold) turns the view: sideways turns around him, up and down tilts between slightly above the horizon and about 70° down, never flipping. A drag across the whole screen turns about 240°. A drag never walks, builds or digs, and drags that start on a button or overlay do nothing to the camera.
 6. **The camera stays where he leaves it.** It follows him but no longer swings round behind him.
 7. Tapping to walk works whichever way the camera faces. The controller's left stick moves relative to the camera. If the controller has a second stick it turns the view; otherwise the controller cannot turn it (axes that rest off-centre, like triggers, are ignored).
+
+### 7d. Village version: agreed design (2026-11-07)
+
+Agreed with the parent, question by question. Everything below follows the §4 anti-goals: nothing scary, nothing lost, no reading needed, British English, everything spoken, numbers up to 20 with dots.
+
+**World and layout.** One bigger connected world: the meadow grows, and the village and farm sit just over the hill. A clear path always links the meadow (home) and the village, so he can always walk back. The first time, Pip leads him: "Let's go and meet the neighbours!"
+
+**First four villagers** (all original characters, each with a funny feature, their own British voice, short spoken lines and a picture in every speech bubble):
+- **Bramble the Baker** 🍞: jolly, floury, hums while baking, "Ooh, lovely!". Runs the bakery with a chimney. Turns wheat, eggs and milk into bread and cake.
+- **Captain Pebble** ⛏️: gruff but kind ex-miner with a huge moustache, loves shiny stones. Runs the block shop by the quarry. Sells special blocks (glowing blocks, coloured wool) and buys his spare blocks. Later he leads him to underground bases.
+- **Fern the Farmer** 🥕: cheerful, outdoorsy, talks to her carrots. Lives in the farmhouse. Gives seeds and picture jobs ("collect 5 eggs", "plant 3 carrots").
+- **Granny Willow** 🧶: gentle storyteller, knits, always has biscuits. Lives in a cosy cottage. Gives calm picture quests ("find my lost cat") and is a safe, quiet place.
+
+*Later villagers (not in the first Village version):* Professor Cog (inventor; STEM quests), DJ Dash (drum and bass music corner), Sprocket (toy and pet shop), Mayor Muddle (village jobs).
+
+**The farm.** Wheat, carrots, potatoes and apple trees. He plants seeds, then taps to water or give sunshine; each tap advances the plant one stage with a sparkle (instant feedback and a gentle science link). Plants also grow slowly by themselves in real time, so they are bigger when he returns. **Nothing ever wilts or dies.** He can dig his own farm patch. Friendly animals (chickens give eggs, cows milk, sheep wool, a pig) wander about, make happy noises and come over when he holds out food. **No animal is ever hurt or eaten.**
+
+**Eating.** Food is eaten with a munch animation and sound and Pip's "Yum!". **No hunger bar and nothing bad happens if he doesn't eat.** Each villager has a favourite food (for example Bramble: cake, Pebble: carrots, Granny: biscuits); sharing it earns friendship hearts.
+
+**Money.** Shiny coins 🪙. Shop prices are one number with dots, never above 20. He earns coins from villagers' jobs, from eggs and vegetables, and by selling spare blocks to Captain Pebble. **Coins are never lost or taken away.**
+
+**Friendship.** Hearts grow by trading, sharing food and finishing quests. At full hearts a villager can join his crew, and can visit his cottage.
+
+**Houses.** Built from real blocks with a door gap; he walks straight in (no picture-scene). The camera's close mode (§7c) handles small rooms, and **turning the view by dragging must work inside houses**, with a test. He has his **own tiny starter cottage** near the meadow from the beginning. He can furnish it with crafted or bought furniture (beds, tables, lamps) and knock walls through or build on as much as he likes; nothing is locked.
+
+**Build order (each step its own pull request, playtested on the tablet before the next):**
+1. **The bigger world:** the meadow grows; the village, farm and path are generated; houses with doors; his starter cottage; Pip leads him to the village the first time. No new rules to learn yet. *Done when:* he can walk the path to the village and home, walk into every house and turn the view inside it, and the world still loads fast on the Tab A8 (30 fps target) and saves/loads.
+2. **Eating and the farm:** food items, the munch animation, planting, watering and growing, harvesting, animals and their gifts, his own farm patch. *Done when:* he can plant, tap to grow, harvest and eat, and nothing can wilt or be lost.
+3. **Shops and coins:** the villagers and their shops, the coin purse, prices with dots, selling spare blocks, the bakery and block shop. *Done when:* every price is ≤ 20, spoken and shown with dots, and he can never be left unable to buy because coins were lost.
+4. **Friendship and quests:** hearts, favourite foods, Fern's and Granny's picture jobs and quests, joining the crew, friends visiting his cottage. *Done when:* a full set of hearts can be earned from at least trading, sharing food and one quest per villager.
+
+Each step gets its own detailed implementation plan when it starts. Step 1 first. After the Village steps comes the **Underground** version (§7b item 4), then bad guys with friendly weapons, music, STEM, more pals, and two-player.
 
 ## 8. Left to the builder
 
