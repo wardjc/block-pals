@@ -30,13 +30,13 @@ export const LINES: Record<LineKey, string[]> = {
   collectedFirst: [
     'Well done! You collected a block!',
     'Ooh, lovely! You got one!',
-    'Hooray! You found a lovely block!',
+    'Smashing! You found a lovely block!',
     "Super! That one's in your bag!",
   ],
   collectedMore: [
     'Nice one! Keep going!',
     'Super! You got another!',
-    'Hooray! Look at that!',
+    'Goodness! Look at that!',
     'Wonderful! One more for your bag!',
   ],
   full: [
@@ -83,7 +83,7 @@ export const LINES: Record<LineKey, string[]> = {
   ],
   welcomeBack: [
     "You're back! I missed you!",
-    'Hiya! Yay, you came back!',
+    'Hiya! You came back!',
     "Hello again! I'm so happy you're here!",
     'Welcome back! Pip missed you!',
   ],

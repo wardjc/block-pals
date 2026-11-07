@@ -1,0 +1,7 @@
+{
+  "pip":     { "id": "pip",     "blend": "bf_lily*0.6+am_puck*0.4",     "tempo": 1.0,  "lift": 1.06 },
+  "bramble": { "id": "bramble", "blend": "am_santa",                    "tempo": 1.0,  "lift": 1.0 },
+  "pebble":  { "id": "pebble",  "blend": "bm_daniel",                   "tempo": 0.95, "lift": 1.0 },
+  "granny":  { "id": "granny",  "blend": "bm_fable*0.4+bf_alice*0.6",   "tempo": 0.92, "lift": 1.0 },
+  "fern":    { "id": "fern",    "blend": "af_nicole*0.5+bf_lily*0.5",   "tempo": 1.05, "lift": 1.05 }
+}
