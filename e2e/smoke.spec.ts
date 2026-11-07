@@ -44,6 +44,14 @@ async function nearbyGround(page: Page): Promise<{ cell: Cell; id: number; x: nu
   return found;
 }
 
+/** Horizontal distance the player has moved from `from`. */
+function moved(page: Page, from: { x: number; z: number }): Promise<number> {
+  return page.evaluate(f => {
+    const p = window.__debug.playerPos();
+    return Math.hypot(p.x - f.x, p.z - f.z);
+  }, from);
+}
+
 /** A real touch press (pointerType touch) held for `ms`. */
 async function press(page: Page, x: number, y: number, ms: number): Promise<void> {
   const cdp = await page.context().newCDPSession(page);
@@ -53,11 +61,23 @@ async function press(page: Page, x: number, y: number, ms: number): Promise<void
   await cdp.detach();
 }
 
+/** Resolves once `frames` animation frames have run, so the game loop is alive. */
+async function frames(page: Page, frames = 5): Promise<void> {
+  await page.evaluate(n => new Promise<void>(res => {
+    const tick = () => (--n <= 0 ? res() : requestAnimationFrame(tick));
+    requestAnimationFrame(tick);
+  }), frames);
+}
+
 async function ready(page: Page): Promise<void> {
   await page.goto(URL);
   await expect(page.locator('canvas')).toBeVisible();
   await page.waitForFunction(() => !!window.__debug);
-  await page.waitForTimeout(1500); // let Pip settle beside the player
+  // Let Pip settle beside the player.
+  await expect.poll(() => page.evaluate(() => {
+    const p = window.__debug.playerPos(), q = window.__debug.pipPos();
+    return Math.hypot(p.x - q.x, p.z - q.z);
+  })).toBeLessThan(4);
 }
 
 test('loads with canvas and hotbar and no console errors', async ({ page }) => {
@@ -67,7 +87,8 @@ test('loads with canvas and hotbar and no console errors', async ({ page }) => {
   await page.goto(URL);
   await expect(page.locator('canvas')).toBeVisible();
   await expect(page.locator('.hotbar')).toBeVisible();
-  await page.waitForTimeout(1500);
+  await page.waitForFunction(() => !!window.__debug);
+  await frames(page, 60);
   expect(errors).toEqual([]);
 });
 
@@ -75,12 +96,10 @@ test('tap on ground moves the player', async ({ page }) => {
   await page.goto(URL);
   await expect(page.locator('canvas')).toBeVisible();
   await page.waitForFunction(() => !!window.__debug);
-  await page.waitForTimeout(1000);
+  await frames(page);
   const before = await page.evaluate(() => window.__debug.playerPos());
   await page.touchscreen.tap(640, 300);
-  await page.waitForTimeout(3000);
-  const after = await page.evaluate(() => window.__debug.playerPos());
-  expect(Math.hypot(after.x - before.x, after.z - before.z)).toBeGreaterThan(0.5);
+  await expect.poll(() => moved(page, before)).toBeGreaterThan(0.5);
   // Spec §7a: a tap never digs.
   expect(await page.evaluate(() => window.__debug.game.inventory.hotbar().length)).toBe(0);
 });
@@ -89,9 +108,8 @@ test('press and hold on a nearby block digs it', async ({ page }) => {
   await ready(page);
   const target = await nearbyGround(page);
   await press(page, target.x, target.y, 700);
-  await page.waitForTimeout(100);
   const [x, y, z] = target.cell;
-  expect(await page.evaluate(([x, y, z]) => window.__debug.game.world.get(x, y, z), [x, y, z])).toBe(0);
+  await expect.poll(() => page.evaluate(([x, y, z]) => window.__debug.game.world.get(x, y, z), [x, y, z])).toBe(0);
   expect(await page.evaluate(id => window.__debug.game.inventory.count(id), target.id)).toBe(1);
   await expect(page.locator('.dig-ring')).toBeHidden();
 });
@@ -101,12 +119,10 @@ test('a quick tap on the same nearby block walks and digs nothing', async ({ pag
   const target = await nearbyGround(page);
   const before = await page.evaluate(() => window.__debug.playerPos());
   await page.touchscreen.tap(target.x, target.y);
-  await page.waitForTimeout(2500);
+  await expect.poll(() => moved(page, before)).toBeGreaterThan(0.5);
   const [x, y, z] = target.cell;
   expect(await page.evaluate(([x, y, z]) => window.__debug.game.world.get(x, y, z), [x, y, z])).toBe(target.id);
   expect(await page.evaluate(() => window.__debug.game.inventory.hotbar().length)).toBe(0);
-  const after = await page.evaluate(() => window.__debug.playerPos());
-  expect(Math.hypot(after.x - before.x, after.z - before.z)).toBeGreaterThan(0.5);
 });
 
 /** A real one-finger touch drag from (x, y) by (dx, dy) in small steps. */
@@ -131,7 +147,7 @@ test('drag turns the camera and does not walk or dig', async ({ page }) => {
   // Start on the ground in front of him (a press there could dig), then slide 400 px right.
   const target = await nearbyGround(page);
   await drag(page, target.x - 200, target.y, 400, 0);
-  await page.waitForTimeout(800);
+  await frames(page, 30);
   const after = await page.evaluate(() => ({
     cam: window.__debug.camera(), pos: window.__debug.playerPos(), bag: window.__debug.game.inventory.hotbar().length,
   }));
@@ -144,9 +160,7 @@ test('drag turns the camera and does not walk or dig', async ({ page }) => {
   await expect(page.locator('.dig-ring')).toBeHidden();
   // Tap-to-walk still works the way the camera now faces.
   await page.touchscreen.tap(640, 300);
-  await page.waitForTimeout(2500);
-  const walked = await page.evaluate(() => window.__debug.playerPos());
-  expect(Math.hypot(walked.x - after.pos.x, walked.z - after.pos.z)).toBeGreaterThan(0.5);
+  await expect.poll(() => moved(page, after.pos)).toBeGreaterThan(0.5);
 });
 
 test('craft planks via debug inventory', async ({ page }) => {
@@ -171,4 +185,6 @@ test('works offline after first load', async ({ page, context }) => {
   await page.reload();
   await expect(page.locator('canvas')).toBeVisible();
   await expect(page.locator('.hotbar')).toBeVisible();
+  // The service worker cache served this reload, not the HTTP cache.
+  expect(await page.evaluate(() => navigator.serviceWorker.controller !== null)).toBe(true);
 });
