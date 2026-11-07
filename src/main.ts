@@ -9,6 +9,7 @@ import { loadMapping } from './input/mapping';
 import { GestureClassifier, type GestureEvent } from './input/gesture';
 import { createDebouncer, resolveHold, resolveTap } from './input/tap';
 import { idleVillager, makeEmblem, makePalModel, makePlayerModel, makeVillagerModel } from './render/characters';
+import { pipHiddenFor } from './render/cameraRig';
 import { GameScene } from './render/scene';
 import { sfx } from './audio/sfx';
 import { CraftScreen } from './ui/craft';
@@ -406,6 +407,7 @@ if (debugOn) {
 }
 
 let usageMs = 0;
+let pipGone = false;
 let debugHidePlayer = false; // ?debug screenshots only
 let last = performance.now();
 function frame(now: number): void {
@@ -463,8 +465,11 @@ function frame(now: number): void {
   pip.position.set(pal.pos.x, pal.pos.y + hopY, pal.pos.z);
   pip.rotation.y = pal.heading;
   scene.followTarget(playerModel.position, dt);
-  // The hysteresis flag keeps the model hidden through close-mode glides (Pip still shows).
-  playerModel.visible = !scene.rig.close && !debugHidePlayer;
+  // Hidden with hysteresis while the camera is near his head, so a back-view never fills a small room.
+  playerModel.visible = !scene.rig.modelHidden && !debugHidePlayer;
+  // Pip steps out of the picture when the camera is close to him or he would cover the middle of the view.
+  pipGone = pipHiddenFor(scene.rig.position, scene.rig.forward, pip.position, pipGone);
+  pip.visible = !pipGone;
   scene.updateMarker(dt);
   scene.render();
 
