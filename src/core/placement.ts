@@ -1,4 +1,4 @@
-import { BLOCKS, BlockId } from './blocks';
+import { BLOCKS, BlockId, isCarriable } from './blocks';
 import type { Cell } from './pathfind';
 import type { World } from './world';
 
@@ -8,7 +8,9 @@ const FACE_OFFSETS: Cell[] = [
   [0, 0, -1], [0, 0, 1],
 ];
 
-export function canPlace(world: World, cell: Cell, occupied: Cell[]): boolean {
+/** `placing`, when given, is the block being placed: plants and other world-only blocks are refused. */
+export function canPlace(world: World, cell: Cell, occupied: Cell[], placing?: BlockId): boolean {
+  if (placing !== undefined && !isCarriable(placing)) return false;
   const [x, y, z] = cell;
   if (!world.inBounds(x, y, z)) return false;
   const id = world.get(x, y, z);
@@ -27,4 +29,31 @@ export function withinReach(from: Cell, cell: Cell, reach = 3): boolean {
     Math.abs(from[1] - cell[1]),
     Math.abs(from[2] - cell[2]),
   ) <= reach;
+}
+
+/**
+ * Reach for picking (press and hold). Ripe apples hang four blocks up a full tree, so they are
+ * picked from the ground: reach 3 counts from eye height (one block higher than the feet), and the
+ * eye must see the fruit. Leaves, other plants and the same tree's trunk do not hide it; any other
+ * block between does, so apples are never picked through a wall.
+ */
+export function withinPickReach(world: World, from: Cell, cell: Cell): boolean {
+  if (world.get(...cell) !== BlockId.AppleLeaves) return withinReach(from, cell);
+  if (!withinReach([from[0], from[1] + 1, from[2]], cell)) return false;
+  const ex = from[0] + 0.5, ey = from[1] + 1.6, ez = from[2] + 0.5;
+  const tx = cell[0] + 0.5, ty = cell[1] + 0.5, tz = cell[2] + 0.5;
+  const len = Math.hypot(tx - ex, ty - ey, tz - ez);
+  const steps = Math.max(1, Math.ceil(len / 0.1));
+  for (let i = 1; i < steps; i++) {
+    const x = Math.floor(ex + ((tx - ex) * i) / steps);
+    const y = Math.floor(ey + ((ty - ey) * i) / steps);
+    const z = Math.floor(ez + ((tz - ez) * i) / steps);
+    if (x === cell[0] && y === cell[1] && z === cell[2]) break;
+    const id = world.get(x, y, z);
+    if (!BLOCKS[id].solid || id === BlockId.Leaves || id === BlockId.AppleLeaves) continue;
+    // The tree's own trunk stands right under its canopy.
+    if (id === BlockId.Wood && Math.abs(x - cell[0]) <= 1 && Math.abs(z - cell[2]) <= 1) continue;
+    return false;
+  }
+  return true;
 }

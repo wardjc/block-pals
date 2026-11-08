@@ -1,14 +1,15 @@
-import { BLOCKS, BlockId } from '../core/blocks';
 import { canCraft } from '../core/crafting';
 import type { Inventory } from '../core/inventory';
+import { stackName, type StackId } from '../core/items';
 import { RECIPES, type Recipe } from '../core/recipes';
 import type { Action } from '../input/mapping';
 import { createDebouncer } from '../input/tap';
+import { stackPicture } from './picture';
 
 export interface CraftRow {
   recipe: Recipe;
   can: boolean;
-  missing: BlockId[];
+  missing: StackId[];
 }
 
 /** Pure view model: which recipes can be made, and which inputs are short. */
@@ -23,7 +24,7 @@ export function craftRows(inv: Inventory): CraftRow[] {
 export interface CraftDeps {
   inventory: Inventory;
   tryCraft(recipeId: string): boolean;
-  iconFor(id: BlockId): string;
+  iconFor(id: StackId): string;
   say(text: string): void;
   /** Speaks a 'craftNeedMore' line. */
   sayNeedMore(): void;
@@ -51,7 +52,7 @@ export class CraftScreen {
     this.el.hidden = true;
     for (const type of ['pointerdown', 'pointerup', 'pointermove', 'touchstart', 'touchend', 'mousedown', 'mouseup', 'click'])
       this.el.addEventListener(type, e => e.stopPropagation());
-    this.list.className = 'craft-list';
+    this.list.className = 'craft-list' + (RECIPES.length > 4 ? ' dense' : '');
     const close = document.createElement('button');
     close.type = 'button';
     close.className = 'craft-close';
@@ -122,7 +123,7 @@ export class CraftScreen {
     }
   }
 
-  private pulse(i: number, missing: BlockId[]): void {
+  private pulse(i: number, missing: StackId[]): void {
     const rowEl = this.list.children[i];
     for (const id of missing)
       rowEl?.querySelectorAll<HTMLElement>(`[data-block="${id}"]`).forEach(item => {
@@ -136,15 +137,12 @@ export class CraftScreen {
     [...this.list.children].forEach((c, i) => c.classList.toggle('selected', i === this.selected));
   }
 
-  private item(id: BlockId, n: number, have?: number): HTMLElement {
+  private item(id: StackId, n: number, have?: number): HTMLElement {
     const wrap = document.createElement('button');
     wrap.type = 'button';
     wrap.className = 'craft-item';
     wrap.dataset.block = String(id);
-    const img = document.createElement('img');
-    img.src = this.deps.iconFor(id);
-    img.alt = '';
-    img.draggable = false;
+    const img = stackPicture(id, this.deps.iconFor, 'craft-pic');
     const digit = document.createElement('span');
     digit.className = 'craft-digit';
     digit.textContent = String(n);
@@ -159,7 +157,8 @@ export class CraftScreen {
     wrap.addEventListener('click', e => {
       e.stopPropagation();
       this.deps.sfxTap();
-      this.deps.say(BLOCKS[id].name);
+      const word = stackName(id);
+      if (word) this.deps.say(word); // never speak an empty word for an unknown id
     });
     return wrap;
   }

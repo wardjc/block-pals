@@ -249,9 +249,9 @@ describe('worldgen stages', () => {
     }
   });
 
-  it('heightAt matches the generated surface and GEN_VERSION is 1', () => {
+  it('heightAt matches the generated surface and GEN_VERSION is 2', () => {
     const { world } = generateMeadowStage(2026);
-    expect(GEN_VERSION).toBe(1);
+    expect(GEN_VERSION).toBe(2);
     for (const [x, z] of [[0, 0], [24, 24], [34, 12], [14, 32], [70, 70], [95, 95]]) {
       const h = heightAt(2026, x, z);
       expect(BLOCKS[world.get(x, h, z)].solid).toBe(true);

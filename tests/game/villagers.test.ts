@@ -48,6 +48,12 @@ describe('villagers', () => {
   });
 });
 
+describe('favourites (data only)', () => {
+  it('every villager has a favourite and nothing reads it yet', () => {
+    expect(Object.fromEntries(VILLAGERS.map(v => [v.id, v.favourite]))).toEqual({ bramble: 'cake', pebble: 'carrot', fern: 'apple', willow: 'biscuit' });
+  });
+});
+
 describe('GreetTracker', () => {
   const make = () => {
     let t = 0;

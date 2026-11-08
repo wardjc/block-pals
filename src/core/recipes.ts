@@ -1,9 +1,10 @@
 import { BlockId } from './blocks';
+import { ItemId, type StackId } from './items';
 
 export interface Recipe {
   id: string;
-  inputs: Array<{ id: BlockId; n: number }>;
-  output: { id: BlockId; n: number };
+  inputs: Array<{ id: StackId; n: number }>;
+  output: { id: StackId; n: number };
   word: string;
 }
 
@@ -26,4 +27,15 @@ export const RECIPES: Recipe[] = [
     output: { id: BlockId.Bricks, n: 1 },
     word: 'brick',
   },
+  ...([
+    ['white', BlockId.WoolWhite],
+    ['red', BlockId.WoolRed],
+    ['blue', BlockId.WoolBlue],
+    ['yellow', BlockId.WoolYellow],
+  ] as const).map(([colour, block]): Recipe => ({
+    id: `wool-${colour}`,
+    inputs: [{ id: ItemId.Wool, n: 1 }],
+    output: { id: block, n: 2 },
+    word: colour,
+  })),
 ];

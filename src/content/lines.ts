@@ -16,7 +16,24 @@ export type LineKey =
   | 'comeOn'
   | 'thisWay'
   | 'weAreHere'
-  | 'cosyHome';
+  | 'cosyHome'
+  // Farm and eating (Village step 2). Plain words only: excitement comes from sounds and animation.
+  | 'plantSome'
+  | 'needWaterSun'
+  | 'cropReady'
+  | 'harvested'
+  | 'tryMunch'
+  | 'ateApple'
+  | 'ateCarrot'
+  | 'atePotato'
+  | 'drankMilk'
+  | 'holdOutFood'
+  | 'fedAnimal'
+  | 'animalFull'
+  | 'petAnimal'
+  | 'gotEgg'
+  | 'gotMilk'
+  | 'gotWool';
 
 /** Lines spoken by Pip. British English, short and warm. */
 export const LINES: Record<LineKey, string[]> = {
@@ -129,6 +146,103 @@ export const LINES: Record<LineKey, string[]> = {
     'Your own cottage. How lovely!',
     'Home sweet home!',
   ],
+  // Farm and eating. Each is true wherever and however often it can fire; none claims what he can see.
+  plantSome: [
+    'Seeds grow into plants. Shall we plant some?',
+    'Shall we plant our seeds?',
+    'Seeds like soil. Shall we plant some?',
+    'Plants start as seeds. Shall we grow some?',
+  ],
+  needWaterSun: [
+    'Plants need water and sunshine. Give it a little help!',
+    'A little water and sunshine helps plants grow.',
+    'Plants grow with water and sunshine.',
+    'Give your plant some help to grow!',
+  ],
+  cropReady: [
+    "It's ready! Press and hold to pick it.",
+    'A plant is ready. Press and hold to pick it!',
+    'Ready to pick! Press and hold it.',
+    'Press and hold a ripe plant to pick it.',
+  ],
+  harvested: [
+    'You picked it! Well done!',
+    "Lovely picking! That's in your bag.",
+    'Nicely picked! Now you can plant again.',
+    "You're a very good farmer!",
+  ],
+  tryMunch: [
+    'Shall we have a little snack?',
+    'Press the big mouth to eat it.',
+    'Hungry? The big mouth is for eating.',
+    'Want a snack? Press the mouth.',
+  ],
+  ateApple: [
+    'What a crunchy apple!',
+    'A sweet, juicy apple!',
+    'Apples grow on trees.',
+    'A lovely red apple!',
+  ],
+  ateCarrot: [
+    'What a crunchy carrot!',
+    'Carrots are good for you.',
+    'A lovely orange carrot!',
+    'Carrots grow under the ground.',
+  ],
+  atePotato: [
+    'A crunchy little potato!',
+    'Potatoes grow under the ground.',
+    'A raw potato. How crunchy!',
+    'What a funny little potato!',
+  ],
+  drankMilk: [
+    'Fresh milk, straight from the cow!',
+    'A lovely drink of milk!',
+    'Milk is good for you.',
+    'Milk from the cow. How lovely!',
+  ],
+  holdOutFood: [
+    'Pick some food and go near the animals.',
+    'Choose a food, then visit the animals.',
+    'Animals like food. Pick some and visit them.',
+    'Pick a food and walk over to the animals.',
+  ],
+  fedAnimal: [
+    'What a happy animal!',
+    'They loved that!',
+    'That made someone happy!',
+    'A very happy animal!',
+  ],
+  animalFull: [
+    "They've had enough for now.",
+    "Let's give them a little rest.",
+    "They'd like a rest now.",
+    'A little rest first, then more.',
+  ],
+  petAnimal: [
+    'Such a gentle animal!',
+    'What a gentle pat!',
+    'A nice cuddle!',
+    'A friendly animal!',
+  ],
+  gotEgg: [
+    'You got an egg!',
+    'A fresh egg for your bag!',
+    'Eggs come from chickens.',
+    'A lovely fresh egg!',
+  ],
+  gotMilk: [
+    'You got some milk!',
+    'Fresh milk for your bag!',
+    'Cows give us milk.',
+    'Thank you, cow!',
+  ],
+  gotWool: [
+    'You got some wool!',
+    'Soft wool for your bag!',
+    'Sheep give us wool.',
+    'Wool can be made into coloured blocks.',
+  ],
 };
 
 /** Pick a variant for a key, never the same one twice in a row. */
@@ -160,4 +274,20 @@ export const LINE_ICONS: Record<LineKey, string> = {
   thisWay: '➡️',
   weAreHere: '🎉',
   cosyHome: '🏠',
+  plantSome: '🌱',
+  needWaterSun: '🌦️',
+  cropReady: '🧺',
+  harvested: '🥕',
+  tryMunch: '👄',
+  ateApple: '🍎',
+  ateCarrot: '🥕',
+  atePotato: '🥔',
+  drankMilk: '🥛',
+  holdOutFood: '🐔',
+  fedAnimal: '💛',
+  animalFull: '😴',
+  petAnimal: '🐑',
+  gotEgg: '🥚',
+  gotMilk: '🥛',
+  gotWool: '🧶',
 };

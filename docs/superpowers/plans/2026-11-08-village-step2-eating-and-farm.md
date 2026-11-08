@@ -1,6 +1,6 @@
 # Village Step 2: Eating and the Farm Implementation Plan
 
-**Status: plan approved by the parent (2026-11-08); build in chunks, each reviewed (Claude builds, Codex reviews; Claude is the fallback builder and reviewer if Codex is out of allowance). Docs only: this PR contains no product code.**
+**Status: built (chunks A to D) on `feat/village-step2`, waiting for the parent's tablet playtest and Codex's review of chunk D. Plan approved by the parent 2026-11-08; built in chunks, each reviewed (Claude builds, Codex reviews; Claude is the fallback builder and reviewer if Codex is out of allowance).**
 
 > **For agentic workers:** REQUIRED SUB-SKILL: Use superpowers:subagent-driven-development (recommended) or superpowers:executing-plans to implement this plan task-by-task. Steps use checkbox (`- [ ]`) syntax for tracking.
 

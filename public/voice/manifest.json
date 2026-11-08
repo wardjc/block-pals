@@ -19,10 +19,45 @@
   "text": "My floury hat wobbles when I laugh!",
   "duration": 2.43
  },
+ "fern/1d515d6e5fb8": {
+  "file": "fern/1d515d6e5fb8.ogg",
+  "text": "Plant these seeds and watch them grow.",
+  "duration": 2.23
+ },
+ "fern/2412709e27c2": {
+  "file": "fern/2412709e27c2.ogg",
+  "text": "Some seeds for you. Have a go!",
+  "duration": 2.85
+ },
+ "fern/609f2c8cdf38": {
+  "file": "fern/609f2c8cdf38.ogg",
+  "text": "More seeds for your garden, neighbour.",
+  "duration": 2.09
+ },
+ "fern/65a53402fa58": {
+  "file": "fern/65a53402fa58.ogg",
+  "text": "Fresh seeds for the garden. Off you go!",
+  "duration": 3.29
+ },
+ "fern/738fce88dea8": {
+  "file": "fern/738fce88dea8.ogg",
+  "text": "Here are some seeds for your garden.",
+  "duration": 2.11
+ },
+ "fern/9ec2ec242444": {
+  "file": "fern/9ec2ec242444.ogg",
+  "text": "You're out of seeds. Here are some more.",
+  "duration": 3.23
+ },
  "fern/aaa6834fa1a5": {
   "file": "fern/aaa6834fa1a5.ogg",
   "text": "Hello, neighbour. Come in if you like.",
   "duration": 3.05
+ },
+ "fern/b365f9e5e378": {
+  "file": "fern/b365f9e5e378.ogg",
+  "text": "I've brought you some seeds, neighbour.",
+  "duration": 2.07
  },
  "fern/c2280817d4c5": {
   "file": "fern/c2280817d4c5.ogg",
@@ -38,6 +73,11 @@
   "file": "fern/d51f2e7e777e.ogg",
   "text": "I'm going to grow lots of food.",
   "duration": 1.99
+ },
+ "fern/da451ad0f819": {
+  "file": "fern/da451ad0f819.ogg",
+  "text": "Here are some more seeds for you.",
+  "duration": 1.91
  },
  "granny/2be6078b4bc4": {
   "file": "granny/2be6078b4bc4.ogg",
@@ -79,6 +119,26 @@
   "text": "Hello, neighbour! I am Captain Pebble.",
   "duration": 3.4
  },
+ "pip/013d924f5f71": {
+  "file": "pip/013d924f5f71.ogg",
+  "text": "Carrots grow under the ground.",
+  "duration": 1.67
+ },
+ "pip/07192390c278": {
+  "file": "pip/07192390c278.ogg",
+  "text": "What a gentle pat!",
+  "duration": 1.33
+ },
+ "pip/093d954f8bc7": {
+  "file": "pip/093d954f8bc7.ogg",
+  "text": "You got an egg!",
+  "duration": 1.05
+ },
+ "pip/09b732c13aa6": {
+  "file": "pip/09b732c13aa6.ogg",
+  "text": "Milk is good for you.",
+  "duration": 1.39
+ },
  "pip/0b6fe595eeb3": {
   "file": "pip/0b6fe595eeb3.ogg",
   "text": "I'll wait for you. Come along!",
@@ -88,6 +148,11 @@
   "file": "pip/0d16a4cb94a9.ogg",
   "text": "Brilliant! You made it!",
   "duration": 1.96
+ },
+ "pip/0daac2e65f80": {
+  "file": "pip/0daac2e65f80.ogg",
+  "text": "A little rest first, then more.",
+  "duration": 1.85
  },
  "pip/0f36d1ee8da1": {
   "file": "pip/0f36d1ee8da1.ogg",
@@ -104,6 +169,11 @@
   "text": "Wonderful! One more for your bag!",
   "duration": 2.52
  },
+ "pip/111ea243e181": {
+  "file": "pip/111ea243e181.ogg",
+  "text": "Pick some food and go near the animals.",
+  "duration": 2.23
+ },
  "pip/11d3afc7feae": {
   "file": "pip/11d3afc7feae.ogg",
   "text": "I can't get there. Let's try another way!",
@@ -113,6 +183,36 @@
   "file": "pip/128a2de9e6c6.ogg",
   "text": "Let's use some of those to make room!",
   "duration": 1.97
+ },
+ "pip/15123e498f65": {
+  "file": "pip/15123e498f65.ogg",
+  "text": "A sweet, juicy apple!",
+  "duration": 1.43
+ },
+ "pip/1a191267d837": {
+  "file": "pip/1a191267d837.ogg",
+  "text": "Plants need water and sunshine. Give it a little help!",
+  "duration": 3.77
+ },
+ "pip/1a66b67dd715": {
+  "file": "pip/1a66b67dd715.ogg",
+  "text": "They've had enough for now.",
+  "duration": 1.39
+ },
+ "pip/1ad0318870f2": {
+  "file": "pip/1ad0318870f2.ogg",
+  "text": "A friendly animal!",
+  "duration": 1.19
+ },
+ "pip/1b79ca6f9cc3": {
+  "file": "pip/1b79ca6f9cc3.ogg",
+  "text": "Potatoes grow under the ground.",
+  "duration": 1.99
+ },
+ "pip/1c17d59f2d38": {
+  "file": "pip/1c17d59f2d38.ogg",
+  "text": "Eggs come from chickens.",
+  "duration": 1.57
  },
  "pip/1e0ea467a208": {
   "file": "pip/1e0ea467a208.ogg",
@@ -139,6 +239,11 @@
   "text": "Great building! Keep going!",
   "duration": 2.32
  },
+ "pip/242cf23746cf": {
+  "file": "pip/242cf23746cf.ogg",
+  "text": "A lovely drink of milk!",
+  "duration": 1.47
+ },
  "pip/269159fc7056": {
   "file": "pip/269159fc7056.ogg",
   "text": "Super! That one's in your bag!",
@@ -154,10 +259,40 @@
   "text": "Let's visit the neighbours. Follow me!",
   "duration": 2.78
  },
+ "pip/2d6149ee2094": {
+  "file": "pip/2d6149ee2094.ogg",
+  "text": "Carrots are good for you.",
+  "duration": 1.41
+ },
  "pip/2e8fb1609440": {
   "file": "pip/2e8fb1609440.ogg",
   "text": "There are neighbours to meet. Come with me!",
   "duration": 2.99
+ },
+ "pip/30a79ea8588c": {
+  "file": "pip/30a79ea8588c.ogg",
+  "text": "You got some milk!",
+  "duration": 1.19
+ },
+ "pip/31265d7a7c14": {
+  "file": "pip/31265d7a7c14.ogg",
+  "text": "A very happy animal!",
+  "duration": 1.39
+ },
+ "pip/3733edb720f2": {
+  "file": "pip/3733edb720f2.ogg",
+  "text": "What a happy animal!",
+  "duration": 1.27
+ },
+ "pip/393d2f06814e": {
+  "file": "pip/393d2f06814e.ogg",
+  "text": "What a crunchy apple!",
+  "duration": 1.31
+ },
+ "pip/3a11330d0e72": {
+  "file": "pip/3a11330d0e72.ogg",
+  "text": "A lovely red apple!",
+  "duration": 1.33
  },
  "pip/3d3f19e02046": {
   "file": "pip/3d3f19e02046.ogg",
@@ -184,6 +319,11 @@
   "text": "Come along. Slowly does it!",
   "duration": 2.56
  },
+ "pip/473ef4c43738": {
+  "file": "pip/473ef4c43738.ogg",
+  "text": "Seeds like soil. Shall we plant some?",
+  "duration": 2.97
+ },
  "pip/4beca10df73e": {
   "file": "pip/4beca10df73e.ogg",
   "text": "Hello! I'm Pip. Shall we play?",
@@ -204,6 +344,31 @@
   "text": "Up you come! There we go!",
   "duration": 2.24
  },
+ "pip/5197d924ccf0": {
+  "file": "pip/5197d924ccf0.ogg",
+  "text": "Want a snack? Press the mouth.",
+  "duration": 2.6
+ },
+ "pip/52f53831bc2e": {
+  "file": "pip/52f53831bc2e.ogg",
+  "text": "They'd like a rest now.",
+  "duration": 1.47
+ },
+ "pip/565de355df57": {
+  "file": "pip/565de355df57.ogg",
+  "text": "They loved that!",
+  "duration": 1.07
+ },
+ "pip/575655d980df": {
+  "file": "pip/575655d980df.ogg",
+  "text": "Nicely picked! Now you can plant again.",
+  "duration": 2.99
+ },
+ "pip/583896d88b5e": {
+  "file": "pip/583896d88b5e.ogg",
+  "text": "Shall we plant our seeds?",
+  "duration": 1.57
+ },
  "pip/5b06065e2651": {
   "file": "pip/5b06065e2651.ogg",
   "text": "Time for a little rest! Wiggle your toes!",
@@ -214,10 +379,40 @@
   "text": "Your own cottage. How lovely!",
   "duration": 2.72
  },
+ "pip/5fac825f4e43": {
+  "file": "pip/5fac825f4e43.ogg",
+  "text": "What a funny little potato!",
+  "duration": 1.75
+ },
+ "pip/62cb907e00b8": {
+  "file": "pip/62cb907e00b8.ogg",
+  "text": "Wool can be made into coloured blocks.",
+  "duration": 2.09
+ },
  "pip/645542d66ff3": {
   "file": "pip/645542d66ff3.ogg",
   "text": "We need a little bit more first.",
   "duration": 1.89
+ },
+ "pip/6541b7c222c6": {
+  "file": "pip/6541b7c222c6.ogg",
+  "text": "You picked it! Well done!",
+  "duration": 2.04
+ },
+ "pip/683e85f4ca00": {
+  "file": "pip/683e85f4ca00.ogg",
+  "text": "You're a very good farmer!",
+  "duration": 1.45
+ },
+ "pip/68ea437d5d60": {
+  "file": "pip/68ea437d5d60.ogg",
+  "text": "Shall we have a little snack?",
+  "duration": 1.59
+ },
+ "pip/6bced522f69e": {
+  "file": "pip/6bced522f69e.ogg",
+  "text": "Hungry? The big mouth is for eating.",
+  "duration": 3.03
  },
  "pip/6bd21f6c0080": {
   "file": "pip/6bd21f6c0080.ogg",
@@ -229,20 +424,65 @@
   "text": "Oops, I can't reach that. Let's try again!",
   "duration": 3.25
  },
+ "pip/6d506493642f": {
+  "file": "pip/6d506493642f.ogg",
+  "text": "Seeds grow into plants. Shall we plant some?",
+  "duration": 3.27
+ },
+ "pip/73acac114d2c": {
+  "file": "pip/73acac114d2c.ogg",
+  "text": "You got some wool!",
+  "duration": 1.13
+ },
  "pip/744ce6e3148a": {
   "file": "pip/744ce6e3148a.ogg",
   "text": "Lovely! You got one!",
   "duration": 2.0
+ },
+ "pip/74d7ae4cb372": {
+  "file": "pip/74d7ae4cb372.ogg",
+  "text": "Pick a food and walk over to the animals.",
+  "duration": 2.4
  },
  "pip/790510d0b04e": {
   "file": "pip/790510d0b04e.ogg",
   "text": "Shall we go and meet our neighbours?",
   "duration": 1.95
  },
+ "pip/7aef1480da01": {
+  "file": "pip/7aef1480da01.ogg",
+  "text": "Milk from the cow. How lovely!",
+  "duration": 2.7
+ },
+ "pip/7d7dcc331e66": {
+  "file": "pip/7d7dcc331e66.ogg",
+  "text": "Lovely picking! That's in your bag.",
+  "duration": 2.72
+ },
+ "pip/7f89246d85e6": {
+  "file": "pip/7f89246d85e6.ogg",
+  "text": "Give your plant some help to grow!",
+  "duration": 1.75
+ },
+ "pip/800b3e91b2c7": {
+  "file": "pip/800b3e91b2c7.ogg",
+  "text": "What a crunchy carrot!",
+  "duration": 1.35
+ },
+ "pip/8016b80730cf": {
+  "file": "pip/8016b80730cf.ogg",
+  "text": "Cows give us milk.",
+  "duration": 1.35
+ },
  "pip/808948b8ae82": {
   "file": "pip/808948b8ae82.ogg",
   "text": "Whoops-a-daisy! Up you come!",
   "duration": 2.42
+ },
+ "pip/818858cdb824": {
+  "file": "pip/818858cdb824.ogg",
+  "text": "Press the big mouth to eat it.",
+  "duration": 1.73
  },
  "pip/848e18d7e860": {
   "file": "pip/848e18d7e860.ogg",
@@ -254,10 +494,20 @@
   "text": "Trees have wood. Shall we look for one?",
   "duration": 2.95
  },
+ "pip/8d46549779d7": {
+  "file": "pip/8d46549779d7.ogg",
+  "text": "Let's give them a little rest.",
+  "duration": 1.73
+ },
  "pip/8eb6d3c20463": {
   "file": "pip/8eb6d3c20463.ogg",
   "text": "Hello! What a lovely day for blocks!",
   "duration": 2.68
+ },
+ "pip/907cf485aee1": {
+  "file": "pip/907cf485aee1.ogg",
+  "text": "Such a gentle animal!",
+  "duration": 1.47
  },
  "pip/90afd884ccea": {
   "file": "pip/90afd884ccea.ogg",
@@ -284,6 +534,11 @@
   "text": "Wow, look what you made!",
   "duration": 1.37
  },
+ "pip/9c2bb35ec54d": {
+  "file": "pip/9c2bb35ec54d.ogg",
+  "text": "Fresh milk, straight from the cow!",
+  "duration": 1.79
+ },
  "pip/9f71574de402": {
   "file": "pip/9f71574de402.ogg",
   "text": "Here we are! This is the village!",
@@ -309,10 +564,45 @@
   "text": "Well done! You collected a block!",
   "duration": 2.4
  },
+ "pip/a4551087b53d": {
+  "file": "pip/a4551087b53d.ogg",
+  "text": "Choose a food, then visit the animals.",
+  "duration": 2.19
+ },
+ "pip/a83b521c9109": {
+  "file": "pip/a83b521c9109.ogg",
+  "text": "A lovely fresh egg!",
+  "duration": 1.35
+ },
+ "pip/a9e11e8b9c03": {
+  "file": "pip/a9e11e8b9c03.ogg",
+  "text": "Thank you, cow!",
+  "duration": 1.09
+ },
  "pip/aadc7af67b29": {
   "file": "pip/aadc7af67b29.ogg",
   "text": "Shall we look for a tree?",
   "duration": 1.43
+ },
+ "pip/aaffba124f5a": {
+  "file": "pip/aaffba124f5a.ogg",
+  "text": "A fresh egg for your bag!",
+  "duration": 1.53
+ },
+ "pip/ab127502d5da": {
+  "file": "pip/ab127502d5da.ogg",
+  "text": "Sheep give us wool.",
+  "duration": 1.25
+ },
+ "pip/abfe655be0b6": {
+  "file": "pip/abfe655be0b6.ogg",
+  "text": "That made someone happy!",
+  "duration": 1.55
+ },
+ "pip/add46ba1fbf7": {
+  "file": "pip/add46ba1fbf7.ogg",
+  "text": "A little water and sunshine helps plants grow.",
+  "duration": 2.68
  },
  "pip/b00485805376": {
   "file": "pip/b00485805376.ogg",
@@ -323,6 +613,11 @@
   "file": "pip/b0a101eba162.ogg",
   "text": "Here we are, at the village!",
   "duration": 1.45
+ },
+ "pip/b0d84aa7e6e8": {
+  "file": "pip/b0d84aa7e6e8.ogg",
+  "text": "A raw potato. How crunchy!",
+  "duration": 2.8
  },
  "pip/b1128ce18e59": {
   "file": "pip/b1128ce18e59.ogg",
@@ -359,15 +654,40 @@
   "text": "Hold your finger on a tree to get wood!",
   "duration": 2.13
  },
+ "pip/c1c90b3d437c": {
+  "file": "pip/c1c90b3d437c.ogg",
+  "text": "A lovely orange carrot!",
+  "duration": 1.49
+ },
+ "pip/c2afbbdf6e6b": {
+  "file": "pip/c2afbbdf6e6b.ogg",
+  "text": "A crunchy little potato!",
+  "duration": 1.73
+ },
  "pip/c47a010be57a": {
   "file": "pip/c47a010be57a.ogg",
   "text": "What are you making?",
   "duration": 1.25
  },
+ "pip/c56c96a02642": {
+  "file": "pip/c56c96a02642.ogg",
+  "text": "Soft wool for your bag!",
+  "duration": 1.43
+ },
+ "pip/ca1b74eae92e": {
+  "file": "pip/ca1b74eae92e.ogg",
+  "text": "It's ready! Press and hold to pick it.",
+  "duration": 2.72
+ },
  "pip/d293ee33a54c": {
   "file": "pip/d293ee33a54c.ogg",
   "text": "Hiya! I'm Pip. Let's go exploring!",
   "duration": 3.74
+ },
+ "pip/d44c764c662c": {
+  "file": "pip/d44c764c662c.ogg",
+  "text": "Plants grow with water and sunshine.",
+  "duration": 2.09
  },
  "pip/da05bf810d02": {
   "file": "pip/da05bf810d02.ogg",
@@ -394,10 +714,20 @@
   "text": "We need a few more blocks first.",
   "duration": 1.85
  },
+ "pip/e08a2e286120": {
+  "file": "pip/e08a2e286120.ogg",
+  "text": "Animals like food. Pick some and visit them.",
+  "duration": 3.27
+ },
  "pip/e1fb5580fc4b": {
   "file": "pip/e1fb5580fc4b.ogg",
   "text": "That's a bit tricky. Shall we go round?",
   "duration": 3.07
+ },
+ "pip/e3b8f607be8b": {
+  "file": "pip/e3b8f607be8b.ogg",
+  "text": "A plant is ready. Press and hold to pick it!",
+  "duration": 3.29
  },
  "pip/e4709aafee3f": {
   "file": "pip/e4709aafee3f.ogg",
@@ -409,10 +739,20 @@
   "text": "We're in the village! Let's say hello!",
   "duration": 2.64
  },
+ "pip/e5bdc8fd2586": {
+  "file": "pip/e5bdc8fd2586.ogg",
+  "text": "Apples grow on trees.",
+  "duration": 1.61
+ },
  "pip/ed29850853f5": {
   "file": "pip/ed29850853f5.ogg",
   "text": "I'll show you the way!",
   "duration": 1.23
+ },
+ "pip/ee35119baf0f": {
+  "file": "pip/ee35119baf0f.ogg",
+  "text": "Press and hold a ripe plant to pick it.",
+  "duration": 2.23
  },
  "pip/ee6ca3a5421b": {
   "file": "pip/ee6ca3a5421b.ogg",
@@ -424,10 +764,25 @@
   "text": "That's plenty of those! Let's use some.",
   "duration": 2.91
  },
+ "pip/f2915b4ee66f": {
+  "file": "pip/f2915b4ee66f.ogg",
+  "text": "Ready to pick! Press and hold it.",
+  "duration": 2.6
+ },
+ "pip/f363607cbbb2": {
+  "file": "pip/f363607cbbb2.ogg",
+  "text": "A nice cuddle!",
+  "duration": 1.13
+ },
  "pip/f476248fd5ac": {
   "file": "pip/f476248fd5ac.ogg",
   "text": "Let's stretch up high! Reach for the sky!",
   "duration": 2.93
+ },
+ "pip/f6c1ef897dc3": {
+  "file": "pip/f6c1ef897dc3.ogg",
+  "text": "Fresh milk for your bag!",
+  "duration": 1.47
  },
  "pip/f9296dfd9799": {
   "file": "pip/f9296dfd9799.ogg",
@@ -438,5 +793,10 @@
   "file": "pip/fb5c4ec5a61f.ogg",
   "text": "Up you come!",
   "duration": 0.91
+ },
+ "pip/fc89195f28d4": {
+  "file": "pip/fc89195f28d4.ogg",
+  "text": "Plants start as seeds. Shall we grow some?",
+  "duration": 3.17
  }
 }

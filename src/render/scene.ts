@@ -3,6 +3,7 @@ import type { World } from '../core/world';
 import { createAtlas } from './atlas';
 import { CameraRig, clearance } from './cameraRig';
 import { castVoxelRay, type VoxelHit } from './voxelRay';
+import { DirtyChunks } from './chunkDirty';
 import { ChunkCuller, FOG_FAR } from './chunkCull';
 import { CAMERA_FAR, NEAR_MAX, cameraNear, easeNear } from './depthPolicy';
 import { buildChunkGeometry, CHUNK_SIZE, type MeshArrays } from './mesher';
@@ -31,6 +32,9 @@ function toGeometry(a: MeshArrays): THREE.BufferGeometry {
   return g;
 }
 
+/** Marked chunks rebuilt per frame, nearest first (a dig or build is next to him, so it is always in this frame). */
+const DIRTY_PER_FRAME = 4;
+
 export class GameScene {
   readonly scene = new THREE.Scene();
   readonly camera: THREE.PerspectiveCamera;
@@ -38,6 +42,7 @@ export class GameScene {
   readonly atlas = createAtlas();
 
   private readonly chunks = new Map<string, ChunkMeshes>();
+  private readonly dirty: DirtyChunks;
   private readonly solidMat: THREE.MeshLambertMaterial;
   private readonly transMat: THREE.MeshLambertMaterial;
   /** Yaw, pitch and the wall-aware distance of the camera (spec §7c). */
@@ -56,6 +61,7 @@ export class GameScene {
   private readonly outline = new THREE.Group();
 
   constructor(private readonly host: HTMLElement, private readonly world: World) {
+    this.dirty = new DirtyChunks(world.sizeX, world.sizeZ);
     this.culler = new ChunkCuller(world.sizeX, world.sizeY, world.sizeZ);
     this.renderer = new THREE.WebGLRenderer({ antialias: false, powerPreference: 'high-performance' });
     this.renderer.setPixelRatio(Math.min(window.devicePixelRatio || 1, 1.5));
@@ -163,19 +169,17 @@ export class GameScene {
     return { chunks: this.chunks.size, visible, triangles: this.renderer.info.render.triangles, drawCalls: this.renderer.info.render.calls };
   }
 
-  /** Rebuilds the chunk containing the cell, plus the neighbour if the cell is on a chunk edge. */
+  /**
+   * Marks the chunk containing the cell (and the neighbour on a chunk edge) for rebuilding. The
+   * rebuild happens once per chunk in `render` (a few per frame, nearest first), or at once with `flush`.
+   */
   rebuildChunkAt(x: number, z: number): void {
-    const cx = Math.floor(x / CHUNK_SIZE);
-    const cz = Math.floor(z / CHUNK_SIZE);
-    const lx = x - cx * CHUNK_SIZE;
-    const lz = z - cz * CHUNK_SIZE;
-    const xs = [cx];
-    const zs = [cz];
-    if (lx === 0) xs.push(cx - 1);
-    if (lx === CHUNK_SIZE - 1) xs.push(cx + 1);
-    if (lz === 0) zs.push(cz - 1);
-    if (lz === CHUNK_SIZE - 1) zs.push(cz + 1);
-    for (const a of xs) for (const b of zs) this.rebuildChunk(a, b);
+    this.dirty.mark(x, z);
+  }
+
+  /** Rebuilds every marked chunk now. */
+  flush(): void {
+    for (const [cx, cz] of this.dirty.take(Infinity, 0, 0)) this.rebuildChunk(cx, cz);
   }
 
   triangleCount(): number {
@@ -200,7 +204,7 @@ export class GameScene {
       this.smoothEye.lerp(real, 1 - Math.exp(-FOLLOW_K * dt));
       const dx = this.smoothEye.x - real.x, dy = this.smoothEye.y - real.y, dz = this.smoothEye.z - real.z;
       const len = Math.hypot(dx, dy, dz);
-      if (len > 1e-6 && castVoxelRay(this.world, real.x, real.y, real.z, dx / len, dy / len, dz / len, len, false, this.hit)) {
+      if (len > 1e-6 && castVoxelRay(this.world, real.x, real.y, real.z, dx / len, dy / len, dz / len, len, false, this.hit, true)) {
         this.smoothEye.copy(real);
       }
     }
@@ -217,7 +221,14 @@ export class GameScene {
     }
   }
 
-  pick(clientX: number, clientY: number): { cell: [number, number, number]; normal: [number, number, number] } | null {
+  /**
+   * The camera ray through a screen point, and the first block it enters (null when none) with the
+   * distance to it, so animals can be compared with blocks along the same ray.
+   */
+  pickRay(clientX: number, clientY: number): {
+    origin: { x: number; y: number; z: number }; dir: { x: number; y: number; z: number };
+    block: { cell: [number, number, number]; normal: [number, number, number] } | null; t: number | null;
+  } {
     const rect = this.renderer.domElement.getBoundingClientRect();
     this.ndc.set(
       ((clientX - rect.left) / rect.width) * 2 - 1,
@@ -228,9 +239,15 @@ export class GameScene {
     const o = this.raycaster.ray.origin;
     const d = this.raycaster.ray.direction;
     const h = this.hit;
+    const origin = { x: o.x, y: o.y, z: o.z };
+    const dir = { x: d.x, y: d.y, z: d.z };
     // The start cell is skipped: only a block entered through a face can be picked.
-    if (!castVoxelRay(this.world, o.x, o.y, o.z, d.x, d.y, d.z, PICK_RANGE, true, h)) return null;
-    return { cell: [h.x, h.y, h.z], normal: [h.nx, h.ny, h.nz] };
+    if (!castVoxelRay(this.world, o.x, o.y, o.z, d.x, d.y, d.z, PICK_RANGE, true, h)) return { origin, dir, block: null, t: null };
+    return { origin, dir, block: { cell: [h.x, h.y, h.z], normal: [h.nx, h.ny, h.nz] }, t: h.t };
+  }
+
+  pick(clientX: number, clientY: number): { cell: [number, number, number]; normal: [number, number, number] } | null {
+    return this.pickRay(clientX, clientY).block;
   }
 
   /** Shows the walk marker on the floor of a feet cell; it fades out by itself. */
@@ -275,6 +292,10 @@ export class GameScene {
   }
 
   render(): void {
+    if (this.dirty.size > 0) {
+      const p = this.smoothEye;
+      for (const [cx, cz] of this.dirty.take(DIRTY_PER_FRAME, p.x, p.z)) this.rebuildChunk(cx, cz);
+    }
     this.renderer.render(this.scene, this.camera);
   }
 }

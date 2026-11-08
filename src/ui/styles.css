@@ -66,6 +66,133 @@ html, body {
   pointer-events: none;
 }
 
+/* Item pictures (emoji) in the bar, with a small badge for which crop a seed grows. */
+.slot .slot-pic.pic-item {
+  position: relative;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  width: 64px;
+  height: 64px;
+  font-size: 50px;
+  line-height: 1;
+  pointer-events: none;
+}
+.slot .pic-badge { font-size: 26px; right: -10px; bottom: auto; top: -8px; }
+.bag-corner {
+  position: absolute;
+  left: 2px;
+  top: 0;
+  font-size: 26px;
+  line-height: 1;
+  pointer-events: none;
+}
+
+/* The big mouth button: only while something edible is selected. */
+.munch-btn {
+  position: fixed;
+  right: 24px;
+  bottom: 148px;
+  width: 96px;
+  height: 96px;
+  padding: 0;
+  border: 4px solid rgba(0, 0, 0, 0.25);
+  border-radius: 50%;
+  background: #ffd2cf;
+  box-shadow: 0 6px 0 #d8847e;
+  font-size: 56px;
+  line-height: 1;
+  cursor: pointer;
+  animation: munch-pulse 1.6s ease-in-out 3; /* a gentle hello, then still */
+}
+.munch-btn[hidden] { display: none; }
+.munch-btn:active { transform: translateY(4px); box-shadow: 0 2px 0 #d8847e; }
+@keyframes munch-pulse {
+  0%, 100% { transform: scale(1); }
+  50% { transform: scale(1.08); }
+}
+
+/* The bag tray: every stack as a picture with a digit and dots. */
+.bag-tray {
+  position: fixed;
+  inset: 0;
+  z-index: 50;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  background: rgba(40, 70, 110, 0.85);
+  touch-action: pan-y;
+}
+.bag-tray[hidden] { display: none; }
+.bag-grid {
+  display: grid;
+  grid-template-columns: repeat(auto-fill, 136px);
+  justify-content: center;
+  gap: 10px;
+  width: min(92vw, 1100px);
+  max-height: 86vh;
+  padding: 10px;
+  overflow-y: auto;
+}
+.bag-stack {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  min-height: 150px;
+  padding: 6px 4px 8px;
+  border: 5px solid transparent;
+  border-radius: 22px;
+  background: #fffbea;
+  cursor: pointer;
+}
+.bag-stack.selected { border-color: #ff9d00; background: #fff3c4; }
+.bag-stack.focus { box-shadow: 0 0 0 5px #fff, 0 0 20px 6px rgba(255, 157, 0, 0.7); }
+.bag-pic {
+  box-sizing: content-box;
+  position: relative;
+  width: 64px;
+  height: 64px;
+  padding: 4px;
+  border: 3px solid #b9a77a;
+  border-radius: 14px;
+  background: #8a7e66;
+  image-rendering: pixelated;
+  pointer-events: none;
+}
+.bag-pic.pic-item {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  font-size: 48px;
+  line-height: 1;
+  background: #fffdf2;
+}
+.bag-stack .pic-badge { font-size: 28px; }
+.bag-digit { font: 900 40px/1 system-ui, sans-serif; color: #223; margin-top: 4px; }
+.bag-dots {
+  display: flex;
+  flex-wrap: wrap;
+  justify-content: center;
+  gap: 3px;
+  max-width: 120px;
+  min-height: 12px;
+  margin-top: 4px;
+}
+.bag-dots i { width: 10px; height: 10px; border-radius: 50%; background: #2e9e44; }
+.bag-close {
+  position: absolute;
+  top: 12px;
+  right: 12px;
+  width: 96px;
+  height: 96px;
+  border: 4px solid rgba(0, 0, 0, 0.25);
+  border-radius: 20px;
+  background: #ff6b5e;
+  color: #fff;
+  font-size: 56px;
+  cursor: pointer;
+}
+
 .slot .count {
   position: absolute;
   right: 6px;
@@ -220,7 +347,8 @@ html, body {
   background: transparent;
   cursor: pointer;
 }
-.craft-item img {
+.craft-pic {
+  box-sizing: content-box;
   width: 72px;
   height: 72px;
   padding: 4px;
@@ -230,6 +358,44 @@ html, body {
   image-rendering: pixelated;
   pointer-events: none;
 }
+.craft-pic.pic-item {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  font-size: 52px;
+  line-height: 1;
+  background: #fffdf2;
+}
+/* A small second picture in the corner: which crop a seed grows. */
+.pic-badge {
+  position: absolute;
+  right: -2px;
+  bottom: -2px;
+  font-size: 0.5em;
+  line-height: 1;
+  padding: 2px;
+  border-radius: 50%;
+  background: #fff;
+  box-shadow: 0 0 0 2px rgba(0, 0, 0, 0.2);
+}
+.craft-pic.pic-item { position: relative; }
+/* Seven recipes: two columns of smaller rows so all of them fit one tablet screen. */
+.craft-list.dense {
+  display: grid;
+  grid-template-columns: 1fr 1fr;
+  gap: 10px;
+  width: min(98vw, 1240px);
+  margin-top: 56px;
+}
+.craft-list.dense .craft-row { gap: 4px; padding: 6px 8px; border-width: 5px; border-radius: 22px; }
+.craft-list.dense .craft-item { min-width: 80px; padding: 2px 4px; }
+.craft-list.dense .craft-pic { width: 52px; height: 52px; padding: 3px; }
+.craft-list.dense .craft-pic.pic-item { font-size: 38px; }
+.craft-list.dense .craft-digit { font-size: 34px; }
+.craft-list.dense .craft-dots { max-width: 80px; }
+.craft-list.dense .craft-dots i { width: 10px; height: 10px; }
+.craft-list.dense .craft-sign { font-size: 40px; padding: 0 2px; }
+.craft-list.dense .craft-make { width: 96px; height: 88px; margin-left: 4px; font-size: 52px; }
 .craft-digit { font: 900 44px/1 system-ui, sans-serif; color: #223; }
 .craft-dots {
   display: flex;
@@ -325,7 +491,7 @@ html, body {
 
 /* Break reminder */
 .break-bubble {
-  position: fixed; top: 18%; left: 50%; transform: translateX(-50%); z-index: 30;
+  position: fixed; top: 18%; left: 50%; transform: translateX(-50%); z-index: 70; /* above the tray (50) and the grown-ups screen (60): always tappable */
   display: flex; align-items: center; gap: 20px; padding: 12px 24px; background: #fff;
   border-radius: 28px; box-shadow: 0 4px 0 rgba(0, 0, 0, 0.2);
 }

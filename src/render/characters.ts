@@ -473,3 +473,70 @@ export function disposeVillager(g: THREE.Object3D): void {
   });
   g.removeFromParent();
 }
+
+/** A small camera-facing picture of the food on a soft white disc (not the door-sign quad: this one turns to face the camera). */
+function makeBiteSprite(emoji: string): THREE.Sprite {
+  const size = 128;
+  const canvas = document.createElement('canvas');
+  canvas.width = canvas.height = size;
+  const c = canvas.getContext('2d');
+  if (c) {
+    c.fillStyle = 'rgba(255,255,255,0.92)';
+    c.beginPath();
+    c.arc(size / 2, size / 2, size / 2 - 4, 0, Math.PI * 2);
+    c.fill();
+    c.font = '80px "Noto Color Emoji", "Apple Color Emoji", "Segoe UI Emoji", sans-serif';
+    c.textAlign = 'center';
+    c.textBaseline = 'middle';
+    c.fillText(emoji, size / 2, size / 2 + 6);
+  }
+  const map = new THREE.CanvasTexture(canvas);
+  map.colorSpace = THREE.SRGBColorSpace;
+  return new THREE.Sprite(new THREE.SpriteMaterial({ map, depthTest: true, depthWrite: false }));
+}
+
+/** The little picture of the food in front of his face: full, two thirds, one third, gone over three bites. */
+export function biteScale(bite: number): number {
+  return Math.max(0, 1 - Math.min(3, Math.max(0, Math.floor(bite))) / 3);
+}
+
+/**
+ * The munch pose on the player model: both arms come up to his face, the head dips three times and a
+ * small picture of the food shrinks over the bites. `progress` 0 or 1 (or no pose call at all) leaves
+ * the model exactly in its rest pose. Gentle: the biggest movement is a small nod.
+ */
+/** The munch pose's arm angle (forward and up to his face). */
+export const EAT_ARM = -1.9;
+/** 0 at both ends of the munch, 1 through the middle; the ramps are 40% of it each (about half a second), so nothing snaps. */
+export function eatEnvelope(progress: number): number {
+  const edge = 0.4;
+  return Math.max(0, Math.min(1, progress / edge, (1 - progress) / edge));
+}
+/** current at env 0, target at env 1. */
+export function blendArm(current: number, target: number, env: number): number {
+  return current * (1 - env) + target * env + 0; // + 0: never -0
+}
+
+export function setEatPose(model: THREE.Group, progress: number, bite: number, foodEmoji = '🍎'): void {
+  const { armL, armR, head } = model.userData as { armL: THREE.Object3D; armR: THREE.Object3D; head: THREE.Object3D };
+  const p = Math.min(1, Math.max(0, progress));
+  const env = eatEnvelope(p);
+  // Blend with whatever the walk swing wrote this frame, so a munch begun or ended mid-stride never snaps an arm.
+  armL.rotation.x = blendArm(armL.rotation.x, EAT_ARM, env);
+  armR.rotation.x = blendArm(armR.rotation.x, EAT_ARM, env);
+  head.rotation.x = Math.abs(Math.sin(p * Math.PI * 3)) * 0.3 * env;
+  let sprites = model.userData.bites as Map<string, THREE.Sprite> | undefined;
+  if (!sprites) { sprites = new Map(); model.userData.bites = sprites; }
+  for (const s of sprites.values()) s.visible = false;
+  const scale = env > 0 ? biteScale(bite) : 0;
+  if (scale <= 0) return;
+  let sprite = sprites.get(foodEmoji);
+  if (!sprite) {
+    sprite = makeBiteSprite(foodEmoji);
+    sprite.position.set(0, 1.62, 0.6);
+    model.add(sprite);
+    sprites.set(foodEmoji, sprite);
+  }
+  sprite.visible = true;
+  sprite.scale.set(0.55 * scale, 0.55 * scale, 1);
+}
