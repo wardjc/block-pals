@@ -1,7 +1,9 @@
 import { checkSum, HoldGate, makeSum } from '../core/gate';
 import { ALL_SAVE_KEYS } from '../core/save';
+import { transferResetKeys } from '../core/saveTransfer';
 import { REMINDER_OPTIONS, type UsageTracker } from '../core/usage';
 import { saveMapping, type ButtonMapping } from '../input/mapping';
+import { createTransferSection } from './transferSection';
 
 export interface GrownUpsDeps {
   usage: UsageTracker;
@@ -13,6 +15,8 @@ export interface GrownUpsDeps {
   onMappingSaved(m: ButtonMapping): void;
   /** Stops autosave so it cannot rewrite the save while resetting. */
   stopAutosave(): void;
+  /** Starts autosave again when a load-a-copy is abandoned after autosave was stopped. */
+  resumeAutosave?(): void;
   onOpenChange(open: boolean): void;
   reload?: () => void;
   now?: () => number;
@@ -157,7 +161,7 @@ export class GrownUps {
     this.overlay.append(card, x);
   }
 
-  private showPanel(): void {
+  private showPanel(note = ''): void {
     this.stopGateTimer();
     this.show();
     const { usage } = this.deps;
@@ -199,6 +203,19 @@ export class GrownUps {
     setup.addEventListener('click', () => this.setupController(status));
     card.append(setup, status);
 
+    card.appendChild(createTransferSection({
+      storage: this.deps.storage,
+      now: () => Date.now(),
+      host: {
+        present: c => { this.overlay.replaceChildren(c); },
+        back: msg => this.showPanel(msg),
+      },
+      stopAutosave: this.deps.stopAutosave,
+      resumeAutosave: this.deps.resumeAutosave,
+      reload: this.deps.reload ?? (() => location.reload()),
+      app: 'block-pals',
+    }, note));
+
     const reset = el('button', 'gu-action gu-danger', 'Reset progress');
     const confirm = el('div', 'gu-confirm');
     confirm.hidden = true;
@@ -236,7 +253,7 @@ export class GrownUps {
   private resetProgress(): void {
     this.deps.stopAutosave();
     // The grown-ups' reset is the only thing that ever deletes the old v1 save and its backup.
-    for (const key of ALL_SAVE_KEYS) {
+    for (const key of [...ALL_SAVE_KEYS, ...transferResetKeys()]) {
       try { this.deps.storage?.removeItem(key); } catch { /* storage blocked: nothing to clear */ }
     }
     this.deps.usage.flush();

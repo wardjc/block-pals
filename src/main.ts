@@ -65,7 +65,10 @@ const animalView = new AnimalView(scene.scene);
 const sparkles = new Sparkles(scene.scene);
 const flags = loaded?.flags ?? { ledToVillage: false };
 const hints = new FarmHints(flags.hints ?? []);
-const stopAutosave = startAutosave(game, seed, storage, flags, () => herd.toJSON());
+const beginAutosave = (): (() => void) => startAutosave(game, seed, storage, flags, () => herd.toJSON());
+let stopAutosaveNow = beginAutosave();
+/** True from the moment a reset or a loaded copy has stopped autosave: nothing may write the save any more. */
+let saveFrozen = false;
 const usage = new UsageTracker(storage);
 world.onChange((x, _y, z) => scene.rebuildChunkAt(x, z));
 
@@ -282,7 +285,8 @@ const grownUps = new GrownUps(document.getElementById('ui')!, {
   cancelCapture: () => pad.cancelCapture(),
   getMapping: () => loadMapping(storage),
   onMappingSaved: m => { pad = new GamepadInput(m); },
-  stopAutosave,
+  stopAutosave: () => { saveFrozen = true; stopAutosaveNow(); },
+  resumeAutosave: () => { stopAutosaveNow(); stopAutosaveNow = beginAutosave(); saveFrozen = false; },
   onOpenChange: syncOverlays,
 });
 
@@ -428,7 +432,7 @@ game.on(e => { if (e.type !== 'idle') acted = true; });
 let pendingPip: LineKey | null = null;
 let cosySaid = false;
 const cottage = village.houses.find(h => h.id === 'cottage');
-const saveNow = (): void => { storeSave(storage, serialise(game, seed, flags, Date.now(), herd.toJSON())); };
+const saveNow = (): void => { if (!saveFrozen) storeSave(storage, serialise(game, seed, flags, Date.now(), herd.toJSON())); };
 
 const HINT_ORDER: readonly HintKey[] = ['cropReady', 'tryMunch', 'plantSome', 'needWaterSun', 'holdOutFood'];
 const isHintKey = (k: LineKey): k is HintKey => (HINT_ORDER as readonly string[]).includes(k);
