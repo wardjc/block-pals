@@ -1,8 +1,10 @@
 # Grumps and Friendly Weapons Implementation Plan
 
-**Status: plan for the parent to review (2026-11-08). Built AFTER Village step 2 (eating and the farm) has merged, and BEFORE the Wizard's tower (§7g) and Village step 3 (shops and coins), unless the parent says otherwise. Build in chunks, each reviewed (Claude builds, Codex reviews; Claude is the fallback builder and reviewer if Codex is out of allowance). Docs only: this PR contains no product code.**
+**Status: plan for the parent to review (2026-11-08). Built AFTER Village step 2 (merged), the bigger, deeper world with caves and the villagers-wander step, and BEFORE the Wizard's tower (§7g) and Village step 3 (shops and coins), unless the parent says otherwise. Build in chunks, each reviewed (Claude builds, Codex reviews; Claude is the fallback builder and reviewer if Codex is out of allowance). Docs only: this PR contains no product code.**
 
 > **For agentic workers:** REQUIRED SUB-SKILL: Use superpowers:subagent-driven-development (recommended) or superpowers:executing-plans to implement this plan task-by-task. Steps use checkbox (`- [ ]`) syntax for tracking.
+
+> **Knock-on edits from the caves plan (applied 2026-11-08).** `docs/superpowers/plans/2026-11-08-bigger-deeper-world-and-caves.md` is built before this plan. (1) **`ItemId.Gem = 123` already exists** (defined there; also dug from cave gem ore and found in treasure chests, one shared stack with the grump gems); Task 1 adds only the three weapons. (2) The world is 192 x 68 x 192 and the farm zone is computed from the layout, which is in world coordinates (+48 on every axis: about `x 117..134, z 80..92` instead of the meadow numbers below); never hard-code the numbers in tests. (3) Draw-call and triangle budgets read "visible sections + 26" (chunks are now 16-block sections) and the per-view limits in the caves plan. (4) Grumps and friends stay on the surface farm: add the invariant test `no grump or friend is below ground minus 3`. (5) Saved grump and friend positions are written in world coordinates from the start; nothing to shift. (6) Atlas `ROWS` start at 12. (7) Hold-to-dig, tap and drag rules are unchanged; the only new tap target is a closed chest.
 
 **Goal:** The "bad guys and defensive weapons" of the roadmap, made safe for a 5-year-old who is scared of Minecraft mobs. Small, slow, wobbly **grumps** (jelly blobs and sulky clouds with big eyes and soft colours) wobble onto the farm now and then and sit near the plants, which then **pause** growing (never wilt). He crafts one of three **friendly weapons** (bubble blaster, magic wand, water squirter), selects it, and **taps the grump twice** (no aiming, cannot miss). A soft bubble, sparkle or water squirt flies over, the grump cheers up and bursts into confetti, leaves a small reward in his bag, and the plants grow again. Every fifth cheered-up grump becomes a lasting **friend**, a happy little blob that stays on the farm and helps a plant now and then (at most five friends). Nothing is ever hurt, lost, scary or dark, and nothing needs reading.
 
@@ -148,7 +150,7 @@ e2e/grumps.spec.ts
 **Interfaces:**
 ```ts
 // appended to step 2's ItemId (existing ids never change)
-BubbleBlaster = 120, MagicWand = 121, WaterSquirter = 122, Gem = 123
+BubbleBlaster = 120, MagicWand = 121, WaterSquirter = 122   // Gem = 123 already exists (caves plan, Task 12)
 export type WeaponKind = 'bubble' | 'wand' | 'water';
 // ItemDef gains: kind: 'seed' | 'food' | 'gift' | 'tool'; weapon?: WeaponKind
 export const WEAPONS: readonly ItemId[];            // the three, in recipe order
@@ -157,9 +159,9 @@ export const weaponKind = (id: ItemId): WeaponKind | null;
 ```
 First step: check the built step 2 against the "Spec" paragraph (ids 100 to 110 used, 111 to 119 reserved); if different, reconcile and note it.
 
-- [ ] **Step 1:** Tests: `weapon and gem ids are stable` (120..123 pinned; no collision with blocks, step 2 items or the reserved 111..119); `every weapon has a picture, a simple name and a distinct weapon kind`; `weapons are not edible, not feed, not seeds`; `Gem is a gift item and not edible`; `isWeapon is true for exactly the three`; step 2 item tests unchanged and green; `a bag with a weapon serialises it under items only` (`inventory` stays block-only).
+- [ ] **Step 1:** Tests: `weapon and gem ids are stable` (120..123 pinned; the Gem definition from the caves plan is unchanged; no collision with blocks, step 2 items or the reserved 111..119); `every weapon has a picture, a simple name and a distinct weapon kind`; `weapons are not edible, not feed, not seeds`; `Gem is a gift item and not edible`; `isWeapon is true for exactly the three`; step 2 item tests unchanged and green; `a bag with a weapon serialises it under items only` (`inventory` stays block-only).
 - [ ] **Step 2:** Run `npx vitest run tests/core`. Expected: new tests FAIL. Implement. Expected: PASS.
-- [ ] **Step 3:** Commit `feat(items): friendly weapons and the gem`.
+- [ ] **Step 3:** Commit `feat(items): friendly weapons` (the Gem item already exists).
 
 ### Task 2: Recipes, `once`, craft screen entries
 
