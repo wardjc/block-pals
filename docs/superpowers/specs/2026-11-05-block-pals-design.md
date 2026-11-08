@@ -196,6 +196,22 @@ Agreed with the parent. Follows the §4 anti-goals: nothing scary, nothing lost,
 
 Plan: [`docs/superpowers/plans/2026-11-08-grumps-and-friendly-weapons.md`](../plans/2026-11-08-grumps-and-friendly-weapons.md)
 
+### 7g. The wizard's tower (agreed 2026-11-08)
+
+**Status: plan approved by the parent. Build after grumps and friendly weapons (§7f) has merged (gems come from cheering up grumps) and before Village step 3 (shops and coins).** Follows the §4 anti-goals: nothing scary or dark, nothing lost, he can never fail, nothing needs reading, British English, 30 fps on the Tab A8.
+
+**The wizard and his tower.** Orlo, an original wizard with a strong personality of his own and his own British voice, lives alone in a tall tower on a hilltop at the far (south) edge of the 96×96 world, away from the village. He is slow-speaking, gentle and dry, loves stars and riddles, talks to his floating glowing orb Glim, and calls him "young friend". Funny feature: a hat so tall the roof was built round it, and a beard so long it is tucked in his belt. The tower has a gently glowing light at the top, a slow soft pulse (never a flash), that can be seen from far across the meadow. A path leads there from the village. **Pip walks him there the first time** (once per save, like the walk to the village), offered only after he has his first gem. Inside it is never dark (lamps and big windows), the camera is comfortable (turning the view by dragging works on both floors and the camera is never inside a wall), and there is no way to get stuck: the wizard is on the ground floor and a stair leads up to a bright round star room.
+
+**Eight mythical blocks.** All bright and friendly, all original, all placeable and collectable like normal blocks: Starlight crystal (glowing blue-white), Rainbow block (colour bands that slowly shimmer), Cloud block (soft white and fluffy), Moon block (silver, gentle glow), Sun block (warm gold, glowing), Dragon-scale block (green-gold scales), Star block (deep blue with twinkling stars) and Magic mirror glass (sparkly, see-through, glimmers). They are **decorations and light sources with no special powers in this step** (powers such as a bouncy cloud are a later idea). Light sources are always-bright like the lamp. The shimmer is cheap (no shaders, no chunk rebuilds).
+
+**How he gets them: both.**
+- **Trade gems.** Gems come from cheering up grumps (§7f). The wizard's trade screen shows the eight blocks as pictures with the price as a gem picture, a digit and dots. The first visit gives **one free block of his choice** as a welcome gift.
+- **Picture puzzles.** The wizard sets a new puzzle every time: counting (digits up to 20, shown with dots and pictures, for example 3 apples and 2 carrots), patterns ("what comes next?" with colours and shapes) and matching shapes and colours. **Always pictures and numbers, never reading.** He can **never fail**: a wrong answer gets a gentle "try again", there is no timer, no score and no loss, and if he is stuck the wizard and Pip give hints after a short time (and in the end help him through). Puzzles start very easy and get slightly harder as he solves more (the level is saved and never goes down). Solving one gives a mythical block. (Beat-copy puzzles join with the music step.)
+
+**Done when:** a path leads from the village to the tower on its hilltop and its light can be seen from the meadow; after his first gem, Pip walks him there once; the wizard greets him in his own voice and gives a free block the first time; he can trade a gem for blocks and solve counting, pattern and matching puzzles that start easy and get harder, with hints, never failing and never losing anything; all eight blocks can be placed, dug up and built with, and the glowing ones light up his builds; the tower is bright inside with a comfortable camera on both floors; old saves load; nothing is scary, dark, lost or read; and the tablet holds 30 fps with the tower and its light in view.
+
+Plan: [`docs/superpowers/plans/2026-11-08-wizards-tower.md`](../plans/2026-11-08-wizards-tower.md)
+
 ## 8. Left to the builder
 
 - World size, block set and exact materials in v1, within "small and can't get lost".
