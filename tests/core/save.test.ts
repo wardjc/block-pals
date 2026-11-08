@@ -107,7 +107,7 @@ describe('save data', () => {
     expect(parseSave(JSON.stringify({ ...validSave(), ...patch }))).toBeNull();
   });
 
-  const BAD_EDITS: unknown[] = [[1, 2, 3], [1, 2, 3, 4, 5], [1, 2, 3, -1], [1, 2, 3, 16], [1, 2, 3, 999], [1, 2, 3, '4'],
+  const BAD_EDITS: unknown[] = [[1, 2, 3], [1, 2, 3, 4, 5], [1, 2, 3, -1], [1, 2, 3, 36], [1, 2, 3, 999], [1, 2, 3, '4'],
     [1, 2, 3, 1.5], [-1, 2, 3, 4], [96, 2, 3, 4], [1, 20, 3, 4], [1, 2, 96, 4], [1.5, 2, 3, 4], null];
 
   test.each(BAD_EDITS.map(e => [e]))('one invalid edit %j is skipped, the valid ones are kept', bad => {
@@ -252,7 +252,7 @@ describe('autosave', () => {
 });
 
 describe('save extras', () => {
-  test.each([null, [], { 4: 100 }, { 4: -1 }, { 4: 1.5 }, { 4: '3' }, { 0: 1 }, { 11: 1 }, { 16: 1 }, { '04': 1 }])(
+  test.each([null, [], { 4: 100 }, { 4: -1 }, { 4: 1.5 }, { 4: '3' }, { 0: 1 }, { 11: 1 }, { 36: 1 }, { '04': 1 }])(
     'bad inventory %j is emptied, save kept', inv => {
       const d = parseSave(JSON.stringify({ ...validSave(), inventory: inv }));
       expect(d).not.toBeNull();

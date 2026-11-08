@@ -199,7 +199,7 @@ export class GameScene {
       this.smoothEye.lerp(real, 1 - Math.exp(-FOLLOW_K * dt));
       const dx = this.smoothEye.x - real.x, dy = this.smoothEye.y - real.y, dz = this.smoothEye.z - real.z;
       const len = Math.hypot(dx, dy, dz);
-      if (len > 1e-6 && castVoxelRay(this.world, real.x, real.y, real.z, dx / len, dy / len, dz / len, len, false, this.hit)) {
+      if (len > 1e-6 && castVoxelRay(this.world, real.x, real.y, real.z, dx / len, dy / len, dz / len, len, false, this.hit, true)) {
         this.smoothEye.copy(real);
       }
     }

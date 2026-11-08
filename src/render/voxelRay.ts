@@ -1,9 +1,14 @@
-import { BlockId } from '../core/blocks';
+import { BLOCKS, BlockId } from '../core/blocks';
 import type { World } from '../core/world';
 
-/** What a ray stops at: anything but air and water (leaves and glass count). */
-export function blocksRay(id: BlockId): boolean {
-  return id !== BlockId.Air && id !== BlockId.Water;
+/**
+ * What a ray stops at: anything but air and water (leaves and glass count). Taps and the dig ray
+ * stop at plants too, so a plant can be picked; the camera (`forCamera`) passes straight through
+ * them, so tall wheat never shoves it about.
+ */
+export function blocksRay(id: BlockId, forCamera = false): boolean {
+  if (id === BlockId.Air || id === BlockId.Water) return false;
+  return !(forCamera && BLOCKS[id].shape === 'cross');
 }
 
 export interface VoxelHit {
@@ -21,7 +26,8 @@ export interface VoxelHit {
 /**
  * Voxel DDA (Amanatides and Woo) through in-bounds cells. Fills `out` with the first cell that
  * blocks the ray within maxT and returns true. With skipStart, the cell the ray starts in is
- * ignored (picking from a camera that may sit in a leaf). `d` must be a unit vector.
+ * ignored (picking from a camera that may sit in a leaf). `forCamera` lets the ray pass plants.
+ * `d` must be a unit vector.
  * Allocation-free, so it can run every frame.
  */
 export function castVoxelRay(
@@ -31,6 +37,7 @@ export function castVoxelRay(
   maxT: number,
   skipStart: boolean,
   out: VoxelHit,
+  forCamera = false,
 ): boolean {
   let x = Math.floor(ox);
   let y = Math.floor(oy);
@@ -49,7 +56,7 @@ export function castVoxelRay(
   const maxSteps = Math.ceil(maxT * 3) + 3;
 
   for (let i = 0; i < maxSteps; i++) {
-    if (!(first && skipStart) && world.inBounds(x, y, z) && blocksRay(world.get(x, y, z))) {
+    if (!(first && skipStart) && world.inBounds(x, y, z) && blocksRay(world.get(x, y, z), forCamera)) {
       out.x = x; out.y = y; out.z = z;
       out.nx = nx; out.ny = ny; out.nz = nz;
       out.t = t;

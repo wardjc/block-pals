@@ -1,5 +1,6 @@
 import { describe, expect, test, vi } from 'vitest';
-import { BLOCKS, BlockId } from '../../src/core/blocks';
+import { BLOCKS, BlockId, dropFor } from '../../src/core/blocks';
+import { isStandable } from '../../src/core/pathfind';
 import { World } from '../../src/core/world';
 
 describe('blocks', () => {
@@ -35,6 +36,54 @@ describe('block ids', () => {
       expect(BLOCKS[id]).toMatchObject({ id, solid: true, collectable: true, transparent: false });
     }
     expect([12, 13, 14, 15].map(id => BLOCKS[id as BlockId].name)).toEqual(['path', 'roof', 'frame', 'lamp']);
+  });
+});
+
+describe('farm blocks', () => {
+  test('new block ids are pinned and appended', () => {
+    const pinned: Record<string, number> = {
+      Farmland: 16, Fence: 17, WoolWhite: 18, WoolRed: 19, WoolBlue: 20, WoolYellow: 21, Sapling: 22, AppleLeaves: 23,
+      Wheat0: 24, Wheat1: 25, Wheat2: 26, Wheat3: 27, Carrot0: 28, Carrot1: 29, Carrot2: 30, Carrot3: 31,
+      Potato0: 32, Potato1: 33, Potato2: 34, Potato3: 35,
+    };
+    for (const [name, id] of Object.entries(pinned)) {
+      expect((BlockId as unknown as Record<string, number>)[name]).toBe(id);
+      expect(Object.hasOwn(BLOCKS, id)).toBe(true);
+    }
+    expect(Math.max(...Object.keys(BLOCKS).map(Number))).toBe(35);
+    expect(Object.keys(BLOCKS).length).toBe(36);
+  });
+
+  test('plants are non-solid, collectable, transparent crosses with stage info', () => {
+    const kinds = ['wheat', 'carrot', 'potato'] as const;
+    kinds.forEach((kind, k) => {
+      for (let stage = 0; stage < 4; stage++) {
+        const def = BLOCKS[(24 + k * 4 + stage) as BlockId];
+        expect(def).toMatchObject({ solid: false, collectable: true, transparent: true, shape: 'cross', plant: { kind, stage } });
+      }
+    });
+    expect(BLOCKS[BlockId.Sapling]).toMatchObject({ solid: false, shape: 'cross', plant: { kind: 'apple', stage: 0 } });
+  });
+
+  test('farmland, fence and wool are solid cubes; apple leaves are solid and transparent', () => {
+    for (const id of [BlockId.Farmland, BlockId.Fence, BlockId.WoolWhite, BlockId.WoolRed, BlockId.WoolBlue, BlockId.WoolYellow]) {
+      expect(BLOCKS[id]).toMatchObject({ solid: true, collectable: true, transparent: false });
+      expect(BLOCKS[id].shape).toBeUndefined();
+    }
+    expect(BLOCKS[BlockId.AppleLeaves]).toMatchObject({ solid: true, collectable: true, transparent: true });
+  });
+
+  test('Farmland drops Dirt, everything else drops itself', () => {
+    expect(dropFor(BlockId.Farmland)).toBe(BlockId.Dirt);
+    expect(dropFor(BlockId.Grass)).toBe(BlockId.Grass);
+    expect(dropFor(BlockId.Wheat3)).toBe(BlockId.Wheat3);
+  });
+
+  test('plants are walkable: a Farmland cell with Wheat3 above is standable', () => {
+    const w = new World(8, 8, 8);
+    for (let x = 0; x < 8; x++) for (let z = 0; z < 8; z++) w.set(x, 0, z, BlockId.Farmland);
+    w.set(3, 1, 3, BlockId.Wheat3);
+    expect(isStandable(w, [3, 1, 3])).toBe(true);
   });
 });
 
