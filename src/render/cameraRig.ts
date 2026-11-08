@@ -27,17 +27,17 @@ export const CLOSE_DISTANCE = 1.2;
 export const CLOSE_EXIT_DISTANCE = 1.6;
 /**
  * The player model is hidden while the camera is within this distance of his head (a back-view of a
- * body 2 blocks in front fills the middle of the screen in a 5×5 room), and shown again beyond
+ * body 2 to 3 blocks in front fills the middle of the screen in a small room), and shown again beyond
  * MODEL_SHOW_DISTANCE so it never flickers at the edge.
  */
-export const MODEL_HIDE_DISTANCE = 2.0;
-export const MODEL_SHOW_DISTANCE = 2.4;
+export const MODEL_HIDE_DISTANCE = 3.4;
+export const MODEL_SHOW_DISTANCE = 3.9;
 /** Pip is hidden when the camera is this close to him, or when he is this close and near the view's middle. */
-export const PIP_HIDE_DISTANCE = 1.2;
-export const PIP_SHOW_DISTANCE = 1.6;
-export const PIP_CENTRE_DISTANCE = 3;
-export const PIP_CENTRE_COS = 0.92; // about 23° from the view's centre line
-export const PIP_CENTRE_COS_EXIT = 0.85;
+export const PIP_HIDE_DISTANCE = 2.8;
+export const PIP_SHOW_DISTANCE = 3.2;
+export const PIP_CENTRE_DISTANCE = 4;
+export const PIP_CENTRE_COS = 0.85; // about 32° from the view's centre line
+export const PIP_CENTRE_COS_EXIT = 0.78;
 
 /** Whether Pip should be drawn: false while he would fill the corner or the middle of the view. */
 export function pipHiddenFor(cam: Vec3, forward: Vec3, pip: Vec3, wasHidden: boolean): boolean {

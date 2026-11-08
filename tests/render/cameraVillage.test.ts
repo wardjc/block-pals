@@ -76,7 +76,7 @@ describe('camera inside the village houses', () => {
           rig.yaw = yaw; rig.pitch = pitch;
           const eye = eyeOf(cell);
           settle(rig, world, eye);
-          if (rig.distance < 2) expect(rig.modelHidden).toBe(true);
+          if (rig.distance < 3.4) expect(rig.modelHidden).toBe(true);
         }
       }
     }
@@ -179,11 +179,11 @@ describe('Pip never fills the view', () => {
   });
   it('hides when he is near the middle of the view, not when off to the side', () => {
     expect(pipHiddenFor(cam, fwd, { x: 0, y: 4.6, z: 2.5 }, false)).toBe(true);
-    expect(pipHiddenFor(cam, fwd, { x: 2.5, y: 4.6, z: 0.5 }, false)).toBe(false);
+    expect(pipHiddenFor(cam, fwd, { x: 3.4, y: 4.6, z: 0.5 }, false)).toBe(false);
   });
   it('shows when far, and has hysteresis', () => {
-    expect(pipHiddenFor(cam, fwd, { x: 0, y: 4.6, z: 6 }, false)).toBe(false);
-    expect(pipHiddenFor(cam, fwd, { x: 1.4, y: 4.6, z: 0 }, false)).toBe(false);
-    expect(pipHiddenFor(cam, fwd, { x: 1.4, y: 4.6, z: 0 }, true)).toBe(true);
+    expect(pipHiddenFor(cam, fwd, { x: 0, y: 4.6, z: 7 }, false)).toBe(false);
+    expect(pipHiddenFor(cam, fwd, { x: 3, y: 4.6, z: 0 }, false)).toBe(false);
+    expect(pipHiddenFor(cam, fwd, { x: 3, y: 4.6, z: 0 }, true)).toBe(true);
   });
 });
