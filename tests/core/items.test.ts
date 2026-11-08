@@ -70,3 +70,17 @@ describe('items', () => {
     expect(isStackId(NaN)).toBe(false);
   });
 });
+
+describe('stackName', () => {
+  test('names items and blocks, and falls back to an empty word for anything unknown', async () => {
+    const { stackName } = await import('../../src/core/items');
+    expect(stackName(ItemId.Wool)).toBe('wool');
+    expect(stackName(BlockId.Planks)).toBe('planks');
+    expect(stackName(9999 as never)).toBe('');
+    expect(stackName(-1 as never)).toBe('');
+  });
+  test('plant blocks and ripe apple leaves are not bag stacks', () => {
+    for (const id of [BlockId.Wheat3, BlockId.Sapling, BlockId.Carrot0, BlockId.AppleLeaves]) expect(isStackId(id)).toBe(false);
+    expect(isStackId(BlockId.Farmland)).toBe(true);
+  });
+});

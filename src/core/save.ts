@@ -1,5 +1,5 @@
 import type { Game } from '../game/game';
-import { BLOCKS, BlockId } from './blocks';
+import { BLOCKS, BlockId, isCarriable } from './blocks';
 import { LEGACY_WORLD, WORLD } from './bounds';
 import { Inventory, MAX_STACK } from './inventory';
 import { isItemId } from './items';
@@ -136,7 +136,7 @@ function cleanItems(items: unknown, itemOrder: unknown): Pick<SaveData, 'items' 
 function validInventory(inv: unknown): boolean {
   return isRecord(inv) && Object.entries(inv).every(([key, count]) => {
     const id = Number(key);
-    return String(id) === key && isBlockId(id) && id !== BlockId.Air && id !== BlockId.Bedrock
+    return String(id) === key && isCarriable(id)
       && typeof count === 'number' && Number.isInteger(count) && count >= 0 && count <= MAX_STACK;
   });
 }

@@ -1,5 +1,5 @@
 import './ui/styles.css';
-import { BlockId } from './core/blocks';
+import { BLOCKS, BlockId } from './core/blocks';
 import type { Cell } from './core/pathfind';
 import { applySave, readSave, serialise, startAutosave, storeSave } from './core/save';
 import { generateWorld } from './core/worldgen';
@@ -411,7 +411,8 @@ if (debugOn) {
   (window as unknown as Record<string, unknown>).__debug = {
     playerPos: () => ({ ...game.player.pos }),
     giveItem: (id: StackId, n: number) => { game.inventory.add(id, n); renderHud(); },
-    setBlock: (x: number, y: number, z: number, id: BlockId) => game.world.set(x, y, z, id),
+    // Only registered ids: a bad one would be autosaved and then rejected on the next load.
+    setBlock: (x: number, y: number, z: number, id: BlockId) => { if (Object.hasOwn(BLOCKS, id)) game.world.set(x, y, z, id); },
     selectStack: (id: StackId | 'hand') => { game.selected = id; renderHud(); },
     openBag: () => bagTray.open(),
     fps: () => fpsValue,

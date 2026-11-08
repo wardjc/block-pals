@@ -1,4 +1,4 @@
-import { BLOCKS, BlockId } from './blocks';
+import { BLOCKS, BlockId, isCarriable } from './blocks';
 import type { Cell } from './pathfind';
 import type { World } from './world';
 
@@ -8,7 +8,9 @@ const FACE_OFFSETS: Cell[] = [
   [0, 0, -1], [0, 0, 1],
 ];
 
-export function canPlace(world: World, cell: Cell, occupied: Cell[]): boolean {
+/** `placing`, when given, is the block being placed: plants and other world-only blocks are refused. */
+export function canPlace(world: World, cell: Cell, occupied: Cell[], placing?: BlockId): boolean {
+  if (placing !== undefined && !isCarriable(placing)) return false;
   const [x, y, z] = cell;
   if (!world.inBounds(x, y, z)) return false;
   const id = world.get(x, y, z);

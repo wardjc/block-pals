@@ -1,4 +1,4 @@
-import { BLOCKS, BlockId } from './blocks';
+import { BLOCKS, BlockId, isCarriable } from './blocks';
 
 /**
  * Things that are not blocks. Ids start at 100 so one number identifies anything in the bag and
@@ -51,9 +51,8 @@ export const ITEMS: Record<ItemId, ItemDef> = {
 
 export const isItemId = (n: number): n is ItemId => Number.isInteger(n) && Object.hasOwn(ITEMS, n);
 
-/** A block that can be in the bag (not Air or Bedrock) or an item. */
-export const isStackId = (n: number): n is StackId =>
-  isItemId(n) || (Number.isInteger(n) && Object.hasOwn(BLOCKS, n) && n !== BlockId.Air && n !== BlockId.Bedrock);
+/** A block that can be in the bag (not Air, Bedrock or a plant) or an item. */
+export const isStackId = (n: number): n is StackId => isItemId(n) || isCarriable(n);
 
 /** Accepted by every animal (seeds and milk are not feed). */
 export const FEEDS: readonly ItemId[] = [ItemId.Apple, ItemId.Carrot, ItemId.Potato, ItemId.Wheat];
@@ -67,5 +66,6 @@ export const GIFT: Record<'chicken' | 'cow' | 'sheep' | 'pig', ItemId> = {
 
 /** The word for a stack, for the few places that say it aloud. */
 export function stackName(id: StackId): string {
-  return isItemId(id) ? ITEMS[id].name : BLOCKS[id].name;
+  if (isItemId(id)) return ITEMS[id].name;
+  return Object.hasOwn(BLOCKS, id) ? BLOCKS[id].name : '';
 }

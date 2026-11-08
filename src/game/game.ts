@@ -1,8 +1,9 @@
-import { BlockId, dropFor } from '../core/blocks';
+import { BlockId, dropFor, isCarriable, isPlantBlock } from '../core/blocks';
 import { insideWall } from '../core/bounds';
 import { canCraft, craft } from '../core/crafting';
+import { cropOf, yields } from '../core/crops';
 import { Inventory } from '../core/inventory';
-import { isItemId, type StackId } from '../core/items';
+import { isItemId, ITEMS, type StackId } from '../core/items';
 import { findPath, isStandable, pathTowards, smoothPath, type Cell } from '../core/pathfind';
 
 import { canCollect, canPlace, withinReach } from '../core/placement';
@@ -10,6 +11,7 @@ import { RECIPES } from '../core/recipes';
 import type { World } from '../core/world';
 import type { Action } from '../input/mapping';
 import type { HoldIntent, TapIntent } from '../input/tap';
+import { Farm } from './farm';
 import { Player } from './player';
 
 export type GameEvent =
@@ -35,6 +37,8 @@ export class Game {
   readonly world: World;
   readonly inventory: Inventory;
   readonly player: Player;
+  /** Growth timers for the plants (the plants themselves are blocks in the world). */
+  readonly farm: Farm;
   selected: StackId | 'hand' = 'hand';
   /** Hook for the HUD craft screen (Task 11). */
   /** While true (overlay open) the player does not move. */
@@ -50,6 +54,7 @@ export class Game {
     this.world = opts.world;
     this.inventory = opts.inventory ?? new Inventory();
     this.player = new Player(opts.spawn);
+    this.farm = new Farm(this.world, this.inventory);
     this.occupiedFn = () => {
       const [x, y, z] = this.player.feetCell();
       return [[x, y, z], [x, y + 1, z]];
@@ -100,6 +105,14 @@ export class Game {
       case 'place':
         this.active();
         this.place(intent.cell);
+        return;
+      case 'plant':
+        this.active();
+        this.plant(intent.cell);
+        return;
+      case 'help':
+        this.active();
+        if (withinReach(this.player.feetCell(), intent.cell)) this.farm.help(intent.cell);
         return;
       default:
     }
@@ -175,7 +188,19 @@ export class Game {
 
   private collect(cell: Cell): void {
     if (!canCollect(this.world, cell) || !withinReach(this.player.feetCell(), cell) || this.holdsSomeoneUp(cell)) return;
-    const id = dropFor(this.world.get(...cell)); // tilled soil gives plain dirt
+    const here = this.world.get(...cell);
+    // Every drop goes through here. A plant (or ripe apple leaves) is never carried: the farm
+    // gives seeds and harvest items instead, all or nothing.
+    if (isPlantBlock(here) || here === BlockId.AppleLeaves) {
+      const result = this.farm.harvest(cell);
+      if (result.type === 'full') {
+        const info = cropOf(here);
+        this.emit({ type: 'full', id: yields(info?.kind ?? 'apple', info?.stage ?? 3)[0].id });
+      }
+      return;
+    }
+    const id = dropFor(here); // tilled soil gives plain dirt
+    if (!isCarriable(id)) return;
     if (this.inventory.add(id, 1) === 0) {
       this.emit({ type: 'full', id });
       return;
@@ -187,11 +212,20 @@ export class Game {
   private place(cell: Cell): void {
     const id = this.effectiveSelected();
     if (id === 'hand' || isItemId(id)) return; // items are never placed as blocks
-    if (!withinReach(this.player.feetCell(), cell) || !canPlace(this.world, cell, this.occupied())) return;
+    if (!withinReach(this.player.feetCell(), cell) || !canPlace(this.world, cell, this.occupied(), id)) return;
     if (!this.inventory.remove(id, 1)) return;
     this.world.set(...cell, id);
     this.normaliseSelection();
     this.emit({ type: 'placed', id });
+  }
+
+  /** A quick tap with a seed or sapling selected, on soil in reach: uses one seed. */
+  private plant(cell: Cell): void {
+    const seed = this.effectiveSelected();
+    if (seed === 'hand' || !isItemId(seed) || ITEMS[seed].kind !== 'seed') return;
+    if (!withinReach(this.player.feetCell(), cell)) return;
+    this.farm.plant(cell, seed, this.occupied());
+    this.normaliseSelection();
   }
 
   /** The cell the player faces (nearest of 8 directions) at the given height offset. */

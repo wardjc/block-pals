@@ -1,7 +1,8 @@
 import { describe, expect, it, vi } from 'vitest';
-import { BlockId } from '../../src/core/blocks';
+import { BlockId, isPlantBlock } from '../../src/core/blocks';
 import { Inventory } from '../../src/core/inventory';
-import { ItemId } from '../../src/core/items';
+import { isItemId, ItemId } from '../../src/core/items';
+import { canPlace } from '../../src/core/placement';
 import * as pathfinding from '../../src/core/pathfind';
 import { World } from '../../src/core/world';
 import { generateWorld } from '../../src/core/worldgen';
@@ -428,5 +429,128 @@ describe('items in the game', () => {
     expect(world.get(6, 1, 5)).toBe(BlockId.Air);
     expect(game.inventory.count(BlockId.Dirt)).toBe(1);
     expect(game.inventory.count(BlockId.Farmland)).toBe(0);
+  });
+});
+
+describe('Game: farm', () => {
+  const bagWith = (...stacks: Array<[number, number]>): Inventory => {
+    const inv = new Inventory();
+    for (const [id, n] of stacks) inv.add(id as never, n);
+    return inv;
+  };
+
+  it('applyIntent plant and help use the farm and cost nothing but one seed', () => {
+    const { world, game } = setup(bagWith([ItemId.WheatSeed, 3], [BlockId.Planks, 4]));
+    game.selected = ItemId.WheatSeed;
+    game.applyIntent({ kind: 'plant', cell: [6, 1, 5] });
+    expect(world.get(6, 1, 5)).toBe(BlockId.Wheat0);
+    expect(game.inventory.count(ItemId.WheatSeed)).toBe(2);
+    expect(game.inventory.count(BlockId.Planks)).toBe(4);
+    game.applyIntent({ kind: 'help', cell: [6, 1, 5] });
+    expect(world.get(6, 1, 5)).toBe(BlockId.Wheat1);
+    expect(game.inventory.count(ItemId.WheatSeed)).toBe(2);
+  });
+
+  it('plant needs a seed selected, soil, reach and no one standing there', () => {
+    const { world, game } = setup(bagWith([ItemId.WheatSeed, 3], [ItemId.Apple, 2]));
+    game.applyIntent({ kind: 'plant', cell: [6, 1, 5] }); // hand
+    game.selected = ItemId.Apple;
+    game.applyIntent({ kind: 'plant', cell: [6, 1, 5] }); // not a seed
+    game.selected = ItemId.WheatSeed;
+    game.applyIntent({ kind: 'plant', cell: [20, 1, 20] }); // out of reach
+    const [fx, fy, fz] = game.player.feetCell();
+    game.applyIntent({ kind: 'plant', cell: [fx, fy, fz] }); // his own cell
+    expect(game.inventory.count(ItemId.WheatSeed)).toBe(3);
+    expect(world.get(6, 1, 5)).toBe(BlockId.Air);
+  });
+
+  it('help out of reach does nothing', () => {
+    const { world, game } = setup();
+    world.set(20, 1, 20, BlockId.Wheat0);
+    game.applyIntent({ kind: 'help', cell: [20, 1, 20] });
+    expect(world.get(20, 1, 20)).toBe(BlockId.Wheat0);
+  });
+
+  it('a hold on a ripe plant harvests food and seeds; no plant block ever enters the bag', () => {
+    const { world, game } = setup(bagWith([ItemId.CarrotSeed, 1]));
+    game.selected = ItemId.CarrotSeed;
+    game.applyIntent({ kind: 'plant', cell: [6, 1, 5] });
+    for (let i = 0; i < 3; i++) game.applyIntent({ kind: 'help', cell: [6, 1, 5] });
+    game.applyIntent({ kind: 'dig', cell: [6, 1, 5] });
+    expect(world.get(6, 1, 5)).toBe(BlockId.Air);
+    expect(game.inventory.count(ItemId.Carrot)).toBe(2);
+    expect(game.inventory.count(ItemId.CarrotSeed)).toBe(2);
+    expect(game.inventory.slots().every(id => !isPlantBlock(id as BlockId) || isItemId(id))).toBe(true);
+  });
+
+  it('no plant block is ever added to the bag or placed', () => {
+    const plants = Object.values(BlockId).filter((v): v is BlockId => typeof v === 'number' && isPlantBlock(v));
+    expect(plants).toHaveLength(13);
+    const { world, game } = setup();
+    for (const plant of [...plants, BlockId.AppleLeaves]) {
+      // Directly: the bag refuses them.
+      expect(game.inventory.add(plant as never, 5)).toBe(0);
+      // Digging one (any stage) never puts a plant block in the bag.
+      world.set(6, 1, 5, plant);
+      game.applyIntent({ kind: 'dig', cell: [6, 1, 5] });
+      // Selecting one and building never places it.
+      game.selected = plant;
+      game.applyIntent({ kind: 'place', cell: [6, 1, 5] });
+      expect(world.get(6, 1, 5)).not.toBe(plant);
+      world.set(6, 1, 5, BlockId.Air);
+    }
+    for (const id of game.inventory.slots()) expect(isPlantBlock(id as BlockId) && !isItemId(id)).toBe(false);
+    expect(game.inventory.toJSON()).toEqual({});
+    expect(canPlace(world, [6, 1, 5], [], BlockId.Wheat3)).toBe(false);
+    expect(canPlace(world, [6, 1, 5], [], BlockId.AppleLeaves)).toBe(false);
+    expect(canPlace(world, [6, 1, 5], [], BlockId.Planks)).toBe(true);
+  });
+
+  it('a plant cell refuses a placed block', () => {
+    const { world, game } = setup(bagWith([BlockId.Planks, 3]));
+    world.set(6, 1, 5, BlockId.Wheat1);
+    game.selected = BlockId.Planks;
+    game.applyIntent({ kind: 'place', cell: [6, 1, 5] });
+    expect(world.get(6, 1, 5)).toBe(BlockId.Wheat1);
+    expect(game.inventory.count(BlockId.Planks)).toBe(3);
+  });
+
+  it('place into an animal cell is refused (occupied includes animals)', () => {
+    const { world, game } = setup(bagWith([BlockId.Planks, 3]));
+    game.setOccupied(() => [[6, 1, 5], [6, 2, 5]]);
+    world.set(7, 1, 5, BlockId.Stone);
+    game.selected = BlockId.Planks;
+    game.applyIntent({ kind: 'place', cell: [6, 1, 5] });
+    expect(world.get(6, 1, 5)).toBe(BlockId.Air);
+    expect(game.inventory.count(BlockId.Planks)).toBe(3);
+  });
+
+  it('a harvest that would overflow is refused whole with the full event', () => {
+    const { world, game, events } = setup(bagWith([ItemId.Carrot, 99], [ItemId.CarrotSeed, 1]));
+    world.set(6, 1, 5, BlockId.Carrot3);
+    game.applyIntent({ kind: 'dig', cell: [6, 1, 5] });
+    expect(world.get(6, 1, 5)).toBe(BlockId.Carrot3);
+    expect(game.inventory.count(ItemId.CarrotSeed)).toBe(1);
+    expect(events.some(e => e.type === 'full')).toBe(true);
+  });
+
+  it('digging ripe apple leaves picks fruit and leaves ordinary leaves', () => {
+    const { world, game } = setup();
+    world.set(6, 1, 5, BlockId.AppleLeaves);
+    game.applyIntent({ kind: 'dig', cell: [6, 1, 5] });
+    expect(world.get(6, 1, 5)).toBe(BlockId.Leaves);
+    expect(game.inventory.count(ItemId.Apple)).toBe(2);
+    expect(game.inventory.count(BlockId.AppleLeaves)).toBe(0);
+  });
+
+  it('selecting a seed does not change what pad Collect does', () => {
+    const { world, game } = setup(bagWith([ItemId.WheatSeed, 2]));
+    world.set(6, 1, 5, BlockId.Wood);
+    game.selected = ItemId.WheatSeed;
+    game.player.heading = Math.PI / 2; // facing +x
+    game.padAction('collect');
+    expect(world.get(6, 1, 5)).toBe(BlockId.Air);
+    expect(game.inventory.count(BlockId.Wood)).toBe(1);
+    expect(game.inventory.count(ItemId.WheatSeed)).toBe(2);
   });
 });

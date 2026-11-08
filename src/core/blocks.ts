@@ -102,3 +102,17 @@ export const BLOCKS: Record<BlockId, BlockDef> = {
 export function dropFor(id: BlockId): BlockId {
   return id === BlockId.Farmland ? BlockId.Dirt : id;
 }
+
+/** A growing crop or sapling: a block in the world, never a thing he carries. */
+export function isPlantBlock(id: BlockId): boolean {
+  return BLOCKS[id]?.plant !== undefined;
+}
+
+/**
+ * Whether a block can sit in the bag and be placed. Air and bedrock cannot; plants and ripe apple
+ * leaves are world-only (digging them gives seeds and fruit through the farm instead).
+ */
+export function isCarriable(id: number): id is BlockId {
+  return Number.isInteger(id) && Object.hasOwn(BLOCKS, id)
+    && id !== BlockId.Air && id !== BlockId.Bedrock && id !== BlockId.AppleLeaves && !isPlantBlock(id);
+}

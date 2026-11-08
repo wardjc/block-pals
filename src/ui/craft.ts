@@ -157,7 +157,8 @@ export class CraftScreen {
     wrap.addEventListener('click', e => {
       e.stopPropagation();
       this.deps.sfxTap();
-      this.deps.say(stackName(id));
+      const word = stackName(id);
+      if (word) this.deps.say(word); // never speak an empty word for an unknown id
     });
     return wrap;
   }

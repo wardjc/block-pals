@@ -1,11 +1,11 @@
-import { BLOCKS, BlockId } from './blocks';
+import { BlockId, isCarriable } from './blocks';
 import { isItemId, isStackId, type StackId } from './items';
 
 /** Most of one kind the bag holds (v1.1: raised from 20, spec §7a). Recipes and prices never ask for more than 20. */
 export const MAX_STACK = 99;
 
 function validBlockId(id: number): id is BlockId {
-  return Number.isInteger(id) && Object.hasOwn(BLOCKS, id) && id !== BlockId.Air && id !== BlockId.Bedrock;
+  return isCarriable(id);
 }
 
 function validQuantity(n: number): boolean {
