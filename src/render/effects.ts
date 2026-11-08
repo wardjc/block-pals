@@ -129,6 +129,8 @@ export class Sparkles {
   dispose(): void {
     this.points.removeFromParent();
     this.points.geometry.dispose();
-    (this.points.material as THREE.Material).dispose();
+    const mat = this.points.material as THREE.PointsMaterial;
+    mat.map?.dispose();
+    mat.dispose();
   }
 }

@@ -518,19 +518,19 @@ describe('Farm: chunk B review carry-overs', () => {
     expect(world.get(3, 1, 3)).toBe(BlockId.Air);
   });
 
-  it("advance has its own 8 h cap, however big the number it is given", () => {
+  it("advance copes with any number it is given: huge, infinite, NaN and negative leave every plant ripe or untouched (the 8 h cap itself is shown in farmCap.test.ts)", () => {
     const a = setup();
-    const b = setup();
-    for (const s of [a, b]) { s.farm.plant(at(3, 3), ItemId.WheatSeed, []); s.farm.plant(at(5, 5), ItemId.AppleSapling, []); }
-    a.farm.advance(OFFLINE_CAP_MS);
-    b.farm.advance(1e15);
-    for (const s of [a, b]) for (let i = 0; i < 4; i++) s.farm.update(0.03);
-    expect(b.farm.records()).toEqual(a.farm.records());
-    expect(stageAt(b.world, at(3, 3))).toBe(3);
-    expect(b.farm.records().trees[0].stage).toBe(OFFLINE_CAP_MS >= 600_000 ? 3 : 2); // 8 h ripens a tree too
-    // Many capped calls still end ripe: nothing wilts.
-    for (let i = 0; i < 20; i++) b.farm.advance(1e15);
-    b.farm.update(0.03);
-    expect(stageAt(b.world, at(3, 3))).toBe(3);
+    for (const s of [a]) { s.farm.plant(at(3, 3), ItemId.WheatSeed, []); s.farm.plant(at(5, 5), ItemId.AppleSapling, []); }
+    a.farm.advance(NaN);
+    a.farm.advance(-5);
+    a.farm.update(0.03);
+    expect(stageAt(a.world, at(3, 3))).toBe(0);
+    a.farm.advance(1e15);
+    for (let i = 0; i < 4; i++) a.farm.update(0.03);
+    expect(stageAt(a.world, at(3, 3))).toBe(3);
+    expect(a.farm.records().trees[0].stage).toBe(3);
+    for (let i = 0; i < 20; i++) a.farm.advance(1e15);
+    a.farm.update(0.03);
+    expect(stageAt(a.world, at(3, 3))).toBe(3);
   });
 });

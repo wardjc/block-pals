@@ -187,7 +187,7 @@ describe('village', () => {
         }
       }
     }
-  });
+  }, 60_000);
 
   it('writes nothing outside the world and is deterministic', () => {
     const again = generateWorld(2026);

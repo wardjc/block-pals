@@ -51,6 +51,18 @@ describe('Sparkles', () => {
     expect(s.live).toBe(0);
     for (let i = 0; i < 64; i++) expect(p[i * 3 + 1]).toBeLessThan(-500);
   });
+  it('dispose frees the geometry, the material and the dot texture', () => {
+    const s = new Sparkles(new THREE.Scene());
+    const mat = s.points.material as THREE.PointsMaterial;
+    const map = new THREE.Texture();
+    mat.map = map; // jsdom has no canvas, so give it one to free
+    const calls: string[] = [];
+    map.addEventListener('dispose', () => calls.push('map'));
+    mat.addEventListener('dispose', () => calls.push('material'));
+    s.points.geometry.addEventListener('dispose', () => calls.push('geometry'));
+    s.dispose();
+    expect(calls.sort()).toEqual(['geometry', 'map', 'material']);
+  });
   it('update with nothing alive does nothing, and dispose is safe', () => {
     const scene = new THREE.Scene();
     const s = new Sparkles(scene);

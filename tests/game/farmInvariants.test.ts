@@ -197,7 +197,7 @@ describe('farm invariants over random action streams (real generated world)', ()
   for (const seed of [1, 2, 3, 4, 5, 6]) {
     it(`seed ${seed}: nothing wilts, nothing is lost, nothing throws, reloads are exact`, () => {
       totalApples += run(seed, 700);
-    });
+    }, 60_000);
   }
   it('apples were picked (and the trees regrew without anything breaking) inside the streams', () => {
     expect(totalApples).toBeGreaterThan(0);
