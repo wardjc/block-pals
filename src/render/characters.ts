@@ -30,32 +30,34 @@ function box(
 export function makePlayerModel(): THREE.Group {
   const g = new THREE.Group();
   const skin = 0xf2c9a0;
-  // legs (pivot groups so they can swing later)
+  // No two boxes may share a flat face (the GPU flickers between them): shoes poke out past the leg on every side
+  // and the leg stops 0.05 short of the floor, inside the shoe. test: tests/render/zfight.test.ts
+  // legs (pivot groups at the hips: they swing when he walks)
   const legL = new THREE.Group();
   legL.position.set(-0.13, 0.5, 0);
-  box(0.24, 0.5, 0.26, 0x1f2f6b, 0, -0.25, 0, legL);
-  box(0.26, 0.1, 0.3, 0xffffff, 0, -0.45, 0.02, legL);
+  box(0.24, 0.45, 0.26, 0x1f2f6b, 0, -0.225, 0, legL);
+  box(0.26, 0.1, 0.32, 0xffffff, 0, -0.45, 0.025, legL);
   const legR = legL.clone();
   legR.position.x = 0.13;
   g.add(legL, legR);
   // torso
   box(0.54, 0.6, 0.3, 0x14b8a6, 0, 0.8, 0, g);
-  box(0.54, 0.08, 0.31, 0xffd23f, 0, 0.55, 0, g); // yellow belt stripe
+  box(0.56, 0.08, 0.31, 0xffd23f, 0, 0.55, 0, g); // yellow belt stripe
   box(0.26, 0.36, 0.26, skin, 0, 1.27, 0, g); // neck (1.09..1.45: overlaps shirt top 1.10 and head base 1.4)
-  // arms
+  // arms: pivot groups at the shoulders; hands are a hair wider than the sleeves; arms sink 0.01 into the torso
   const armL = new THREE.Group();
-  armL.position.set(-0.37, 1.05, 0);
+  armL.position.set(-0.36, 1.05, 0);
   box(0.2, 0.55, 0.22, 0x14b8a6, 0, -0.18, 0, armL);
-  box(0.2, 0.16, 0.22, skin, 0, -0.5, 0, armL);
+  box(0.22, 0.16, 0.24, skin, 0, -0.5, 0, armL);
   const armR = armL.clone();
-  armR.position.x = 0.37;
+  armR.position.x = 0.36;
   g.add(armL, armR);
   // head
   const head = new THREE.Group();
   head.position.set(0, 1.4, 0);
   box(0.5, 0.5, 0.5, skin, 0, 0.25, 0, head);
   box(0.54, 0.14, 0.54, 0x5a3a1e, 0, 0.53, -0.01, head); // hair top
-  box(0.54, 0.4, 0.12, 0x5a3a1e, 0, 0.3, -0.22, head); // hair back
+  box(0.54, 0.38, 0.12, 0x5a3a1e, 0, 0.29, -0.22, head); // hair back
   box(0.1, 0.14, 0.04, 0x222222, -0.12, 0.28, 0.26, head); // eyes
   box(0.1, 0.14, 0.04, 0x222222, 0.12, 0.28, 0.26, head);
   box(0.16, 0.04, 0.04, 0xd9534f, 0, 0.11, 0.26, head); // smile
@@ -73,11 +75,16 @@ export function makePalModel(): THREE.Group {
   // body
   box(0.5, 0.42, 0.8, orange, 0, 0.45, 0, g);
   box(0.36, 0.3, 0.06, white, 0, 0.45, 0.4, g); // white chest
-  // legs with dark socks
+  // legs with dark socks, each on a pivot at the hip (inside the body) so the four can trot
+  const legs: THREE.Group[] = [];
   for (const sx of [-0.15, 0.15]) {
     for (const sz of [-0.28, 0.28]) {
-      box(0.16, 0.24, 0.16, orange, sx, 0.2, sz, g);
-      box(0.17, 0.1, 0.17, dark, sx, 0.05, sz, g);
+      const leg = new THREE.Group();
+      leg.position.set(sx, 0.34, sz);
+      box(0.16, 0.24, 0.16, orange, 0, -0.14, 0, leg);
+      box(0.17, 0.1, 0.17, dark, 0, -0.29, 0, leg);
+      g.add(leg);
+      legs.push(leg);
     }
   }
   // head
@@ -85,12 +92,12 @@ export function makePalModel(): THREE.Group {
   head.position.set(0, 0.75, 0.42);
   box(0.58, 0.5, 0.5, orange, 0, 0.1, 0.1, head);
   box(0.32, 0.2, 0.16, white, 0, -0.02, 0.4, head); // muzzle
-  box(0.1, 0.08, 0.06, dark, 0, 0.04, 0.49, head); // nose
+  box(0.1, 0.08, 0.06, dark, 0, 0.06, 0.49, head); // nose
   // big eyes
   for (const sx of [-0.15, 0.15]) {
     box(0.17, 0.2, 0.04, 0xffffff, sx, 0.2, 0.36, head);
     box(0.09, 0.12, 0.05, dark, sx, 0.19, 0.38, head);
-    box(0.03, 0.04, 0.05, 0xffffff, sx + 0.02, 0.23, 0.4, head);
+    box(0.03, 0.04, 0.05, 0xffffff, sx + 0.02, 0.24, 0.4, head);
   }
   // pointy ears
   for (const sx of [-0.2, 0.2]) {
@@ -117,7 +124,7 @@ export function makePalModel(): THREE.Group {
   box(0.28, 0.28, 0.5, orange, 0, 0, -0.25, tail);
   box(0.3, 0.3, 0.2, white, 0, 0, -0.58, tail);
   g.add(tail);
-  g.userData = { head, tail };
+  g.userData = { head, tail, legs };
   return g;
 }
 
@@ -143,8 +150,8 @@ function person(look: PersonLook): { g: THREE.Group; head: THREE.Group; armR: TH
     box(w + 0.16, 0.08, 0.46, 0xffffff, 0, 0.04, 0, g); // frilly hem
   } else {
     for (const sx of [-0.13, 0.13]) {
-      box(0.24, 0.52, 0.26, look.trousers, sx, 0.26, 0, g);
-      box(0.26, 0.1, 0.32, look.shoes, sx, 0.05, 0.03, g);
+      box(0.24, 0.48, 0.26, look.trousers, sx, 0.28, 0, g); // stops short of the floor, inside the shoe
+      box(0.26, 0.1, 0.33, look.shoes, sx, 0.05, 0.025, g);
     }
   }
   box(w, 0.62, 0.34, look.shirt, 0, 0.82, 0, g);
@@ -152,7 +159,7 @@ function person(look: PersonLook): { g: THREE.Group; head: THREE.Group; armR: TH
   const armL = new THREE.Group();
   armL.position.set(-(w / 2 + 0.1), 1.08, 0);
   box(0.2, 0.55, 0.22, look.shirt, 0, -0.18, 0, armL);
-  box(0.2, 0.16, 0.22, look.skin, 0, -0.5, 0, armL);
+  box(0.22, 0.16, 0.24, look.skin, 0, -0.5, 0, armL);
   const armR = armL.clone();
   armR.position.x = w / 2 + 0.1;
   g.add(armL, armR);
@@ -172,8 +179,8 @@ function person(look: PersonLook): { g: THREE.Group; head: THREE.Group; armR: TH
 
 function bramble(): THREE.Group {
   const { g, head } = person({ skin: 0xf0b890, shirt: 0xffffff, trousers: 0xc9a27a, shoes: 0x8a5a3a, width: 0.72 });
-  box(0.74, 0.46, 0.36, 0xff9fb8, 0, 0.7, 0.01, g); // pink apron
-  box(0.5, 0.07, 0.38, 0xff6f91, 0, 0.94, 0.02, g); // apron tie
+  box(0.74, 0.46, 0.38, 0xff9fb8, 0, 0.7, 0.01, g); // pink apron
+  box(0.5, 0.07, 0.42, 0xff6f91, 0, 0.94, 0.02, g); // apron tie
   box(0.12, 0.1, 0.04, 0xffffff, 0, 0.19, 0.28, head); // flour puff on the nose
   box(0.07, 0.07, 0.04, 0xffffff, 0.1, 0.24, 0.27, head);
   // The tall floury hat sits on a pivot so it can wobble.
@@ -190,7 +197,7 @@ function bramble(): THREE.Group {
 
 function pebble(): THREE.Group {
   const { g, head, armR } = person({ skin: 0xe9b48c, shirt: 0x4a80d4, trousers: 0x6b4f33, shoes: 0x3a2a20, width: 0.78 });
-  box(0.8, 0.1, 0.36, 0xf5c542, 0, 0.55, 0, g); // wide yellow belt
+  box(0.8, 0.1, 0.36, 0xf5c542, 0, 0.57, 0, g); // wide yellow belt
   box(0.14, 0.12, 0.04, 0xfff08a, 0, 0.55, 0.19, g); // buckle
   // Orange helmet with a lamp on the front.
   box(0.6, 0.2, 0.6, 0xff8a1f, 0, 0.58, 0, head);
@@ -206,8 +213,8 @@ function pebble(): THREE.Group {
   pick.position.set(0, -0.5, 0.18);
   box(0.05, 0.4, 0.05, 0x8a5a2b, 0, 0.1, 0, pick);
   box(0.3, 0.07, 0.07, 0x9aa6b2, 0, 0.3, 0, pick);
-  box(0.07, 0.12, 0.07, 0x7f8c99, 0.17, 0.26, 0, pick);
-  box(0.07, 0.12, 0.07, 0x7f8c99, -0.17, 0.26, 0, pick);
+  box(0.07, 0.12, 0.09, 0x7f8c99, 0.17, 0.26, 0, pick);
+  box(0.07, 0.12, 0.09, 0x7f8c99, -0.17, 0.26, 0, pick);
   armR.add(pick);
   g.userData = { head };
   return g;
@@ -215,8 +222,8 @@ function pebble(): THREE.Group {
 
 function fern(): THREE.Group {
   const { g, head } = person({ skin: 0xf2c9a0, shirt: 0xffe27a, trousers: 0x3fae5a, shoes: 0x6b4423, width: 0.56 });
-  box(0.5, 0.36, 0.36, 0x3fae5a, 0, 0.8, 0.01, g); // overalls bib
-  for (const sx of [-0.18, 0.18]) box(0.08, 0.3, 0.36, 0x3fae5a, sx, 1.0, 0.01, g); // straps
+  box(0.5, 0.36, 0.38, 0x3fae5a, 0, 0.8, 0.01, g); // overalls bib
+  for (const sx of [-0.18, 0.18]) box(0.08, 0.3, 0.38, 0x3fae5a, sx, 1.0, 0.01, g); // straps
   box(0.1, 0.1, 0.04, 0xffd23f, 0, 0.8, 0.2, g); // pocket button
   for (const sx of [-0.3, 0.3]) { // plaits
     box(0.1, 0.34, 0.1, 0xc2661a, sx, 0.1, -0.05, head);
@@ -247,7 +254,7 @@ function willow(): THREE.Group {
   box(0.5, 0.14, 0.4, 0xcdb4f0, 0, 0.98, 0.05, g);
   // Grey hair in a bun.
   box(0.56, 0.12, 0.56, 0xe3e3ea, 0, 0.55, -0.01, head);
-  box(0.56, 0.36, 0.12, 0xe3e3ea, 0, 0.32, -0.22, head);
+  box(0.56, 0.34, 0.12, 0xe3e3ea, 0, 0.31, -0.22, head);
   box(0.26, 0.22, 0.26, 0xe3e3ea, 0, 0.7, -0.08, head);
   // Round glasses.
   const rim = material(0xd2569a);
@@ -260,7 +267,7 @@ function willow(): THREE.Group {
   // The very long knitted scarf: round the neck, then trailing down and along the floor.
   const stripe = [0xe5484d, 0xffd23f];
   const hang = new THREE.Group();
-  box(0.62, 0.16, 0.42, stripe[0], 0, 1.34, 0, hang);
+  box(0.62, 0.16, 0.42, stripe[0], 0, 1.35, 0, hang);
   // Hanging down her front, hugging the skirt and shawl (z 0.17..0.33 overlaps the body), then along the floor.
   for (let i = 0; i < 5; i++) box(0.17, 0.24, 0.16, stripe[i % 2], 0.16, 1.18 - i * 0.24, 0.25, hang);
   box(0.17, 0.08, 0.4, stripe[1], 0.16, 0.06, 0.45, hang); // lies on the floor, joined to the lowest hanging piece
