@@ -231,7 +231,7 @@ describe('autosave', () => {
     if (kind === 'world') expect(game.world.isDirty()).toBe(true);
     vi.advanceTimersByTime(10_000);
     expect(write).toHaveBeenCalledTimes(2);
-    expect(readSave(localStorage)).toEqual(serialise(game, 1234));
+    expect(readSave(localStorage)).toEqual({ ...serialise(game, 1234), savedAt: expect.any(Number) });
     expect(game.world.isDirty()).toBe(false);
   });
 
