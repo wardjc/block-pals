@@ -8,7 +8,7 @@ import { GamepadInput } from './input/gamepad';
 import { loadMapping } from './input/mapping';
 import { GestureClassifier, type GestureEvent } from './input/gesture';
 import { createDebouncer, resolveHold, resolveTap } from './input/tap';
-import { idleVillager, makeEmblem, makePalModel, makePlayerModel, makeVillagerModel, placeEmblem } from './render/characters';
+import { animatePalTrot, animatePlayerWalk, idleVillager, makeWalkState, makeEmblem, makePalModel, makePlayerModel, makeVillagerModel, placeEmblem } from './render/characters';
 import { pipHiddenFor } from './render/cameraRig';
 import { GameScene } from './render/scene';
 import { sfx } from './audio/sfx';
@@ -419,6 +419,11 @@ if (debugOn) {
     stats: () => ({ ...scene.stats(), fps: fpsValue, worldTriangles: scene.triangleCount() }),
     worldSize: () => ({ x: world.sizeX, y: world.sizeY, z: world.sizeZ }),
     saveNow,
+    limbs: () => {
+      const u = playerModel.userData as Record<string, { rotation: { x: number } }>;
+      const pl = (pip.userData.legs as { rotation: { x: number } }[]).map(l => l.rotation.x);
+      return { legL: u.legL.rotation.x, legR: u.legR.rotation.x, armL: u.armL.rotation.x, armR: u.armR.rotation.x, bob: playerModel.position.y - game.player.pos.y, pip: pl };
+    },
     hidePlayer: (hide: boolean) => { debugHidePlayer = hide; },
     setCamera: (yaw: number, pitch: number) => { scene.rig.yaw = yaw; scene.rig.pitch = pitch; },
     teleport: (x: number, y: number, z: number) => {
@@ -437,6 +442,11 @@ if (debugOn) {
 let usageMs = 0;
 let pipGone = false;
 let debugHidePlayer = false; // ?debug screenshots only
+// Walk cycles advance by the distance actually moved each frame (blocked, paused or standing = 0 = ease to rest).
+const playerWalk = makeWalkState();
+const pipWalk = makeWalkState();
+let prevPlayerX = game.player.pos.x, prevPlayerZ = game.player.pos.z;
+let prevPipX = pal.pos.x, prevPipZ = pal.pos.z;
 let last = performance.now();
 function frame(now: number): void {
   const rawMs = now - last;
@@ -480,6 +490,8 @@ function frame(now: number): void {
   const p = game.player.pos;
   playerModel.position.set(p.x, p.y, p.z);
   playerModel.rotation.y = game.player.heading;
+  animatePlayerWalk(playerModel, playerWalk, dt, Math.hypot(p.x - prevPlayerX, p.z - prevPlayerZ));
+  prevPlayerX = p.x; prevPlayerZ = p.z;
   updateVillage(dt);
   pal.update(world, game.player, helperDt(game.paused || hud.blockingOverlayOpen, dt));
   for (const v of villagers) idleVillager(v.model, now / 1000);
@@ -492,6 +504,8 @@ function frame(now: number): void {
   }
   pip.position.set(pal.pos.x, pal.pos.y + hopY, pal.pos.z);
   pip.rotation.y = pal.heading;
+  animatePalTrot(pip, pipWalk, dt, Math.hypot(pal.pos.x - prevPipX, pal.pos.z - prevPipZ));
+  prevPipX = pal.pos.x; prevPipZ = pal.pos.z;
   scene.followTarget(playerModel.position, dt);
   // Hidden with hysteresis while the camera is near his head, so a back-view never fills a small room.
   playerModel.visible = !scene.rig.modelHidden && !debugHidePlayer;

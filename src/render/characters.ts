@@ -66,6 +66,78 @@ export function makePlayerModel(): THREE.Group {
   return g;
 }
 
+// ---------------------------------------------------------------------------------------------
+// Walking. Limbs swing on their pivots; the cycle advances with DISTANCE walked, so the steps match the ground.
+// ---------------------------------------------------------------------------------------------
+
+/** Player ground speed (blocks per second); at this speed he takes 2 steps per second (one full cycle per second). */
+export const WALK_SPEED = 3.5;
+const WALK_CYCLE_BLOCKS = WALK_SPEED; // distance for one full cycle (two steps)
+const LEG_SWING = 0.55;
+const ARM_SWING = 0.5;
+const BODY_BOB = 0.03;
+/** Time constant of the ease in/out: about 95 % of the way after 0.15 s. */
+const WALK_EASE_RATE = 20;
+/** More than this many times the walking speed in one frame is a teleport, not a walk. */
+const TELEPORT_FACTOR = 3;
+
+export interface WalkPose { armL: number; armR: number; legL: number; legR: number; bob: number }
+export interface WalkState { phase: number; amp: number }
+export const makeWalkState = (): WalkState => ({ phase: 0, amp: 0 });
+
+/**
+ * Limb angles (radians about x) for a gait phase (radians, one full cycle = 2 pi) at speed01 (0..1).
+ * Left arm swings with the right leg. The body bobs up on each step (feet never sink into the floor), <= 0.03.
+ * Writes into `out` (no allocation).
+ */
+export function walkPose(phase: number, speed01: number, out: WalkPose): WalkPose {
+  const s = Math.min(1, Math.max(0, speed01));
+  const sw = Math.sin(phase) * s;
+  out.legL = sw * LEG_SWING + 0;
+  out.legR = 0 - sw * LEG_SWING;
+  out.armL = 0 - sw * ARM_SWING; // the same direction as the RIGHT leg
+  out.armR = sw * ARM_SWING + 0;
+  out.bob = s * BODY_BOB * (1 - Math.cos(2 * phase)) / 2;
+  return out;
+}
+
+const POSE: WalkPose = { armL: 0, armR: 0, legL: 0, legR: 0, bob: 0 };
+
+/** Advances the gait by the distance walked and eases the swing in and out. Returns false while fully at rest. */
+function advance(st: WalkState, dt: number, dist: number, cycleBlocks: number, refSpeed: number): void {
+  if (!(dt > 0)) return;
+  const speed = dist / dt;
+  const moving = speed > 0.05 && speed < refSpeed * TELEPORT_FACTOR;
+  if (moving) st.phase = (st.phase + (dist / cycleBlocks) * Math.PI * 2) % (Math.PI * 2);
+  const target = moving ? Math.min(1, speed / refSpeed) : 0;
+  st.amp += (target - st.amp) * (1 - Math.exp(-dt * WALK_EASE_RATE));
+  if (st.amp < 1e-3 && target === 0) st.amp = 0;
+}
+
+/**
+ * Swings the player's pivots for this frame. `dist` is the horizontal distance he actually moved this frame
+ * (0 when stopped, blocked or paused). Call after the model's position is set: the bob is added to position.y.
+ */
+export function animatePlayerWalk(model: THREE.Group, st: WalkState, dt: number, dist: number): void {
+  advance(st, dt, dist, WALK_CYCLE_BLOCKS, WALK_SPEED);
+  const u = model.userData as { legL: THREE.Object3D; legR: THREE.Object3D; armL: THREE.Object3D; armR: THREE.Object3D };
+  const p = walkPose(st.phase, st.amp, POSE);
+  u.legL.rotation.x = p.legL; u.legR.rotation.x = p.legR;
+  u.armL.rotation.x = p.armL; u.armR.rotation.x = p.armR;
+  model.position.y += p.bob;
+}
+
+const PAL_SPEED = 4.5;
+const PAL_SWING = 0.45;
+/** Pip's quicker, subtler trot: a diagonal pair at a time (front-left with back-right). Legs are model.userData.legs. */
+export function animatePalTrot(model: THREE.Group, st: WalkState, dt: number, dist: number): void {
+  advance(st, dt, dist, 1.6, PAL_SPEED);
+  const legs = model.userData.legs as THREE.Object3D[];
+  const sw = Math.sin(st.phase) * st.amp * PAL_SWING;
+  // order: back-left, front-left, back-right, front-right
+  legs[0].rotation.x = -sw; legs[1].rotation.x = sw; legs[2].rotation.x = sw; legs[3].rotation.x = -sw;
+}
+
 /** Pip: a blocky orange fox with a white chest, big friendly eyes, pointy ears and a bushy white-tipped tail. */
 export function makePalModel(): THREE.Group {
   const g = new THREE.Group();
