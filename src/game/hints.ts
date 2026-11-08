@@ -48,12 +48,22 @@ export class FarmHints {
     return HINT_KEYS.filter(k => this.done.has(k));
   }
 
-  /** True (and remembers it) when this kind of reaction has not been said in the last 20 s. */
-  reactionAllowed(key: LineKey, nowMs: number): boolean {
+  /** True when this kind of reaction has not been said in the last 20 s. Changes nothing. */
+  reactionReady(key: LineKey, nowMs: number): boolean {
     const last = this.lastReaction.get(key);
     // A clock that went backwards must not lock the reaction out.
-    if (last !== undefined && nowMs >= last && nowMs - last < REACTION_GAP_MS) return false;
+    return !(last !== undefined && nowMs >= last && nowMs - last < REACTION_GAP_MS);
+  }
+
+  /** Remembers that this kind of reaction was really said now. */
+  reactionSaid(key: LineKey, nowMs: number): void {
     this.lastReaction.set(key, nowMs);
+  }
+
+  /** Ready, and remembered in one step (for callers that cannot be refused afterwards). */
+  reactionAllowed(key: LineKey, nowMs: number): boolean {
+    if (!this.reactionReady(key, nowMs)) return false;
+    this.reactionSaid(key, nowMs);
     return true;
   }
 }

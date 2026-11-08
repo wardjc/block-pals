@@ -190,8 +190,9 @@ game.on(e => {
 
 /** Pip's plain-word reaction: once per kind per 20 s, then the Pal's own gap, and never over the break reminder. */
 function react(key: LineKey): void {
-  if (hud.breakOpen || !hints.reactionAllowed(key, Date.now())) return;
-  pal.react(key);
+  const now = Date.now();
+  if (hud.breakOpen || !hints.reactionReady(key, now)) return;
+  if (pal.react(key)) hints.reactionSaid(key, now); // a line the chatter gap held back does not use up its 20 s
 }
 // Eating: sound at once, the pose and crumbs follow the 1.3 s munch clock, Pip speaks when it ends.
 game.on(e => {
@@ -494,12 +495,14 @@ function updateVillage(dt: number): void {
   // Pip waits for a neighbour to finish (and the other way round): nobody talks over anybody.
   if (pendingPip && mayPipSpeakQueued(speech)) {
     const said = pendingPip;
-    sayLine(said);
     pendingPip = null;
-    if (isHintKey(said) && !hud.breakOpen) { // only counted as told once it was really said
-      hints.markSeen(said);
-      flags.hints = hints.seen();
-    }
+    if (isHintKey(said)) {
+      // A hint goes through Pip's chatter gap like any reaction, and counts as told only once it was really said.
+      if (!hud.breakOpen && pal.react(said)) {
+        hints.markSeen(said);
+        flags.hints = hints.seen();
+      }
+    } else sayLine(said);
     return;
   }
   const hello = greet.update(cell, village.houses, !mayGreet(speech));
@@ -531,7 +534,7 @@ function updateVillage(dt: number): void {
     return;
   }
   hintClock += dt;
-  if (hintClock >= 1 && pendingPip === null && !hello) {
+  if (hintClock >= 1 && pendingPip === null && !hello && !game.eating.active) {
     hintClock = 0;
     const ctx = hintContext(cell);
     for (const k of HINT_ORDER) if (hints.shouldSay(k, ctx)) { pendingPip = k; break; }

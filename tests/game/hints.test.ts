@@ -52,3 +52,14 @@ describe('FarmHints', () => {
     }
   });
 });
+
+describe('FarmHints: a held-back reaction is not used up', () => {
+  it('ready does not change anything; said starts the 20 s', () => {
+    const h = new FarmHints([]);
+    expect(h.reactionReady('ateApple', 1000)).toBe(true);
+    expect(h.reactionReady('ateApple', 1001)).toBe(true);
+    h.reactionSaid('ateApple', 1001);
+    expect(h.reactionReady('ateApple', 2000)).toBe(false);
+    expect(h.reactionReady('ateApple', 1001 + REACTION_GAP_MS)).toBe(true);
+  });
+});

@@ -93,8 +93,8 @@ export class Pal {
   }
 
   /** A plain-word reaction to something he did (ate, picked, fed). Rate-limited by the chatter gap; never over the break line. */
-  react(key: LineKey): void {
-    this.speak(key);
+  react(key: LineKey): boolean {
+    return this.speak(key);
   }
 
   /** The gentle break suggestion; never held back by the chatter gap. */
@@ -133,11 +133,13 @@ export class Pal {
     }
   }
 
-  private speak(key: LineKey, always = false): void {
+  /** True when the line was really said (not held back by the chatter gap or a hush). */
+  private speak(key: LineKey, always = false): boolean {
     const t = this.now();
-    if (!always && (t - this.lastSpoke < MIN_GAP_MS || t < this.hushUntil)) return;
+    if (!always && (t - this.lastSpoke < MIN_GAP_MS || t < this.hushUntil)) return false;
     this.lastSpoke = t;
     this.say(key);
+    return true;
   }
 
   update(world: World, player: Player, dt: number): void {
