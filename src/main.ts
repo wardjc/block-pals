@@ -13,7 +13,9 @@ import { pipHiddenFor } from './render/cameraRig';
 import { GameScene } from './render/scene';
 import { sfx } from './audio/sfx';
 import { CraftScreen } from './ui/craft';
-import { Hud } from './ui/hud';
+import { BagTray } from './ui/bag';
+import { isItemId, ITEMS, type StackId } from './core/items';
+import { Hud, hudStateFor } from './ui/hud';
 import { Voice, audioLocked } from './audio/voice';
 import { LINES, LINE_ICONS, pickLine, type LineKey } from './content/lines';
 import { Pal } from './game/pal';
@@ -133,40 +135,52 @@ game.on(e => {
 });
 
 let hudRevision = -1;
-let hudSelected: BlockId | 'hand' | null = null;
+let hudSelected: StackId | 'hand' | null = null;
+const bagStacks = (): Array<{ id: StackId; count: number }> =>
+  game.inventory.slots().map(id => ({ id, count: game.inventory.count(id) }));
+/** Blocks are atlas tiles; items draw as emoji pictures, so they have no tile url. */
+const stackIcon = (id: StackId): string => (isItemId(id) ? '' : scene.atlas.iconDataUrl(id));
 function renderHud(): void {
-  const hotbar = game.inventory.hotbar().map(id => ({ id, count: game.inventory.count(id) }));
   const sel = game.effectiveSelected();
   hudRevision = game.inventory.revision;
   hudSelected = sel;
-  const selected = sel === 'hand' ? 0 : hotbar.findIndex(h => h.id === sel) + 1;
-  hud.render({ hotbar, selected });
+  const edible = sel !== 'hand' && isItemId(sel) && ITEMS[sel].edible;
+  hud.render(hudStateFor(bagStacks(), sel, edible));
 }
 
-const hud = new Hud(document.getElementById('ui')!, scene.atlas.iconDataUrl, {
+const hud = new Hud(document.getElementById('ui')!, stackIcon, {
   onSelect: i => {
-    const id = game.inventory.hotbar()[i - 1];
+    const id = game.inventory.slots()[i - 1];
     game.selected = i === 0 || id === undefined ? 'hand' : id;
     sfx.tap();
     renderHud();
   },
+  onBag: () => { if (!craftScreen.isOpen && !grownUps.isOpen) bagTray.open(); },
   onCraft: openCraft,
   onGrownUps: () => {},
   onGrownUpsHold: (down, id) => (down ? grownUps.holdStart(id) : grownUps.holdEnd(id)),
 });
 
 function syncOverlays(): void {
-  const open = craftScreen.isOpen || grownUps.isOpen;
+  const open = craftScreen.isOpen || grownUps.isOpen || bagTray.isOpen;
   hud.setOverlayOpen(open);
   game.paused = open;
   if (open) { game.player.setPath(null); game.player.setStick(0, 0); }
 }
-function openCraft(): void { if (!grownUps.isOpen) craftScreen.open(); }
+function openCraft(): void { if (!grownUps.isOpen && !bagTray.isOpen) craftScreen.open(); }
+
+const bagTray = new BagTray(document.getElementById('ui')!, {
+  stacks: bagStacks,
+  iconFor: stackIcon,
+  current: () => game.effectiveSelected(),
+  select: id => { game.selected = id; sfx.tap(); renderHud(); },
+  onOpenChange: syncOverlays,
+});
 
 const craftScreen = new CraftScreen(document.getElementById('ui')!, {
   inventory: game.inventory,
   tryCraft: id => game.tryCraft(id),
-  iconFor: scene.atlas.iconDataUrl,
+  iconFor: stackIcon,
   ...craftSpeech(() => hud.breakOpen, {
     say: text => voice.say(text),
     needMore: () => speakVariant('craftNeedMore'),
@@ -396,7 +410,10 @@ if (location.search.includes('debug')) {
 if (debugOn) {
   (window as unknown as Record<string, unknown>).__debug = {
     playerPos: () => ({ ...game.player.pos }),
-    giveItem: (id: BlockId, n: number) => { game.inventory.add(id, n); renderHud(); },
+    giveItem: (id: StackId, n: number) => { game.inventory.add(id, n); renderHud(); },
+    setBlock: (x: number, y: number, z: number, id: BlockId) => game.world.set(x, y, z, id),
+    selectStack: (id: StackId | 'hand') => { game.selected = id; renderHud(); },
+    openBag: () => bagTray.open(),
     fps: () => fpsValue,
     pipPos: () => ({ ...pal.pos }),
     screenOf: (x: number, y: number, z: number) => scene.screenOf(x, y, z),
@@ -452,6 +469,9 @@ function frame(now: number): void {
   } else if (craftScreen.isOpen) {
     game.player.setStick(0, 0);
     craftScreen.padInput(stick, pressed);
+  } else if (bagTray.isOpen) {
+    game.player.setStick(0, 0);
+    bagTray.padInput(stick, pressed);
   } else if (hud.blockingOverlayOpen) {
     game.player.setStick(0, 0);
   } else {

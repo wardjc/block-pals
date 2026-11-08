@@ -1,18 +1,46 @@
-import type { BlockId } from '../core/blocks';
+import type { StackId } from '../core/items';
 import { createDebouncer } from '../input/tap';
+import { stackPicture } from './picture';
+
+/** The bar shows the hand and at most this many stacks; more go behind the bag slot. */
+export const BAR_STACKS = 8;
 
 export interface HudHandlers {
   onSelect(i: number): void;
   onCraft(): void;
+  /** The bag slot was chosen: open the tray. */
+  onBag?(): void;
   onGrownUps(): void;
   /** Hotspot press and release, for the 3 second hold. */
   onGrownUpsHold?(down: boolean, pointerId: number): void;
 }
 
 export interface HudState {
-  hotbar: Array<{ id: BlockId; count: number }>;
-  /** 0 = hand, 1.. = hotbar slot. */
+  /** Every stack he holds, in bar order. Only the first BAR_STACKS are drawn. */
+  slots: Array<{ id: StackId; count: number }>;
+  /** 0 = hand, 1..8 = a bar slot, 9 = the bag slot. */
   selected: number;
+  /** More stacks than fit: the bag slot is shown. */
+  overflow: boolean;
+  /** An edible is selected: the munch button shows. */
+  edible: boolean;
+  /** The selected stack when it is hidden behind the bag slot (it is drawn there). */
+  pick?: { id: StackId; count: number };
+}
+
+/**
+ * Pure: what the bar shows for a bag and a selection. Up to 8 stacks look exactly like step 1;
+ * with more (or a selection beyond the 8) the bag slot appears, showing the selected stack's picture
+ * when it is one of the hidden ones.
+ */
+export function hudStateFor(
+  slots: Array<{ id: StackId; count: number }>, selected: StackId | 'hand', edible: boolean,
+): HudState {
+  const overflow = slots.length > BAR_STACKS;
+  const index = selected === 'hand' ? -1 : slots.findIndex(s => s.id === selected);
+  const shown = selected === 'hand' ? 0 : index < 0 ? 0 : index < BAR_STACKS ? index + 1 : BAR_STACKS + 1;
+  const pick = index >= BAR_STACKS ? slots[index] : undefined;
+  return pick ? { slots, selected: shown, overflow, edible, pick } : { slots, selected: shown, overflow, edible };
 }
 
 export class Hud {
@@ -24,6 +52,8 @@ export class Hud {
   }
 
   private readonly bar = document.createElement('div');
+  private munch!: HTMLButtonElement;
+  private munchCb: (() => void) | undefined;
   private readonly bubble = document.createElement('div');
   private readonly bubblePicture = document.createElement('span');
   private readonly bubbleWord = document.createElement('span');
@@ -32,7 +62,7 @@ export class Hud {
 
   constructor(
     root: HTMLElement,
-    private readonly iconFor: (id: BlockId) => string,
+    private readonly iconFor: (id: StackId) => string,
     private readonly handlers: HudHandlers,
   ) {
     this.bar.className = 'hotbar';
@@ -41,6 +71,12 @@ export class Hud {
     const craft = this.button('craft-btn', '🛠️', () => handlers.onCraft());
     craft.setAttribute('aria-label', 'Craft');
     root.appendChild(craft);
+
+    // The big mouth button: shown only while something edible is selected. It only eats.
+    this.munch = this.button('munch-btn', '👄', () => this.munchCb?.());
+    this.munch.setAttribute('aria-label', 'Eat');
+    this.munch.hidden = true;
+    root.appendChild(this.munch);
 
     const grownUps = this.button('grownups-hotspot', '', () => handlers.onGrownUps());
     grownUps.setAttribute('aria-label', 'Grown-ups');
@@ -69,6 +105,14 @@ export class Hud {
     this.digRing.className = 'dig-ring';
     this.digRing.hidden = true;
     root.appendChild(this.digRing);
+  }
+
+  onMunch(cb: () => void): void {
+    this.munchCb = cb;
+  }
+
+  setMunchVisible(v: boolean): void {
+    this.munch.hidden = !v;
   }
 
   /** Shows the dig ring centred on the finger, filled to `progress` (0..1). */
@@ -123,10 +167,11 @@ export class Hud {
   }
 
   render(state: HudState): void {
+    this.setMunchVisible(state.edible);
     this.bar.replaceChildren();
-    const slots: Array<{ id: BlockId | null; count: number }> = [
+    const slots: Array<{ id: StackId | null; count: number }> = [
       { id: null, count: 0 },
-      ...state.hotbar.slice(0, 9), // all nine collectable kinds fit: 10 × 96 px
+      ...state.slots.slice(0, BAR_STACKS),
     ];
     slots.forEach((slot, i) => {
       const el = document.createElement('button');
@@ -136,14 +181,7 @@ export class Hud {
       if (slot.id === null) {
         el.textContent = '🖐';
       } else {
-        const img = document.createElement('img');
-        img.src = this.iconFor(slot.id);
-        img.alt = '';
-        img.draggable = false;
-        const count = document.createElement('span');
-        count.className = 'count';
-        count.textContent = String(slot.count);
-        el.append(img, count);
+        el.append(stackPicture(slot.id, this.iconFor, 'slot-pic'), this.countEl(slot.count));
       }
       this.guard(el);
       el.addEventListener('click', e => {
@@ -152,6 +190,39 @@ export class Hud {
       });
       this.bar.appendChild(el);
     });
+    if (state.overflow || state.selected > BAR_STACKS) this.bar.appendChild(this.bagSlot(state));
+  }
+
+  private countEl(n: number): HTMLElement {
+    const count = document.createElement('span');
+    count.className = 'count';
+    count.textContent = String(n);
+    return count;
+  }
+
+  /** The 9th stack place: a bag picture, or the selected stack's picture when it is hidden behind the bag. */
+  private bagSlot(state: HudState): HTMLElement {
+    const el = document.createElement('button');
+    el.type = 'button';
+    el.className = 'slot bag-slot' + (state.selected === BAR_STACKS + 1 ? ' selected' : '');
+    el.dataset.slot = String(BAR_STACKS + 1);
+    el.setAttribute('aria-label', 'Bag');
+    const hidden = state.selected === BAR_STACKS + 1 ? state.pick : undefined;
+    if (hidden) {
+      el.append(stackPicture(hidden.id, this.iconFor, 'slot-pic'), this.countEl(hidden.count));
+      const bag = document.createElement('span');
+      bag.className = 'bag-corner';
+      bag.textContent = '🎒';
+      el.appendChild(bag);
+    } else {
+      el.textContent = '🎒';
+    }
+    this.guard(el);
+    el.addEventListener('click', e => {
+      e.stopPropagation();
+      if (this.allow('bag', performance.now())) this.handlers.onBag?.();
+    });
+    return el;
   }
 
   showBubble(picture: string, word?: string): void {
