@@ -55,7 +55,7 @@ export class GameScene {
   private readonly outline = new THREE.Group();
 
   constructor(private readonly host: HTMLElement, private readonly world: World) {
-    this.culler = new ChunkCuller(world.sizeX, world.sizeZ);
+    this.culler = new ChunkCuller(world.sizeX, world.sizeY, world.sizeZ);
     this.renderer = new THREE.WebGLRenderer({ antialias: false, powerPreference: 'high-performance' });
     this.renderer.setPixelRatio(Math.min(window.devicePixelRatio || 1, 1.5));
     host.appendChild(this.renderer.domElement);
@@ -143,9 +143,9 @@ export class GameScene {
     this.chunks.set(key, { solid, trans });
   }
 
-  /** Hides chunks beyond the fog (fully opaque there, so nothing visible changes), following the real camera. */
-  private cullFar(x: number, z: number): void {
-    const set = this.culler.update(x, z);
+  /** Hides chunks whose nearest corner is deeper than the fog along the view direction (nothing visible changes). */
+  private cullFar(c: { x: number; y: number; z: number }, f: { x: number; y: number; z: number }, px: number, pz: number): void {
+    const set = this.culler.update(c.x, c.y, c.z, f.x, f.y, f.z, px, pz);
     if (set === this.shown) return;
     this.shown = set;
     for (const [k, c] of this.chunks) {
@@ -208,7 +208,7 @@ export class GameScene {
     const f = this.rig.forward;
     this.camera.position.set(c.x, c.y, c.z);
     this.camera.lookAt(this.lookPoint.set(c.x + f.x, c.y + f.y, c.z + f.z));
-    this.cullFar(c.x, c.z);
+    this.cullFar(c, f, pos.x, pos.z);
   }
 
   pick(clientX: number, clientY: number): { cell: [number, number, number]; normal: [number, number, number] } | null {
