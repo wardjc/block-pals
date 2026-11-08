@@ -3,6 +3,8 @@ import { BLOCKS, BlockId } from './core/blocks';
 import type { Cell } from './core/pathfind';
 import { applySave, readSave, serialise, startAutosave, storeSave } from './core/save';
 import { generateWorld } from './core/worldgen';
+import { GrowthClock } from './core/growth';
+import { cropBlock, seedFor, type CropKind } from './core/crops';
 import { Game } from './game/game';
 import { GamepadInput } from './input/gamepad';
 import { loadMapping } from './input/mapping';
@@ -35,8 +37,15 @@ const seed = saved?.seed ?? 2026;
 const loaded = saved ? applySave(saved) : null;
 const initial = loaded ?? generateWorld(seed);
 const { world, spawn, village } = initial;
-const scene = new GameScene(document.getElementById('game')!, world);
 const game = new Game(initial);
+// Plants are blocks; the farm keeps their timers. Offline growth (capped at 8 h) is applied, and any
+// pending stage changes are shown, before the first mesh is built so a catch-up costs no chunk rebuilds.
+if (loaded) {
+  game.farm.restore(loaded.farm.crops, loaded.farm.trees);
+  game.farm.advance(loaded.offlineMs);
+}
+game.farm.records();
+const scene = new GameScene(document.getElementById('game')!, world);
 const flags = loaded?.flags ?? { ledToVillage: false };
 const stopAutosave = startAutosave(game, seed, storage, flags);
 const usage = new UsageTracker(storage);
@@ -127,6 +136,17 @@ const occupied = (): Cell[] => {
   return cells;
 };
 game.setOccupied(occupied);
+
+// Real-time growth: one clock, one rule (never negative, capped). A sleeping tab sees one capped step.
+const growthClock = new GrowthClock(Date.now());
+const tickGrowth = (): void => game.farm.advance(growthClock.step(Date.now()));
+setInterval(tickGrowth, 1000);
+document.addEventListener('visibilitychange', () => { if (document.visibilityState === 'visible') tickGrowth(); });
+game.farm.onEvent(e => {
+  if (e.type === 'planted') sfx.place();
+  else if (e.type === 'helped') sfx.tap();
+  else if (e.type === 'harvested') sfx.pop();
+});
 
 game.on(e => {
   if (e.type === 'collected') sfx.pop();
@@ -246,7 +266,10 @@ function handleGesture(events: GestureEvent[]): void {
       case 'tap':
         endHoldVisuals();
         if (!allowTap('tap', performance.now())) break;
-        game.applyIntent(resolveTap(scene.pick(ev.x, ev.y), game.effectiveSelected(), game.player.feetCell(), world, occupied()));
+        game.applyIntent(resolveTap(
+          scene.pick(ev.x, ev.y), game.effectiveSelected(), game.player.feetCell(), world, occupied(),
+          { plantAt: c => game.farm.isPlantCell(c) },
+        ));
         break;
       case 'holdStop':
       case 'cancel':
@@ -440,6 +463,17 @@ if (debugOn) {
     stats: () => ({ ...scene.stats(), fps: fpsValue, worldTriangles: scene.triangleCount() }),
     worldSize: () => ({ x: world.sizeX, y: world.sizeY, z: world.sizeZ }),
     saveNow,
+    farm: () => ({ ...game.farm.records(), seeds: game.farm.seedsAndGrowing() }),
+    advanceFarm: (ms: number) => game.farm.advance(ms),
+    plantAt: (x: number, z: number, kind: CropKind) => {
+      const y = world.topSolidY(x, z) + 1;
+      game.inventory.add(seedFor(kind), 1);
+      renderHud();
+      return game.farm.plant([x, y, z], seedFor(kind), []);
+    },
+    setStage: (x: number, z: number, stage: number) => {
+      world.set(x, world.topSolidY(x, z) + 1, z, cropBlock('wheat', stage));
+    },
     hidePlayer: (hide: boolean) => { debugHidePlayer = hide; },
     setCamera: (yaw: number, pitch: number) => { scene.rig.yaw = yaw; scene.rig.pitch = pitch; },
     teleport: (x: number, y: number, z: number) => {
@@ -495,6 +529,7 @@ function frame(now: number): void {
   if (hud.blockingOverlayOpen) cancelPress();
   else if (gesture.busy && !gesture.dragging) handleGesture(gesture.tick(now, holdNow(pressHit).kind === 'dig'));
   game.update(dt);
+  if (!game.paused) game.farm.update(dt);
   // Usage is counted once a second, not every frame (it caps each tick at 5 s anyway).
   usageMs += rawMs;
   if (usageMs >= 1000) {
