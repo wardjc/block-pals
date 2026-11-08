@@ -85,7 +85,7 @@ The smallest version he can play and enjoy:
 
 Plus, in v1: voice for everything, British English, touch and controller, local save, and the grown-up area with usage time and break reminders.
 
-**Later versions** (updated 2026-11-08, see §7d and §7f): the Village version (in four steps), with **grumps and friendly weapons (§7f) coming right after Village step 2 (eating and the farm) and before step 3 (shops and coins)** → Underground bases → beat blocks and music quests → STEM quests → more pals and areas → same-screen two-player.
+**Later versions** (updated 2026-11-08, see §7d, §7f and §7g): Village step 2 (eating and the farm) → **grumps and friendly weapons (§7f)** → **the Wizard's tower (§7g, a wizard living alone in a hilltop tower at the world's edge who gives 8 mythical decoration and light blocks in exchange for gems and for easy picture puzzles)** → Village step 3 (shops and coins) → Village step 4 (friendship and quests) → Water (§7e) → Underground bases → beat blocks and music quests → STEM quests → more pals and areas → same-screen two-player.
 
 ### 7a. v1.1: separate moving from digging (agreed 2026-11-07)
 
@@ -149,11 +149,11 @@ Agreed with the parent, question by question. Everything below follows the §4 a
 1. **The bigger world:** the meadow grows; the village, farm and path are generated; houses with doors; his starter cottage; Pip leads him to the village the first time. No new rules to learn yet. *Done when:* he can walk the path to the village and home, walk into every house and turn the view inside it, and the world still loads fast on the Tab A8 (30 fps target) and saves/loads.
 2. **Eating and the farm:** food items, the munch animation, planting, watering and growing, harvesting, animals and their gifts, his own farm patch. *Done when:* he can plant, tap to grow, harvest and eat, and nothing can wilt or be lost.
    - Step 2 plan: [`docs/superpowers/plans/2026-11-08-village-step2-eating-and-farm.md`](../plans/2026-11-08-village-step2-eating-and-farm.md)
-   - Then, before step 3: grumps and friendly weapons (§7f). Plan: [`docs/superpowers/plans/2026-11-08-grumps-and-friendly-weapons.md`](../plans/2026-11-08-grumps-and-friendly-weapons.md)
+   - Then, before the Wizard's tower and step 3: grumps and friendly weapons (§7f). Plan: [`docs/superpowers/plans/2026-11-08-grumps-and-friendly-weapons.md`](../plans/2026-11-08-grumps-and-friendly-weapons.md)
 3. **Shops and coins:** the villagers and their shops, the coin purse, prices with dots, selling spare blocks, the bakery and block shop. *Done when:* every price is ≤ 20, spoken and shown with dots, and he can never be left unable to buy because coins were lost.
 4. **Friendship and quests:** hearts, favourite foods, Fern's and Granny's picture jobs and quests, joining the crew, friends visiting his cottage. *Done when:* a full set of hearts can be earned from at least trading, sharing food and one quest per villager.
 
-Each step gets its own detailed implementation plan when it starts. Step 1 first. **Grumps and friendly weapons (§7f) are built right after step 2 and before step 3.** After the Village steps comes the **Underground** version (§7b item 4), then music, STEM, more pals, and two-player. **Water (§7e) comes after the whole Village version; whether it comes before or after Underground is to be decided later.**
+Each step gets its own detailed implementation plan when it starts. Step 1 first. **Order after step 2: grumps and friendly weapons (§7f), then the Wizard's tower (§7g, spec and plan written separately), then step 3 (shops and coins), step 4 (friendship and quests), Water (§7e), Underground (§7b item 4)**, then music, STEM, more pals, and two-player.
 
 ### 7e. Water: flowing channels and swimming (agreed 2026-11-07)
 
@@ -180,7 +180,7 @@ Agreed with the parent. Follows the §4 anti-goals: nothing scary, nothing lost,
 
 ### 7f. Grumps and friendly weapons (agreed 2026-11-08)
 
-**Status: planned. Build right after Village step 2 (eating and the farm) has merged and before step 3 (shops and coins).** The "bad guys and defensive weapons" from the roadmap, made safe for a child who is scared of Minecraft mobs. Every rule below follows the §4 anti-goals; if any detail in play looks or sounds the slightest bit scary, that is a failure even if it works.
+**Status: planned. Build right after Village step 2 (eating and the farm) has merged and before the Wizard's tower (§7g) and step 3 (shops and coins).** The "bad guys and defensive weapons" from the roadmap, made safe for a child who is scared of Minecraft mobs. Every rule below follows the §4 anti-goals; if any detail in play looks or sounds the slightest bit scary, that is a failure even if it works.
 
 **The grumps.** Small, slow, wobbly jelly blobs and sulky clouds with big eyes and soft colours. They never explode, teleport or chase, are never strong, and cannot hurt him, Pip, villagers or animals. They cannot be hurt either. Daytime only (the game has no night). They look sulky-cute, never angry or scary: no teeth, no red eyes, no dark colours. Their sounds are soft synthesised blips, never growls. They are not blocks and not solid; they cannot block a door and cannot be trapped; placing a block into one is refused, like villagers and animals.
 
@@ -190,7 +190,7 @@ Agreed with the parent. Follows the §4 anti-goals: nothing scary, nothing lost,
 
 **Three friendly weapons.** The bubble blaster, the magic wand and the water squirter. They work the same way and differ only in look, sound and effect. He crafts each from simple picture recipes (all counts 20 or fewer), and each is a crafting goal. With a weapon selected in the hotbar, a **quick tap on a grump within reach** fires: a soft bubble, sparkle or water squirt flies to it, with a short synthesised sound. There is no aiming and it cannot miss. A tap anywhere else still just walks (§7a is unchanged: a tap never digs, press and hold digs, drag turns the view). The weapon is never used up and nothing is lost by firing.
 
-**Cheering up.** Two hits cheer a grump up (the first makes it look unsure and lets the plants around it grow again). Most cheered-up grumps burst into confetti and leave a small reward in his bag (seeds, a shiny gem or a sapling). Every fifth one instead turns into a lasting **friend**, a happy little blob that stays on the farm and, every few minutes, gives one growing plant a helping stage. At most five friends (so the farm never crowds); friends are saved, never lost, never hurt.
+**Cheering up.** Two hits cheer a grump up (the first makes it look unsure and lets the plants around it grow again). Most cheered-up grumps burst into confetti and leave a small reward in his bag (seeds, a shiny gem or a sapling; gems are sold to Captain Pebble in step 3 and traded to the wizard for mythical blocks). Every fifth one instead turns into a lasting **friend**, a happy little blob that stays on the farm and, every few minutes, gives one growing plant a helping stage. At most five friends (so the farm never crowds); friends are saved, never lost, never hurt.
 
 **Done when:** a grump wobbles onto the farm, stays well away from him and pauses the plants near it (a sad marker shows); he crafts a weapon, selects it, taps the grump twice and sees it burst into confetti with a reward in the bag, and the plants grow again; every fifth cheer-up makes a friend who helps a plant now and then; there are never more than three grumps or five friends; nothing is ever hurt, lost or killed and nothing wilts; none appear at night, in houses, next to him or while a menu is open; the whole thing works without reading, with Pip's plain-word lines; old saves load; and the tablet holds 30 fps with three grumps, five friends, ten animals and a confetti burst in view. The tablet playtest asks, first of all: *is anything the slightest bit scary?*
 
