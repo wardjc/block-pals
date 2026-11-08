@@ -3,7 +3,7 @@ import type { World } from '../core/world';
 import { createAtlas } from './atlas';
 import { CameraRig } from './cameraRig';
 import { castVoxelRay, type VoxelHit } from './voxelRay';
-import { FOG_FAR, visibleChunks } from './chunkCull';
+import { ChunkCuller, FOG_FAR } from './chunkCull';
 import { buildChunkGeometry, CHUNK_SIZE, type MeshArrays } from './mesher';
 
 const FOLLOW_K = 4; // exponential smoothing rate, per second
@@ -47,14 +47,15 @@ export class GameScene {
   private readonly hit: VoxelHit = { x: 0, y: 0, z: 0, nx: 0, ny: 0, nz: 0, t: 0 };
   private readonly ndc = new THREE.Vector2();
   private followed = false;
+  private readonly culler: ChunkCuller;
   private shown: Set<string> | null = null;
-  private cullKey = '';
   private readonly raycaster = new THREE.Raycaster();
   private readonly marker: THREE.Mesh<THREE.RingGeometry, THREE.MeshBasicMaterial>;
   private markerAge = Infinity;
   private readonly outline = new THREE.Group();
 
   constructor(private readonly host: HTMLElement, private readonly world: World) {
+    this.culler = new ChunkCuller(world.sizeX, world.sizeZ);
     this.renderer = new THREE.WebGLRenderer({ antialias: false, powerPreference: 'high-performance' });
     this.renderer.setPixelRatio(Math.min(window.devicePixelRatio || 1, 1.5));
     host.appendChild(this.renderer.domElement);
@@ -142,14 +143,13 @@ export class GameScene {
     this.chunks.set(key, { solid, trans });
   }
 
-  /** Hides chunks beyond the fog (fully opaque there, so nothing visible changes). Cheap: only on a chunk change. */
+  /** Hides chunks beyond the fog (fully opaque there, so nothing visible changes), following the real camera. */
   private cullFar(x: number, z: number): void {
-    const key = `${Math.floor(x / CHUNK_SIZE)},${Math.floor(z / CHUNK_SIZE)}`;
-    if (key === this.cullKey && this.shown !== null) return;
-    this.cullKey = key;
-    this.shown = visibleChunks(this.world.sizeX, this.world.sizeZ, x, z);
+    const set = this.culler.update(x, z);
+    if (set === this.shown) return;
+    this.shown = set;
     for (const [k, c] of this.chunks) {
-      const v = this.shown.has(k);
+      const v = set.has(k);
       if (c.solid) c.solid.visible = v;
       if (c.trans) c.trans.visible = v;
     }
