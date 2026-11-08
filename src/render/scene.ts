@@ -1,10 +1,11 @@
 import * as THREE from 'three';
 import type { World } from '../core/world';
 import { createAtlas } from './atlas';
-import { CameraRig } from './cameraRig';
+import { CameraRig, clearance } from './cameraRig';
 import { castVoxelRay, type VoxelHit } from './voxelRay';
 import { DirtyChunks } from './chunkDirty';
 import { ChunkCuller, FOG_FAR } from './chunkCull';
+import { CAMERA_FAR, NEAR_MAX, cameraNear, easeNear } from './depthPolicy';
 import { buildChunkGeometry, CHUNK_SIZE, type MeshArrays } from './mesher';
 
 const FOLLOW_K = 4; // exponential smoothing rate, per second
@@ -73,8 +74,8 @@ export class GameScene {
     sun.position.set(0.5, 1, 0.3);
     this.scene.add(sun);
 
-    // A close near plane: in a tunnel the camera can sit CAMERA_CLEARANCE from a wall.
-    this.camera = new THREE.PerspectiveCamera(60, 1, 0.05, 64);
+    // Near plane is far out in the open (depth precision) and shrinks only beside walls; see depthPolicy.ts.
+    this.camera = new THREE.PerspectiveCamera(60, 1, NEAR_MAX, CAMERA_FAR);
 
     this.solidMat = new THREE.MeshLambertMaterial({ map: this.atlas.texture });
     this.transMat = new THREE.MeshLambertMaterial({
@@ -213,6 +214,11 @@ export class GameScene {
     this.camera.position.set(c.x, c.y, c.z);
     this.camera.lookAt(this.lookPoint.set(c.x + f.x, c.y + f.y, c.z + f.z));
     this.cullFar(c, f, pos.x, pos.z);
+    const near = easeNear(this.camera.near, cameraNear(clearance(this.world, c.x, c.y, c.z)), dt);
+    if (Math.abs(near - this.camera.near) > 1e-3) {
+      this.camera.near = near;
+      this.camera.updateProjectionMatrix();
+    }
   }
 
   /**

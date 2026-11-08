@@ -76,7 +76,7 @@ export function lookDir(yaw: number, pitch: number, out: Vec3): Vec3 {
 const hit: VoxelHit = { x: 0, y: 0, z: 0, nx: 0, ny: 0, nz: 0, t: 0 };
 
 /** Distance from p to the nearest solid block among the 27 cells around it (capped at 1). */
-function clearance(world: World, px: number, py: number, pz: number): number {
+export function clearance(world: World, px: number, py: number, pz: number): number {
   const cx = Math.floor(px), cy = Math.floor(py), cz = Math.floor(pz);
   let best = 1;
   for (let y = cy - 1; y <= cy + 1; y++) for (let z = cz - 1; z <= cz + 1; z++) for (let x = cx - 1; x <= cx + 1; x++) {
