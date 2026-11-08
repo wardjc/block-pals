@@ -1,6 +1,8 @@
 import * as THREE from 'three';
 import { mergeGeometries } from 'three/examples/jsm/utils/BufferGeometryUtils.js';
 import type { VillagerId } from '../content/villagers';
+import type { HouseInfo } from '../core/houses';
+import { EMBLEM_SIZE, emblemPlacement } from './emblem';
 
 // Both models stand with their feet at y = 0 and face +z (heading 0).
 
@@ -39,6 +41,7 @@ export function makePlayerModel(): THREE.Group {
   // torso
   box(0.54, 0.6, 0.3, 0x14b8a6, 0, 0.8, 0, g);
   box(0.54, 0.08, 0.31, 0xffd23f, 0, 0.55, 0, g); // yellow belt stripe
+  box(0.26, 0.3, 0.26, skin, 0, 1.27, 0, g); // neck
   // arms
   const armL = new THREE.Group();
   armL.position.set(-0.4, 1.05, 0);
@@ -145,6 +148,7 @@ function person(look: PersonLook): { g: THREE.Group; head: THREE.Group; armR: TH
     }
   }
   box(w, 0.62, 0.34, look.shirt, 0, 0.82, 0, g);
+  box(0.26, 0.3, 0.26, look.skin, 0, 1.27, 0, g); // neck: joins the head to the shoulders
   const armL = new THREE.Group();
   armL.position.set(-(w / 2 + 0.1), 1.08, 0);
   box(0.2, 0.55, 0.22, look.shirt, 0, -0.18, 0, armL);
@@ -255,12 +259,13 @@ function willow(): THREE.Group {
   box(0.1, 0.025, 0.03, 0xd2569a, 0, 0.32, 0.29, head);
   // The very long knitted scarf: round the neck, then trailing down and along the floor.
   const stripe = [0xe5484d, 0xffd23f];
-  box(0.62, 0.16, 0.42, stripe[0], 0, 1.34, 0, g);
   const hang = new THREE.Group();
-  for (let i = 0; i < 5; i++) box(0.17, 0.2, 0.1, stripe[i % 2], 0.16, 1.2 - i * 0.2, 0.24, hang);
-  box(0.17, 0.08, 0.3, stripe[1], 0.16, 0.06, 0.4, hang);
-  box(0.17, 0.08, 0.3, stripe[0], 0.16, 0.06, 0.7, hang);
-  box(0.2, 0.08, 0.12, 0xffffff, 0.16, 0.06, 0.9, hang); // fringe
+  box(0.62, 0.16, 0.42, stripe[0], 0, 1.34, 0, hang);
+  // Hanging down her front, hugging the skirt and shawl (z 0.17..0.33 overlaps the body), then along the floor.
+  for (let i = 0; i < 5; i++) box(0.17, 0.24, 0.16, stripe[i % 2], 0.16, 1.18 - i * 0.24, 0.25, hang);
+  box(0.17, 0.08, 0.4, stripe[1], 0.16, 0.06, 0.45, hang); // lies on the floor, joined to the lowest hanging piece
+  box(0.17, 0.08, 0.3, stripe[0], 0.16, 0.06, 0.8, hang);
+  box(0.2, 0.08, 0.12, 0xffffff, 0.16, 0.06, 1.01, hang); // fringe
   g.add(hang);
   g.userData = { head, hang };
   return g;
@@ -304,9 +309,14 @@ function mergeStatic(root: THREE.Object3D, pivots: THREE.Object3D[]): void {
   if (merged) root.add(new THREE.Mesh(merged, VERTEX_MATERIAL));
 }
 
+/** A villager as separate boxes, before merging (kept for tests that check the parts fit together). */
+export function makeVillagerParts(id: VillagerId): THREE.Group {
+  return { bramble, pebble, fern, willow }[id]();
+}
+
 /** A neighbour: feet at y = 0, faces +z, about 1.9 blocks tall like the player. Boxes only, bright colours. */
 export function makeVillagerModel(id: VillagerId): THREE.Group {
-  const g = { bramble, pebble, fern, willow }[id]();
+  const g = makeVillagerParts(id);
   // Static boxes become one mesh per animatable part (body, head, and Bramble's hat): about 3 draw calls, not ~40.
   const head = g.userData.head as THREE.Object3D;
   const hat = g.userData.hat as THREE.Object3D | undefined;
@@ -328,14 +338,20 @@ export function idleVillager(g: THREE.Group, seconds: number): void {
   if (hat) hat.rotation.z = Math.sin(t * 2.6) * 0.16;
 }
 
-/** A picture sign: an emoji on a soft white disc, always facing the camera. Over each door, so nobody has to read. */
-export function makeEmblem(emoji: string): THREE.Sprite {
+const EMBLEM_QUAD = new THREE.PlaneGeometry(1, 1);
+
+/**
+ * A picture sign: an emoji on a soft white disc, a flat square fixed to the wall over each door (see
+ * render/emblem.ts for where). It faces straight out of the wall, depth-tested and depth-written with a cut-out
+ * edge so it never z-fights or shows through the wall.
+ */
+export function makeEmblem(emoji: string): THREE.Mesh<THREE.PlaneGeometry, THREE.MeshBasicMaterial> {
   const size = 128;
   const canvas = document.createElement('canvas');
   canvas.width = canvas.height = size;
   const c = canvas.getContext('2d');
   if (c) {
-    c.fillStyle = 'rgba(255,255,255,0.92)';
+    c.fillStyle = 'rgba(255,255,255,0.97)';
     c.beginPath();
     c.arc(size / 2, size / 2, size / 2 - 4, 0, Math.PI * 2);
     c.fill();
@@ -349,16 +365,25 @@ export function makeEmblem(emoji: string): THREE.Sprite {
   }
   const map = new THREE.CanvasTexture(canvas);
   map.colorSpace = THREE.SRGBColorSpace;
-  const sprite = new THREE.Sprite(new THREE.SpriteMaterial({ map, depthTest: true, depthWrite: false }));
-  sprite.scale.set(1.5, 1.5, 1);
-  return sprite;
+  const mesh = new THREE.Mesh(EMBLEM_QUAD, new THREE.MeshBasicMaterial({
+    map, alphaTest: 0.4, depthTest: true, depthWrite: true, toneMapped: false,
+  }));
+  mesh.scale.set(EMBLEM_SIZE, EMBLEM_SIZE, 1);
+  return mesh;
 }
 
-/** Frees an emblem's own texture and material (its geometry is the shared sprite quad). */
-export function disposeEmblem(sprite: THREE.Sprite): void {
-  sprite.material.map?.dispose();
-  sprite.material.dispose();
-  sprite.removeFromParent();
+/** Puts a sign where emblemPlacement says, facing out of the door wall. */
+export function placeEmblem(sign: THREE.Object3D, house: HouseInfo): void {
+  const p = emblemPlacement(house);
+  sign.position.set(p.x, p.y, p.z);
+  sign.rotation.y = Math.atan2(p.nx, p.nz);
+}
+
+/** Frees an emblem's own texture and material (its geometry is the shared quad). */
+export function disposeEmblem(sign: THREE.Mesh<THREE.PlaneGeometry, THREE.MeshBasicMaterial>): void {
+  sign.material.map?.dispose();
+  sign.material.dispose();
+  sign.removeFromParent();
 }
 
 /** Frees a villager's own merged geometries; the shared unit box, rim and materials stay for the next one. */
