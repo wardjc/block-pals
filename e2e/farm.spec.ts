@@ -6,7 +6,6 @@ import { drag, frames, press, ready, screenOfCell, standLooking, URL, walkTo, ty
 // Wheat0..3 24..27, Carrot0..3 28..31.
 const WHEAT_SEED = 100, CARROT_SEED = 101, SAPLING = 103, APPLE = 104, CARROT = 105, WHEAT = 107, EGG = 108, MILK = 109, WOOL = 110;
 const FARMLAND = 16, WOOL_RED = 19, WHEAT0 = 24, WHEAT3 = 27, CARROT0 = 28;
-const SAVE = 'blockpals.save.v2';
 
 /**
  * Stands him on the aisle beside the first bed, looking at it, and returns a bed cell in reach that
@@ -261,11 +260,11 @@ test.describe('eating and the farm', () => {
       const o = sessionStorage.getItem('rewrite');
       if (o === null) return;
       sessionStorage.removeItem('rewrite');
-      const raw = localStorage.getItem('blockpals.save.v2');
+      const raw = localStorage.getItem('blockpals.save.v3');
       if (!raw) return;
       const d = JSON.parse(raw);
       d.savedAt = Date.now() - Number(o);
-      localStorage.setItem('blockpals.save.v2', JSON.stringify(d));
+      localStorage.setItem('blockpals.save.v3', JSON.stringify(d));
     });
     // The future: no growth, nothing wilts.
     await reloadWithSavedAt(-60 * 60_000);
@@ -307,7 +306,9 @@ test.describe('eating and the farm', () => {
   test('an old step 1 save loads, keeps his edits and the v1 key is byte-identical', async ({ page: first }) => {
     test.setTimeout(90_000);
     await ready(first);
-    const spawn = await first.evaluate(() => (window.__debug as unknown as FarmDbg).playerPos());
+    const live = await first.evaluate(() => (window.__debug as unknown as FarmDbg).playerPos());
+    // Old saves hold meadow coordinates: 48 less on every axis than the bigger world's.
+    const spawn = { x: live.x - 48, y: live.y - 48, z: live.z - 48 };
     const v1 = JSON.stringify({
       version: 1, seed: 2026, edits: [[47, 6, 47, 3], [30, 6, 30, 8]], inventory: { 4: 7, 3: 2 }, order: [4, 3],
       player: { x: spawn.x, y: spawn.y, z: spawn.z },
@@ -329,15 +330,21 @@ test.describe('eating and the farm', () => {
       await page.goto(URL);
       await page.waitForFunction(() => !!(window as unknown as { __debug?: unknown }).__debug);
       await frames(page, 10);
-      expect(await world(page, [47, 6, 47]), label).toBe(3);
-      expect(await world(page, [30, 6, 30]), label).toBe(8);
+      expect(await world(page, [95, 54, 95]), label).toBe(3); // old (47, 6, 47) at +48
+      expect(await world(page, [78, 54, 78]), label).toBe(8);
+      const p = await page.evaluate(() => (window.__debug as unknown as FarmDbg).playerPos());
+      expect(Math.hypot(p.x - live.x, p.z - live.z), label).toBeLessThan(0.5);
       expect(await count(page, 4), label).toBe(7);
       expect((await page.evaluate(() => (window.__debug as unknown as FarmDbg).herd())).length, label).toBe(10); // the farm and animals exist
       expect((await page.evaluate(() => (window.__debug as unknown as FarmDbg).layoutFarm())).beds.length).toBe(3);
       await page.evaluate(() => (window.__debug as unknown as FarmDbg).saveNow());
-      const keys = await page.evaluate(() => ({ v1: localStorage.getItem('blockpals.save.v1'), v2: localStorage.getItem('blockpals.save.v2') }));
+      const keys = await page.evaluate(() => ({
+        v1: localStorage.getItem('blockpals.save.v1'), v2: localStorage.getItem('blockpals.save.v2'), v3: localStorage.getItem('blockpals.save.v3'),
+      }));
       expect(keys.v1, label).toBe(v1); // never written
-      expect(JSON.parse(keys.v2!).edits, label).toEqual(expect.arrayContaining([[47, 6, 47, 3], [30, 6, 30, 8]]));
+      expect(keys.v2, label).toBe(label === 'v1' ? null : v2old); // never written
+      expect(JSON.parse(keys.v3!).version, label).toBe(3);
+      expect(JSON.parse(keys.v3!).edits, label).toEqual(expect.arrayContaining([[95, 54, 95, 3], [78, 54, 78, 8]]));
       expect(errors, label).toEqual([]);
       await page.close();
     }
@@ -408,7 +415,10 @@ test.describe('eating and the farm', () => {
     console.log(`farm story: ${JSON.stringify(st)}`);
     expect(st.animals).toBe(10);
     expect(st.drawCalls).toBeLessThanOrEqual(st.chunks * 2 + 14 + 20); // chunks (solid + see-through) + animals + sparkles + people + the sky
-    expect(st.worldTriangles).toBeLessThan(115_000);
+    // Since the bigger world (192 x 192): the whole world is about 4 times the old land; what is drawn
+    // in this view keeps the old whole-world budget. Chunk B's sections bring the per-view limits.
+    expect(st.worldTriangles).toBeLessThan(600_000);
+    expect(st.triangles).toBeLessThan(110_000);
     expect(st.fps).toBeGreaterThan(5); // a loose floor in a software renderer; the tablet number is on the checklist
     expect(errors).toEqual([]);
   });
