@@ -103,7 +103,7 @@ html, body {
   font-size: 56px;
   line-height: 1;
   cursor: pointer;
-  animation: munch-pulse 1.6s ease-in-out infinite;
+  animation: munch-pulse 1.6s ease-in-out 3; /* a gentle hello, then still */
 }
 .munch-btn[hidden] { display: none; }
 .munch-btn:active { transform: translateY(4px); box-shadow: 0 2px 0 #d8847e; }
