@@ -66,6 +66,16 @@ export class Hud {
     private readonly handlers: HudHandlers,
   ) {
     this.bar.className = 'hotbar';
+    this.guard(this.bar);
+    // A mouse wheel or trackpad's up-and-down scrolls the bar sideways.
+    this.bar.addEventListener('wheel', e => {
+      if (this.bar.scrollWidth <= this.bar.clientWidth) return;
+      const d = Math.abs(e.deltaY) > Math.abs(e.deltaX) ? e.deltaY : e.deltaX;
+      this.bar.scrollLeft += d;
+      e.preventDefault();
+    }, { passive: false });
+    this.bar.addEventListener('scroll', () => this.updateHints(), { passive: true });
+    window.addEventListener('resize', () => { this.revealSelected(); this.updateHints(); });
     root.appendChild(this.bar);
 
     const craft = this.button('craft-btn', '🛠️', () => handlers.onCraft());
@@ -166,8 +176,29 @@ export class Hud {
       el.addEventListener(type, e => e.stopPropagation());
   }
 
+  private lastSelected = -1;
+
+  /** Scrolls the bar the least it takes to show the whole selected slot. */
+  private revealSelected(): void {
+    const el = this.bar.querySelector<HTMLElement>('.slot.selected');
+    if (!el) return;
+    const pad = 8;
+    const left = el.offsetLeft - pad;
+    const right = el.offsetLeft + el.offsetWidth + pad;
+    if (left < this.bar.scrollLeft) this.bar.scrollLeft = Math.max(0, left);
+    else if (right > this.bar.scrollLeft + this.bar.clientWidth) this.bar.scrollLeft = right - this.bar.clientWidth;
+  }
+
+  /** A soft fade on a side that has more slots hidden. */
+  private updateHints(): void {
+    const { scrollLeft, clientWidth, scrollWidth } = this.bar;
+    this.bar.classList.toggle('more-start', scrollLeft > 1);
+    this.bar.classList.toggle('more-end', scrollLeft + clientWidth < scrollWidth - 1);
+  }
+
   render(state: HudState): void {
     this.setMunchVisible(state.edible);
+    const keepLeft = this.bar.scrollLeft; // rebuilding the slots must not throw the player's place away
     this.bar.replaceChildren();
     const slots: Array<{ id: StackId | null; count: number }> = [
       { id: null, count: 0 },
@@ -191,6 +222,10 @@ export class Hud {
       this.bar.appendChild(el);
     });
     if (state.overflow || state.selected > BAR_STACKS) this.bar.appendChild(this.bagSlot(state));
+    this.bar.scrollLeft = keepLeft;
+    if (state.selected !== this.lastSelected) this.revealSelected();
+    this.lastSelected = state.selected;
+    this.updateHints();
   }
 
   private countEl(n: number): HTMLElement {
