@@ -55,3 +55,18 @@ describe('Pip stands still while a menu has the game paused', () => {
     expect(Math.hypot(pal.pos.x - before.x, pal.pos.z - before.z)).toBeGreaterThan(0.1);
   });
 });
+
+describe('DeferredOnce (the welcome waits for the break bubble)', () => {
+  it('is delivered once, only when admitted, and replayed after the bubble closes', async () => {
+    const { DeferredOnce } = await import('../../src/game/speechPolicy');
+    const w = new DeferredOnce();
+    expect(w.take(false)).toBe(false); // nothing wanted yet
+    w.want();
+    expect(w.take(true)).toBe(false); // dropped by the break guard: not marked delivered
+    expect(w.take(true)).toBe(false);
+    expect(w.take(false)).toBe(true); // bubble closed: replayed
+    expect(w.take(false)).toBe(false); // never twice
+    w.want();
+    expect(w.take(false)).toBe(false);
+  });
+});

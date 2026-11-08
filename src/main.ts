@@ -19,7 +19,7 @@ import { LINES, LINE_ICONS, pickLine, type LineKey } from './content/lines';
 import { Pal } from './game/pal';
 import { LeadToVillage } from './game/lead';
 import { GreetTracker } from './game/villagers';
-import { allowLine, helperDt, leadPaused, mayGreet, mayPipSpeakQueued, type SpeechContext } from './game/speechPolicy';
+import { DeferredOnce, allowLine, craftSpeech, helperDt, leadPaused, mayGreet, mayPipSpeakQueued, type SpeechContext } from './game/speechPolicy';
 import { DOOR_EMBLEMS, VILLAGERS, VILLAGER_LINES, pickVillagerLine, type VillagerId } from './content/villagers';
 import { isStandable } from './core/pathfind';
 import { UsageTracker } from './core/usage';
@@ -78,6 +78,7 @@ const voice = new Voice(undefined, {
 });
 const lastSpoken: Partial<Record<LineKey, string>> = {};
 const speakVariant = (key: LineKey): void => {
+  if (!allowLine(hud.breakOpen, key)) return; // the break reminder is never cut by another line
   const text = pickLine(key, lastSpoken[key]);
   if (!text) return; // never speak '' - it would cancel current speech
   lastSpoken[key] = text;
@@ -101,11 +102,14 @@ const pal = new Pal(
 );
 pal.setHasWood(() => game.inventory.count(BlockId.Wood) > 0);
 game.on(e => pal.handle(e));
-let greeted = false;
+// The welcome is marked delivered only when it is admitted; an open break bubble holds it until it closes.
+const welcome = new DeferredOnce();
+const tryWelcome = (): void => {
+  if (welcome.take(hud.breakOpen)) pal.greet(hadSave);
+};
 const greetOnce = (): void => {
-  if (greeted) return;
-  greeted = true;
-  pal.greet(hadSave);
+  welcome.want();
+  tryWelcome();
 };
 
 const occupied = (): Cell[] => {
@@ -158,11 +162,13 @@ const craftScreen = new CraftScreen(document.getElementById('ui')!, {
   inventory: game.inventory,
   tryCraft: id => game.tryCraft(id),
   iconFor: scene.atlas.iconDataUrl,
-  say: text => voice.say(text),
-  sayNeedMore: () => speakVariant('craftNeedMore'),
+  ...craftSpeech(() => hud.breakOpen, {
+    say: text => voice.say(text),
+    needMore: () => speakVariant('craftNeedMore'),
+    full: () => speakVariant('full'),
+  }),
   sfxTap: () => sfx.tap(),
   sfxCraft: () => sfx.craft(),
-  sayFull: () => speakVariant('full'),
   onOpenChange: syncOverlays,
 });
 game.onCraftRequest = openCraft;
@@ -302,6 +308,7 @@ const saveNow = (): void => { storeSave(storage, serialise(game, seed, flags)); 
 
 function updateVillage(dt: number): void {
   const breakOpen = hud.breakOpen;
+  tryWelcome(); // replays a welcome the break bubble held back, once the bubble has closed
   const paused = game.paused || hud.blockingOverlayOpen;
   if (breakOpen) pal.hush(1000); // Pip's own chatter waits for the break bubble
   const pp = game.player.pos;

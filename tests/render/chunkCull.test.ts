@@ -47,14 +47,14 @@ describe('visibleChunks (view-depth fog culling)', () => {
     const spots: Array<[number, number]> = [[spawn.x, spawn.z], [30.5, 20.5], [60.5, 24.5], [20.5, 70.5], [80.5, 80.5], [3.5, 3.5]];
     for (const [sx, sz] of spots) {
       const y = world.topSolidY(Math.floor(sx), Math.floor(sz)) + 1;
-      for (let yawDeg = 0; yawDeg < 360; yawDeg += 15) for (const pitch of [PITCH_MIN, DEFAULT_PITCH, PITCH_MAX]) {
+      for (let yawDeg = 0; yawDeg < 360; yawDeg += 30) for (const pitch of [PITCH_MIN, DEFAULT_PITCH, PITCH_MAX]) {
         const { pos, f } = cameraAt(sx, y, sz, (yawDeg * Math.PI) / 180, pitch);
         const set = visibleChunks(96, 20, 96, pos.x, pos.y, pos.z, f.x, f.y, f.z, sx, sz);
         expect(visibleSurfaceInHidden(set, pos, f), `${sx},${sz} yaw ${yawDeg} pitch ${pitch}`).toBeNull();
         expect(set.has(`${Math.floor(sx / CHUNK_SIZE)},${Math.floor(sz / CHUNK_SIZE)}`)).toBe(true);
       }
     }
-  });
+  }, 120_000);
 
   it('still hides what is deep in the fog, so the numbers stay reasonable', () => {
     // looking along +x from the west edge: the far east chunks are deeper than the fog

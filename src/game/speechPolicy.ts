@@ -39,3 +39,39 @@ export function leadPaused(gameOrOverlayPaused: boolean, breakOpen: boolean): bo
 export function helperDt(paused: boolean, dt: number): number {
   return paused ? 0 : dt;
 }
+
+/**
+ * The craft screen's three speech callbacks, every one behind the break guard: while the break
+ * bubble is open they say nothing (and so never cut the reminder), while crafting itself carries on.
+ */
+export function craftSpeech(
+  breakOpen: () => boolean,
+  speak: { say(text: string): void; needMore(): void; full(): void },
+): { say(text: string): void; sayNeedMore(): void; sayFull(): void } {
+  return {
+    say: text => { if (!breakOpen()) speak.say(text); },
+    sayNeedMore: () => { if (!breakOpen()) speak.needMore(); },
+    sayFull: () => { if (!breakOpen()) speak.full(); },
+  };
+}
+
+/**
+ * A line that must be said exactly once but may have to wait (the welcome while the break bubble
+ * is up). `want()` asks for it; `take(blocked)` returns true exactly once, the first time it is
+ * wanted and not blocked, so a dropped line is retried and a delivered one is never repeated.
+ */
+export class DeferredOnce {
+  private wanted = false;
+  private done = false;
+
+  want(): void {
+    if (!this.done) this.wanted = true;
+  }
+
+  take(blocked: boolean): boolean {
+    if (!this.wanted || this.done || blocked) return false;
+    this.done = true;
+    this.wanted = false;
+    return true;
+  }
+}
