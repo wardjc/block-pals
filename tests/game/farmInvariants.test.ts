@@ -8,12 +8,17 @@ import { ItemId, isItemId, type StackId } from '../../src/core/items';
 import type { Cell } from '../../src/core/pathfind';
 import { mulberry32 } from '../../src/core/rng';
 import { applySave, parseSave, serialise } from '../../src/core/save';
-import { GROUND_Y } from '../../src/core/village';
+import { ORIGIN } from '../../src/core/bounds';
+import { GROUND_Y as MEADOW_GROUND_Y } from '../../src/core/village';
+
+/** The village ground in world coordinates (the meadow sits at +48 in the big world). */
+const GROUND_Y = MEADOW_GROUND_Y + ORIGIN.y;
 import { generateWorld } from '../../src/core/worldgen';
 import { Game } from '../../src/game/game';
 
 /** The part of the world the stream plays in: the farm plot and a margin. */
-const WIN = { x0: 70, x1: 84, z0: 33, z1: 46, y0: GROUND_Y, y1: GROUND_Y + 8 };
+const O = ORIGIN.x;
+const WIN = { x0: O + 70, x1: O + 84, z0: O + 33, z1: O + 46, y0: GROUND_Y, y1: GROUND_Y + 8 };
 const SEEDS = [ItemId.WheatSeed, ItemId.CarrotSeed, ItemId.PotatoSeed, ItemId.AppleSapling];
 const WEEK = 7 * 24 * 3600_000;
 
@@ -57,7 +62,7 @@ function run(seed: number, steps: number): number {
   const treeStage = new Map<string, number>();
   let applesPicked = 0;
   const picked = new Set<string>();
-  const aisles = [37, 40, 43];
+  const aisles = [O + 37, O + 40, O + 43];
   const at = (x: number, z: number): Cell => [x, GROUND_Y + 1, z];
   const stand = (x: number, z: number): void => {
     const az = aisles.reduce((a, b) => (Math.abs(b - z) < Math.abs(a - z) ? b : a));
@@ -71,8 +76,8 @@ function run(seed: number, steps: number): number {
     const plantsBefore = plantsIn(game);
     const dug = new Set<string>();
     let allowDecrease: StackId | null = null;
-    const x = 72 + Math.floor(rand() * 8);
-    const z = 35 + Math.floor(rand() * 8);
+    const x = O + 72 + Math.floor(rand() * 8);
+    const z = O + 35 + Math.floor(rand() * 8);
     const r = rand();
     const cell = at(x, z);
 
@@ -92,7 +97,7 @@ function run(seed: number, steps: number): number {
       const ripeRing = ripe.flatMap(t => ([[1, 0], [-1, 0], [0, 1], [0, -1]] as const).map(([dx, dz]) => [t.x + dx, t.y + 4, t.z + dz] as Cell))
         .filter(c => game.world.get(...c) === BlockId.AppleLeaves);
       const target = ripeRing.length > 0 && rand() < 0.6 ? pick(ripeRing)
-        : plants.length > 0 && rand() < 0.8 ? pick(plants) : isTreeCell(cell) ? at(x, 34) : cell;
+        : plants.length > 0 && rand() < 0.8 ? pick(plants) : isTreeCell(cell) ? at(x, O + 34) : cell;
       stand(target[0], target[2]);
       if (plantsBefore.has(key(target))) dug.add(key(target));
       // Picking ripe apples is the one thing that sends a tree back a stage: it regrows (counted below).

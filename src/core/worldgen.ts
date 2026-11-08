@@ -1,12 +1,12 @@
 import { BlockId } from './blocks';
-import { insideWall, LEGACY_WORLD, V2_WORLD } from './bounds';
+import { insideWall, LEGACY_WORLD, ORIGIN, V2_WORLD, WORLD } from './bounds';
 import { mulberry32, valueNoise2D } from './rng';
-import type { WorldCells } from './shifted';
+import { ShiftedWorld, shiftLayout, type WorldCells } from './shifted';
 import { buildVillage, type Rect, type VillageLayout } from './village';
 import { World } from './world';
 
-/** Bump when later steps add stamps, so saves can tell which generator made the world. */
-export const GEN_VERSION = 2;
+/** Bump when later steps add stamps, so saves can tell which generator made the world. 3: the 192 x 68 x 192 world. */
+export const GEN_VERSION = 3;
 
 type Cell3 = { x: number; y: number; z: number };
 type Tree = { x: number; z: number };
@@ -41,7 +41,9 @@ export function heightAt(seed: number, x: number, z: number): number {
 
 export interface GeneratedWorld {
   world: World;
+  /** World coordinates. */
   spawn: { x: number; y: number; z: number };
+  /** World coordinates (the step 2 layout moved by ORIGIN). */
   village: VillageLayout;
 }
 
@@ -71,12 +73,13 @@ function plantTree(
 
 /**
  * Stages 1 and 2: terrain for the whole 96 world, then the v1 trees only (verbatim v1 stream
- * and constants, so the v1 meadow is bit-identical). No stamps. Exposed for tests.
+ * and constants, so the v1 meadow is bit-identical). No stamps. Writes into `target` (the
+ * ShiftedWorld view of the big world, or a plain 96 world by default). Exposed for tests.
  */
-export function generateMeadowStage(seed = 2026): {
-  world: World; spawn: Cell3; heights: Uint8Array; trees: Tree[];
-} {
-  const world = new World(V2_WORLD.x, V2_WORLD.y, V2_WORLD.z);
+export function generateMeadowStage<W extends WorldCells = World>(
+  seed = 2026, target?: W,
+): { world: W; spawn: Cell3; heights: Uint8Array; trees: Tree[] } {
+  const world = target ?? (new World(V2_WORLD.x, V2_WORLD.y, V2_WORLD.z) as unknown as W);
   const noise = valueNoise2D(seed);
   const random = mulberry32(seed);
   const heights = new Uint8Array(world.sizeX * world.sizeZ);
@@ -137,9 +140,13 @@ export function generateMeadowStage(seed = 2026): {
 const inRect = (r: Rect, x: number, z: number, margin = 0): boolean =>
   x >= r.x0 - margin && x <= r.x1 + margin && z >= r.z0 - margin && z <= r.z1 + margin;
 
-export function generateWorld(seed = 2026): GeneratedWorld {
+/**
+ * The step 2 world (terrain, v1 trees, village, farm, pasture, stage 4 trees), unchanged, written
+ * into `world` (a plain 96 world, or the ShiftedWorld view of the big one). Meadow coordinates.
+ */
+function generateMeadowWorld(seed: number, world: WorldCells): { spawn: Cell3; village: VillageLayout } {
   // Stages 1 and 2.
-  const { world, spawn, heights, trees } = generateMeadowStage(seed);
+  const { spawn, heights, trees } = generateMeadowStage(seed, world);
 
   // Stage 3: pads, houses and the path (Task 5).
   const village = buildVillage(world, spawn);
@@ -178,7 +185,37 @@ export function generateWorld(seed = 2026): GeneratedWorld {
     candidates[chosen] = candidates[i];
     plant(candidate.x, candidate.z);
   }
+  return { spawn, village };
+}
 
+/**
+ * The bigger, deeper world (192 x 68 x 192). Stage 0 fills the deep rock in whole layers; stage 1
+ * runs the step 2 generator UNCHANGED on a ShiftedWorld view at +ORIGIN, so the old region is
+ * identical by construction (old streams `seed` and `seed ^ 0x5eed` consumed exactly as before).
+ * The one documented difference (D1): the old bedrock row (now y 48) is Stone, so he can dig past it.
+ * Everything runs in bulk mode: no edit records, a clean world.
+ */
+export function generateWorld(seed = 2026): GeneratedWorld {
+  const world = new World(WORLD.x, WORLD.y, WORLD.z);
+  world.beginBulk();
+
+  // Stage 0: bedrock floor, deep stone up to the old world's floor.
+  world.fillLayer(0, BlockId.Bedrock);
+  for (let y = 1; y < ORIGIN.y; y++) world.fillLayer(y, BlockId.Stone);
+
+  // Stage 1: the old region, on the view.
+  const view = new ShiftedWorld(world);
+  const meadow = generateMeadowWorld(seed, view);
+  // D1: the old bedrock row becomes Stone.
+  for (let z = 0; z < view.sizeZ; z++) {
+    for (let x = 0; x < view.sizeX; x++) {
+      if (view.get(x, 0, z) === BlockId.Bedrock) view.set(x, 0, z, BlockId.Stone);
+    }
+  }
+  const village = shiftLayout(meadow.village, world);
+  const spawn = { x: meadow.spawn.x + ORIGIN.x, y: meadow.spawn.y + ORIGIN.y, z: meadow.spawn.z + ORIGIN.z };
+
+  world.endBulk();
   world.clearEdits();
   world.markClean();
   return { world, spawn, village };

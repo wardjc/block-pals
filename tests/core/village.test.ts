@@ -3,15 +3,16 @@ import { BLOCKS, BlockId } from '../../src/core/blocks';
 import { V2_WORLD as WORLD } from '../../src/core/bounds';
 import { canStep, findPath, isStandable, smoothPath, type Cell } from '../../src/core/pathfind';
 import { GROUND_Y, VILLAGE_PLAN, type Rect, type VillageLayout } from '../../src/core/village';
-import type { World } from '../../src/core/world';
-import { generateWorld } from '../../src/core/worldgen';
+import type { WorldCells } from '../../src/core/shifted';
+import { generateLegacy } from '../helpers/legacy';
 
-let world: World;
+let world: WorldCells;
 let village: VillageLayout;
 let spawn: Cell;
 
 beforeAll(() => {
-  const generated = generateWorld(2026);
+  // The old meadow in its own coordinates (tests/helpers/legacy.ts): these are step 2's assertions, unchanged.
+  const generated = generateLegacy(2026);
   world = generated.world;
   village = generated.village;
   spawn = [Math.floor(generated.spawn.x), Math.floor(generated.spawn.y), Math.floor(generated.spawn.z)];
@@ -190,7 +191,7 @@ describe('village', () => {
   }, 60_000);
 
   it('writes nothing outside the world and is deterministic', () => {
-    const again = generateWorld(2026);
+    const again = generateLegacy(2026);
     expect(again.village.route).toEqual(village.route);
     for (const r of village.stampedRects) expect(r.x0 > WORLD.x || r.z0 > WORLD.z).toBe(false);
   });

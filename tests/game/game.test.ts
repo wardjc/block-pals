@@ -311,7 +311,8 @@ describe('Game', () => {
     const { world, spawn } = generateWorld(2026);
     const game = new Game({ world, spawn });
     const trunks: Array<[number, number, number]> = [];
-    for (let x = 1; x < 47; x++) for (let z = 1; z < 47; z++) {
+    // The v1 meadow trees, at +48 in the big world.
+    for (let x = 49; x < 95; x++) for (let z = 49; z < 95; z++) {
       const y = world.topSolidY(x, z);
       if (world.get(x, y, z) === BlockId.Leaves) {
         for (let t = y; t > 0; t--) if (world.get(x, t, z) === BlockId.Wood) { trunks.push([x, t, z]); break; }

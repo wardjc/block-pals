@@ -187,8 +187,9 @@ describe('hello cancelling and locked audio', () => {
   it('a held hello keeps its cooldown and visit unspent', () => {
     const houses = generateWorld(2026).village.houses;
     const g = new GreetTracker(() => 0);
-    const r = houses.find(h => h.id === 'bakery')!.rect;
-    const cell: [number, number, number] = [r.x0 + 3, 6, r.z0 + 3];
+    const bakery = houses.find(h => h.id === 'bakery')!;
+    const r = bakery.rect;
+    const cell: [number, number, number] = [r.x0 + 3, bakery.groundY + 1, r.z0 + 3];
     // The caller does not call update at all while locked; once unlocked the greeting is still there.
     expect(g.update(cell, houses, false)).toBe('bramble');
   });

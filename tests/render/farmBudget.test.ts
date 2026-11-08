@@ -37,7 +37,7 @@ function plantField(world: ReturnType<typeof generateWorld>['world'], beds: Arra
     cells.push([x, y, z]);
   };
   for (const b of beds) for (let z = b.z0; z <= b.z1; z++) for (let x = b.x0; x <= b.x1; x++) add(x, z);
-  for (let z = 20; z < 45; z++) for (let x = 66; x < 88; x++) add(x, z);
+  for (let z = 68; z < 93; z++) for (let x = 114; x < 136; x++) add(x, z); // meadow x 66..87, z 20..44, at +48
   return cells;
 }
 
@@ -46,14 +46,17 @@ describe('farm budgets', () => {
   const beds = village.farm.beds;
   const bare = tris(world);
 
-  it('world triangle budget with the farm: at most 115,000 in all and 12,000 per chunk', () => {
+  it('triangle budget with the farm: the old meadow (middle 6 x 6 chunks) at most 115,000, and 12,000 per chunk', () => {
     let max = 0;
-    for (let z = 0; z < 6; z++) for (let x = 0; x < 6; x++) {
+    let meadow = 0;
+    for (let z = 0; z < 12; z++) for (let x = 0; x < 12; x++) {
       const g = buildChunkGeometry(world, x, z, uvFor);
-      max = Math.max(max, g.indices.length / 3 + g.transparent.indices.length / 3);
+      const t = g.indices.length / 3 + g.transparent.indices.length / 3;
+      max = Math.max(max, t);
+      if (x >= 3 && x <= 8 && z >= 3 && z <= 8) meadow += t;
     }
-    console.log(`farm budget: world ${bare} triangles, largest chunk ${max}`);
-    expect(bare).toBeLessThanOrEqual(115_000);
+    console.log(`farm budget: world ${bare} triangles, old meadow ${meadow}, largest chunk ${max}`);
+    expect(meadow).toBeLessThanOrEqual(115_000);
     expect(max).toBeLessThanOrEqual(12_000);
   });
 
@@ -67,7 +70,9 @@ describe('farm budgets', () => {
     for (const c of cells) world.set(c[0], c[1], c[2], BlockId.Air);
   });
 
-  it('a chunk rebuild after one stage change takes under 12 ms', () => {
+  // Chunk A: a chunk column is 68 high now (3.4 times the cells), so the guard is looser until the
+  // 16-high mesh sections of chunk B (Task 9: under 3 ms typical, 8 ms guard). Number reported.
+  it('a chunk rebuild after one stage change takes under 40 ms (chunk A; sections bring it back in chunk B)', () => {
     const [cell] = plantField(world, beds, 1, 1);
     buildChunkGeometry(world, Math.floor(cell[0] / CHUNK_SIZE), Math.floor(cell[2] / CHUNK_SIZE), uvFor); // warm up
     world.set(cell[0], cell[1], cell[2], cropBlock('wheat', 2));
@@ -75,7 +80,7 @@ describe('farm budgets', () => {
     buildChunkGeometry(world, Math.floor(cell[0] / CHUNK_SIZE), Math.floor(cell[2] / CHUNK_SIZE), uvFor);
     const ms = performance.now() - t0;
     console.log(`farm budget: one chunk rebuild ${ms.toFixed(1)} ms (desktop)`);
-    expect(ms).toBeLessThan(12);
+    expect(ms).toBeLessThan(40);
     world.set(cell[0], cell[1], cell[2], BlockId.Air);
   });
 
@@ -109,7 +114,7 @@ describe('farm budgets', () => {
     const inv = new Inventory();
     const farm = new Farm(w, inv);
     const crops = [];
-    for (let x = 4; x < 44 && crops.length < 400; x++) for (let z = 4; z < 14 && crops.length < 400; z++) {
+    for (let x = 52; x < 92 && crops.length < 400; x++) for (let z = 52; z < 62 && crops.length < 400; z++) {
       const y = w.topSolidY(x, z) + 1;
       w.set(x, y, z, cropBlock('wheat', 0));
       crops.push([x, y, z, 0]);

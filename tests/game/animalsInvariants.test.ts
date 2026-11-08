@@ -7,7 +7,11 @@ import { isStandable, type Cell } from '../../src/core/pathfind';
 import { canPlace } from '../../src/core/placement';
 import { mulberry32 } from '../../src/core/rng';
 import { applySave, parseSave, serialise } from '../../src/core/save';
-import { GROUND_Y } from '../../src/core/village';
+import { ORIGIN } from '../../src/core/bounds';
+import { GROUND_Y as MEADOW_GROUND_Y } from '../../src/core/village';
+
+/** The village ground in world coordinates (the meadow sits at +48 in the big world). */
+const GROUND_Y = MEADOW_GROUND_Y + ORIGIN.y;
 import { generateWorld } from '../../src/core/worldgen';
 import { DEFAULT_HERD, Herd } from '../../src/game/animals';
 import { Game } from '../../src/game/game';
