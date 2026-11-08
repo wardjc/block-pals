@@ -8,7 +8,7 @@ import { GamepadInput } from './input/gamepad';
 import { loadMapping } from './input/mapping';
 import { GestureClassifier, type GestureEvent } from './input/gesture';
 import { createDebouncer, resolveHold, resolveTap } from './input/tap';
-import { idleVillager, makeEmblem, makePalModel, makePlayerModel, makeVillagerModel } from './render/characters';
+import { idleVillager, makeEmblem, makePalModel, makePlayerModel, makeVillagerModel, placeEmblem } from './render/characters';
 import { pipHiddenFor } from './render/cameraRig';
 import { GameScene } from './render/scene';
 import { sfx } from './audio/sfx';
@@ -62,10 +62,7 @@ for (const def of VILLAGERS) {
 // A picture sign over every door (house -> emoji), floating just in front of the wall.
 for (const house of village.houses) {
   const emblem = makeEmblem(DOOR_EMBLEMS[house.id]);
-  const out = [house.doorFront[0] - house.doorCells[0][0], house.doorFront[2] - house.doorCells[0][2]];
-  const cx = house.doorCells.reduce((a, c) => a + c[0] + 0.5, 0) / house.doorCells.length;
-  const cz = house.doorCells.reduce((a, c) => a + c[2] + 0.5, 0) / house.doorCells.length;
-  emblem.position.set(cx + out[0] * 0.8, house.groundY + 4.9, cz + out[1] * 0.8);
+  placeEmblem(emblem, house);
   scene.add(emblem);
 }
 let pipHop = 0; // seconds into the happy hop; 0 = not hopping
