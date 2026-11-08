@@ -543,6 +543,17 @@ describe('Game: farm', () => {
     expect(game.inventory.count(BlockId.AppleLeaves)).toBe(0);
   });
 
+  it('apples four blocks up a full tree are picked from the ground', () => {
+    const { world, game } = setup();
+    world.set(6, 5, 5, BlockId.AppleLeaves); // feet are at y 1
+    game.applyIntent({ kind: 'dig', cell: [6, 5, 5] });
+    expect(world.get(6, 5, 5)).toBe(BlockId.Leaves);
+    expect(game.inventory.count(ItemId.Apple)).toBe(2);
+    world.set(6, 6, 5, BlockId.AppleLeaves); // five up is too high
+    game.applyIntent({ kind: 'dig', cell: [6, 6, 5] });
+    expect(world.get(6, 6, 5)).toBe(BlockId.AppleLeaves);
+  });
+
   it('selecting a seed does not change what pad Collect does', () => {
     const { world, game } = setup(bagWith([ItemId.WheatSeed, 2]));
     world.set(6, 1, 5, BlockId.Wood);

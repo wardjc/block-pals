@@ -6,7 +6,7 @@ import { Inventory } from '../core/inventory';
 import { isItemId, ITEMS, type StackId } from '../core/items';
 import { findPath, isStandable, pathTowards, smoothPath, type Cell } from '../core/pathfind';
 
-import { canCollect, canPlace, withinReach } from '../core/placement';
+import { canCollect, canPlace, withinPickReach, withinReach } from '../core/placement';
 import { RECIPES } from '../core/recipes';
 import type { World } from '../core/world';
 import type { Action } from '../input/mapping';
@@ -187,7 +187,7 @@ export class Game {
   }
 
   private collect(cell: Cell): void {
-    if (!canCollect(this.world, cell) || !withinReach(this.player.feetCell(), cell) || this.holdsSomeoneUp(cell)) return;
+    if (!canCollect(this.world, cell) || !withinPickReach(this.world, this.player.feetCell(), cell) || this.holdsSomeoneUp(cell)) return;
     const here = this.world.get(...cell);
     // Every drop goes through here. A plant (or ripe apple leaves) is never carried: the farm
     // gives seeds and harvest items instead, all or nothing.

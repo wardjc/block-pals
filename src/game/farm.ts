@@ -120,6 +120,7 @@ export class Farm {
     }
     // Plants with no record: every plant is an edit, so only the edits need scanning.
     for (const [x, y, z, id] of this.world.edits()) {
+      if (id === BlockId.Wood) { this.adoptGrownTree(x, y, z); continue; }
       const info = cropOf(id);
       if (!info || this.world.get(x, y, z) !== id) continue;
       if (info.kind === 'apple') {
@@ -130,16 +131,36 @@ export class Farm {
     }
   }
 
+  /**
+   * A grown tree (planted by him, so its blocks are edits) whose record the save lost: found by its
+   * shape, a trunk base on soil with the stamp's leaves above. A plain pillar of wood is not a tree.
+   */
+  private adoptGrownTree(x: number, y: number, z: number): void {
+    const w = this.world;
+    if (w.get(x, y, z) !== BlockId.Wood || w.get(x, y - 1, z) === BlockId.Wood || w.get(x, y + 1, z) !== BlockId.Wood) return;
+    const soil = w.get(x, y - 1, z);
+    if (soil !== BlockId.Grass && soil !== BlockId.Dirt && soil !== BlockId.Farmland) return;
+    const leaf = (id: BlockId): boolean => id === BlockId.Leaves || id === BlockId.AppleLeaves;
+    const young = leaf(w.get(x, y + 2, z)) && w.get(x, y + 3, z) !== BlockId.Wood;
+    const full = w.get(x, y + 3, z) === BlockId.Wood && leaf(w.get(x, y + 4, z));
+    if (!young && !full) return;
+    if (this.trees.some(t => t.x === x && t.y === y && t.z === z)) return;
+    const shown = this.shownStage(x, y, z) ?? 1;
+    this.trees.push({ x, y, z, p: 0, stage: shown, shown });
+  }
+
   /** What a tree at this base looks like now: 0 sapling .. 3 ripe, or null if there is no tree base. */
   private shownStage(x: number, y: number, z: number): number | null {
     const base = this.world.get(x, y, z);
     if (base === BlockId.Sapling) return 0;
     if (base !== BlockId.Wood) return null;
     if (this.world.get(x, y + 3, z) !== BlockId.Wood) return 1;
+    // Two apple cells, not one: a tree planted two blocks away shares one ring cell and must not look ripe.
+    let apples = 0;
     for (const [dx, dz] of [[1, 0], [-1, 0], [0, 1], [0, -1]]) {
-      if (this.world.get(x + dx, y + 4, z + dz) === BlockId.AppleLeaves) return 3;
+      if (this.world.get(x + dx, y + 4, z + dz) === BlockId.AppleLeaves) apples++;
     }
-    return 2;
+    return apples >= 2 ? 3 : 2;
   }
 
   // ---------------------------------------------------------------- planting
@@ -286,7 +307,8 @@ export class Farm {
         for (let dz = -1; dz <= 1; dz++) for (const h of [4, 5]) fill(x + dx, y + h, z + dz, BlockId.Leaves);
       }
     } else if (stage === 3) {
-      for (const [dx, dz] of ring) if (w.get(x + dx, y + 4, z + dz) === BlockId.Leaves) w.set(x + dx, y + 4, z + dz, BlockId.AppleLeaves);
+      // Leaves he dug from the ring come back as apples (Air only; anything he built there stays).
+      for (const [dx, dz] of ring) fill(x + dx, y + 4, z + dz, BlockId.AppleLeaves, [BlockId.Leaves]);
     }
     return true;
   }

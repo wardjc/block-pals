@@ -442,3 +442,95 @@ describe('Farm: records', () => {
     expect(world.get(3, 1, 3)).toBe(cropBlock('carrot', 0));
   });
 });
+
+describe('Farm: chunk B review carry-overs', () => {
+  const base: Cell = [6, 1, 6];
+  const ring: Cell[] = [[5, 5, 6], [7, 5, 6], [6, 5, 5], [6, 5, 7]];
+  const appleCells = (world: World): number => ring.filter(c => world.get(...c) === BlockId.AppleLeaves).length;
+
+  it('canopy leaves he dug before stage 3 are put back, so a ripe tree always has apples to pick', () => {
+    const { world, farm } = setup();
+    farm.plant(base, ItemId.AppleSapling, []);
+    farm.help(base);
+    farm.help(base);
+    for (const c of ring) world.set(...c, BlockId.Air); // he dug the ring
+    expect(farm.help(base)).toMatchObject({ type: 'helped', ripe: true });
+    expect(appleCells(world)).toBe(4);
+    expect(farm.nearestRipe(base, 3)).not.toBeNull();
+    // Picking still works and leaves ordinary leaves behind.
+    expect(farm.harvest(ring[0])).toMatchObject({ type: 'harvested', ripe: true });
+    expect(appleCells(world)).toBe(0);
+  });
+
+  it('a block he built in the ring is not replaced', () => {
+    const { world, farm } = setup();
+    farm.plant(base, ItemId.AppleSapling, []);
+    farm.help(base);
+    farm.help(base);
+    world.set(...ring[0], BlockId.Planks);
+    farm.help(base);
+    expect(world.get(...ring[0])).toBe(BlockId.Planks);
+    expect(appleCells(world)).toBe(3);
+  });
+
+  it('a save that lost its trees list still rebuilds grown trees, which keep growing and regrowing', () => {
+    const a = setup();
+    a.farm.plant(base, ItemId.AppleSapling, []);
+    a.farm.help(base);
+    a.farm.help(base); // full tree
+    a.farm.plant([9, 1, 9], ItemId.AppleSapling, []);
+    a.farm.help([9, 1, 9]); // young tree
+    a.farm.records();
+    const fresh = new Farm(a.world, new Inventory());
+    fresh.restore([], undefined); // trees list lost
+    const trees = fresh.records().trees.sort((p, q) => p.x - q.x);
+    expect(trees).toEqual([{ x: 6, y: 1, z: 6, stage: 2, p: 0 }, { x: 9, y: 1, z: 9, stage: 1, p: 0 }]);
+    fresh.advance(TREE_STAGE_MS[2]);
+    fresh.update(0.03);
+    expect(appleCells(a.world)).toBe(4);
+    const inv = new Inventory();
+    const again = new Farm(a.world, inv);
+    again.restore([], []);
+    expect(again.records().trees.find(t => t.x === 6)!.stage).toBe(3);
+    again.harvest(ring[0]);
+    again.advance(APPLE_REGROW_MS);
+    again.update(0.03);
+    expect(appleCells(a.world)).toBe(4);
+  });
+
+  it('a pillar of wood he built is not mistaken for a tree', () => {
+    const { world } = setup();
+    for (let y = 1; y <= 4; y++) world.set(3, y, 3, BlockId.Wood);
+    const fresh = new Farm(world, new Inventory());
+    fresh.restore([], []);
+    expect(fresh.records().trees).toEqual([]);
+  });
+
+  it('records() drops a dug crop and never re-creates one', () => {
+    const { world, farm } = setup();
+    farm.plant(at(3, 3), ItemId.WheatSeed, []);
+    farm.plant(at(4, 3), ItemId.WheatSeed, []);
+    world.set(3, 1, 3, BlockId.Air);
+    expect(farm.records().crops.map(c => c.x)).toEqual([4]);
+    farm.advance(OFFLINE_CAP_MS);
+    farm.update(0.03);
+    expect(farm.records().crops.map(c => c.x)).toEqual([4]);
+    expect(world.get(3, 1, 3)).toBe(BlockId.Air);
+  });
+
+  it("advance has its own 8 h cap, however big the number it is given", () => {
+    const a = setup();
+    const b = setup();
+    for (const s of [a, b]) { s.farm.plant(at(3, 3), ItemId.WheatSeed, []); s.farm.plant(at(5, 5), ItemId.AppleSapling, []); }
+    a.farm.advance(OFFLINE_CAP_MS);
+    b.farm.advance(1e15);
+    for (const s of [a, b]) for (let i = 0; i < 4; i++) s.farm.update(0.03);
+    expect(b.farm.records()).toEqual(a.farm.records());
+    expect(stageAt(b.world, at(3, 3))).toBe(3);
+    expect(b.farm.records().trees[0].stage).toBe(OFFLINE_CAP_MS >= 600_000 ? 3 : 2); // 8 h ripens a tree too
+    // Many capped calls still end ripe: nothing wilts.
+    for (let i = 0; i < 20; i++) b.farm.advance(1e15);
+    b.farm.update(0.03);
+    expect(stageAt(b.world, at(3, 3))).toBe(3);
+  });
+});

@@ -30,3 +30,12 @@ export function withinReach(from: Cell, cell: Cell, reach = 3): boolean {
     Math.abs(from[2] - cell[2]),
   ) <= reach;
 }
+
+/**
+ * Reach for picking (press and hold). Ripe apples hang four blocks up a full tree, so they are
+ * picked from the ground: an apple counts from eye height (one block higher than the feet).
+ */
+export function withinPickReach(world: World, from: Cell, cell: Cell): boolean {
+  if (world.get(...cell) === BlockId.AppleLeaves) return withinReach([from[0], from[1] + 1, from[2]], cell);
+  return withinReach(from, cell);
+}

@@ -2,7 +2,7 @@ import { BLOCKS } from '../core/blocks';
 import { canPlant } from '../core/crops';
 import { FEEDS, isItemId, ITEMS, type StackId } from '../core/items';
 import type { Cell } from '../core/pathfind';
-import { canCollect, canPlace, withinReach } from '../core/placement';
+import { canCollect, canPlace, withinPickReach, withinReach } from '../core/placement';
 import type { World } from '../core/world';
 
 /** What a quick tap does (spec §7a): walk or build. A tap never digs. */
@@ -93,7 +93,7 @@ export function resolveHold(
   if (!world.inBounds(x, y, z) || !canCollect(world, hit.cell)) return { kind: 'none' };
   const standers = [playerFeet, ...occupied];
   if (standers.some(([sx, sy, sz]) => sx === x && sy === y + 1 && sz === z)) return { kind: 'none' };
-  if (!withinReach(playerFeet, hit.cell)) return { kind: 'walkNear', block: hit.cell };
+  if (!withinPickReach(world, playerFeet, hit.cell)) return { kind: 'walkNear', block: hit.cell };
   return { kind: 'dig', cell: hit.cell };
 }
 

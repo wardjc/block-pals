@@ -45,7 +45,7 @@ function reload(game: Game, now: number): Game {
   return next;
 }
 
-function run(seed: number, steps: number): void {
+function run(seed: number, steps: number): number {
   const rand = mulberry32(seed);
   const pick = <T>(list: T[]): T => list[Math.floor(rand() * list.length)];
   let game = new Game(generateWorld(2026));
@@ -55,6 +55,8 @@ function run(seed: number, steps: number): void {
   let clock = new GrowthClock(now);
   const stages = new Map<string, number>();
   const treeStage = new Map<string, number>();
+  let applesPicked = 0;
+  const picked = new Set<string>();
   const aisles = [37, 40, 43];
   const at = (x: number, z: number): Cell => [x, GROUND_Y + 1, z];
   const stand = (x: number, z: number): void => {
@@ -86,10 +88,25 @@ function run(seed: number, steps: number): void {
     } else if (r < 0.62) {
       // hold on a plant (or a random cell)
       const plants = [...plantsBefore.keys()].map(k => k.split(',').map(Number) as Cell);
-      const target = plants.length > 0 && rand() < 0.8 ? pick(plants) : isTreeCell(cell) ? at(x, 34) : cell;
+      const ripe = game.farm.records().trees.filter(t => t.stage === 3);
+      const ripeRing = ripe.flatMap(t => ([[1, 0], [-1, 0], [0, 1], [0, -1]] as const).map(([dx, dz]) => [t.x + dx, t.y + 4, t.z + dz] as Cell))
+        .filter(c => game.world.get(...c) === BlockId.AppleLeaves);
+      const target = ripeRing.length > 0 && rand() < 0.6 ? pick(ripeRing)
+        : plants.length > 0 && rand() < 0.8 ? pick(plants) : isTreeCell(cell) ? at(x, 34) : cell;
       stand(target[0], target[2]);
       if (plantsBefore.has(key(target))) dug.add(key(target));
-      game.applyIntent({ kind: 'dig', cell: target });
+      // Picking ripe apples is the one thing that sends a tree back a stage: it regrows (counted below).
+      if (game.world.get(...target) === BlockId.AppleLeaves) {
+        const apples = game.inventory.count(ItemId.Apple);
+        game.applyIntent({ kind: 'dig', cell: target });
+        if (game.inventory.count(ItemId.Apple) === apples + 2) {
+          applesPicked++;
+          picked.add(game.farm.records().trees.map(t => `${t.x},${t.y},${t.z}`).join('|'));
+          for (const t of game.farm.records().trees) treeStage.set(`${t.x},${t.y},${t.z}`, 0); // may re-ripen later
+        }
+      } else {
+        game.applyIntent({ kind: 'dig', cell: target });
+      }
     } else if (r < 0.68) {
       // dig the soil or anything else, but not a tree (digging his own tree is allowed, and tested elsewhere)
       const target: Cell = [x, GROUND_Y + (rand() < 0.5 ? 0 : 1), z];
@@ -171,12 +188,18 @@ function run(seed: number, steps: number): void {
   // The stream really played: plants were grown, some all the way to ripe.
   expect(stages.size).toBeGreaterThan(5);
   expect([...stages.values()].some(s => s === 3)).toBe(true);
+  return applesPicked;
 }
+
+let totalApples = 0;
 
 describe('farm invariants over random action streams (real generated world)', () => {
   for (const seed of [1, 2, 3, 4, 5, 6]) {
     it(`seed ${seed}: nothing wilts, nothing is lost, nothing throws, reloads are exact`, () => {
-      run(seed, 700);
+      totalApples += run(seed, 700);
     });
   }
+  it('apples were picked (and the trees regrew without anything breaking) inside the streams', () => {
+    expect(totalApples).toBeGreaterThan(0);
+  });
 });
