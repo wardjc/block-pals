@@ -72,6 +72,12 @@ export class Farm {
    */
   records(): { crops: CropRec[]; trees: TreeRec[] } {
     this.flush();
+    // Records whose block he has dug away are dropped now, so a save and a reload agree.
+    for (const [k, c] of this.crops) {
+      const info = cropOf(this.world.get(c.x, c.y, c.z));
+      if (!info || info.kind === 'apple') this.crops.delete(k);
+    }
+    for (const t of [...this.trees]) if (this.shownStage(t.x, t.y, t.z) === null) this.dropTree(t);
     return {
       crops: [...this.crops.values()].map(c => ({ x: c.x, y: c.y, z: c.z, p: c.p })),
       trees: this.trees.map(t => ({ x: t.x, y: t.y, z: t.z, stage: t.stage as TreeRec['stage'], p: t.p })),
