@@ -3,7 +3,7 @@ import { insideWall } from '../core/bounds';
 import { canCraft, craft } from '../core/crafting';
 import { cropOf, yields } from '../core/crops';
 import { Inventory, MAX_STACK } from '../core/inventory';
-import { GIFT, isItemId, ITEMS, type ItemId, type StackId } from '../core/items';
+import { FEEDS, GIFT, isItemId, ITEMS, type ItemId, type StackId } from '../core/items';
 import { findPath, isStandable, pathTowards, smoothPath, type Cell } from '../core/pathfind';
 
 import { canCollect, canPlace, withinPickReach, withinReach } from '../core/placement';
@@ -12,6 +12,7 @@ import type { World } from '../core/world';
 import type { Action } from '../input/mapping';
 import type { HoldIntent, TapIntent } from '../input/tap';
 import type { AnimalKind, Herd } from './animals';
+import { EatState } from './eating';
 import { Farm } from './farm';
 import { Player } from './player';
 
@@ -28,6 +29,8 @@ export type GameEvent =
   /** The animal is resting after a gift: it was only happy, nothing was used. */
   | { type: 'resting'; animal: number; kind: AnimalKind }
   | { type: 'petted'; animal: number; kind: AnimalKind }
+  /** One edible was eaten (or drunk). Nothing else changes: there is no hunger and no stat. */
+  | { type: 'ate'; id: ItemId }
   | { type: 'idle' };
 
 /** Seconds of quiet before each idle hint; after the last one Pip waits for the next action. */
@@ -37,7 +40,7 @@ const PIT_CELLS = 30;
 const LIFT_RADIUS = 8;
 
 /** Tap and hold intents from the touch screen, plus the pad's collect. */
-export type Intent = TapIntent | HoldIntent | { kind: 'collect'; cell: Cell };
+export type Intent = TapIntent | HoldIntent | { kind: 'collect'; cell: Cell } | { kind: 'eat' };
 
 export class Game {
   readonly world: World;
@@ -45,6 +48,8 @@ export class Game {
   readonly player: Player;
   /** Growth timers for the plants (the plants themselves are blocks in the world). */
   readonly farm: Farm;
+  /** The 1.3 s munch clock (animation only; it is also the debounce). */
+  readonly eating = new EatState();
   /** The friendly herd in the pasture (set by main). Animals are not blocks: no dig path reaches them. */
   herd: Herd | null = null;
   /** Bumps when an animal gives a gift, so the autosave notices. */
@@ -124,6 +129,9 @@ export class Game {
         this.active();
         if (withinReach(this.player.feetCell(), intent.cell)) this.farm.help(intent.cell);
         return;
+      case 'eat':
+        this.eat();
+        return;
       case 'feed':
         this.active();
         this.feedAnimal(intent.animal);
@@ -136,6 +144,39 @@ export class Game {
       }
       default:
     }
+  }
+
+  /**
+   * Eats (or drinks) one of the selected edible: exactly one item, nothing else. Refused while the
+   * game is paused, while a munch is running (the debounce), and for anything that is not edible.
+   */
+  private eat(): void {
+    if (this.paused) return;
+    const sel = this.effectiveSelected();
+    if (sel === 'hand' || !isItemId(sel) || !ITEMS[sel].edible || this.inventory.count(sel) <= 0) return;
+    if (!this.eating.start(sel)) return;
+    this.active();
+    this.inventory.remove(sel, 1);
+    this.normaliseSelection();
+    this.emit({ type: 'ate', id: sel });
+  }
+
+  /** The animal right in front of him (pad Place), if any. */
+  private animalInFront(): number | null {
+    const { x, z } = this.player.pos;
+    const h = this.player.heading;
+    let best: number | null = null;
+    let bestD = 2.4;
+    for (const a of this.herd?.animals ?? []) {
+      const dx = a.x - x;
+      const dz = a.z - z;
+      const d = Math.hypot(dx, dz);
+      if (d > bestD || Math.abs(a.y - this.player.pos.y) > 1.5) continue;
+      if (d > 0.5 && (dx * Math.sin(h) + dz * Math.cos(h)) / d < 0.3) continue;
+      best = a.id;
+      bestD = d;
+    }
+    return best;
   }
 
   /**
@@ -297,9 +338,24 @@ export class Game {
           }
         }
         return;
-      case 'place':
+      case 'place': {
+        // With a food selected: an animal right in front is fed; otherwise an edible is eaten. Blocks place as before.
+        const sel = this.effectiveSelected();
+        if (sel !== 'hand' && isItemId(sel)) {
+          const animal = FEEDS.includes(sel) ? this.animalInFront() : null;
+          if (animal !== null) {
+            this.active();
+            this.feedAnimal(animal);
+            return;
+          }
+          if (ITEMS[sel].edible) {
+            this.eat();
+            return;
+          }
+        }
         this.applyIntent({ kind: 'place', cell: this.frontCell(0) });
         return;
+      }
       case 'nextSlot':
         this.active();
         this.selectNext();
@@ -338,7 +394,10 @@ export class Game {
   }
 
   update(dt: number): void {
-    if (!this.paused) this.player.update(this.world, dt);
+    if (!this.paused) {
+      this.player.update(this.world, dt);
+      this.eating.update(dt);
+    }
     this.normaliseSelection();
     if (this.paused) return;
     if (this.idleHints >= IDLE_SECONDS.length) return;
