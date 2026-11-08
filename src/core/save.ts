@@ -2,6 +2,7 @@ import type { Game } from '../game/game';
 import { BLOCKS, BlockId } from './blocks';
 import { LEGACY_WORLD, WORLD } from './bounds';
 import { Inventory, MAX_STACK } from './inventory';
+import { isItemId } from './items';
 import { isStandable } from './pathfind';
 import type { VillageLayout } from './village';
 import type { World } from './world';
@@ -45,11 +46,17 @@ export interface SaveData {
   player: { x: number; y: number; z: number };
   /** Hotbar order (first collected first). Optional: saves before the final review lack it. */
   order?: number[];
+  /** Item kinds in the bag (seeds, food, wool and so on). Optional and additive: absent in saves from step 1. */
+  items?: Record<number, number>;
+  /** Item order, first obtained first (emptied kinds keep their place). */
+  itemOrder?: number[];
   flags: SaveFlags;
 }
 
 export function serialise(game: Game, seed: number, flags: SaveFlags = { ledToVillage: false }): SaveData {
-  return {
+  const items = game.inventory.itemsToJSON();
+  const itemOrder = game.inventory.itemOrder();
+  const data: SaveData = {
     version: 2,
     gen: GEN_VERSION,
     seed,
@@ -59,6 +66,12 @@ export function serialise(game: Game, seed: number, flags: SaveFlags = { ledToVi
     order: game.inventory.order(),
     flags: { ledToVillage: flags.ledToVillage },
   };
+  // Only written when there are items, so a block-only bag saves exactly what step 1 saved.
+  if (itemOrder.length > 0) {
+    data.items = items;
+    data.itemOrder = itemOrder;
+  }
+  return data;
 }
 
 /** Carries everything over untouched: same seed, edits (the v1 world is the corner of the new one), bag. */
@@ -95,6 +108,29 @@ function validEdit(edit: unknown, size: { x: number; y: number; z: number }): ed
   return Array.isArray(edit) && edit.length === 4
     && [size.x, size.y, size.z].every((n, axis) => Number.isInteger(edit[axis]) && edit[axis] >= 0 && edit[axis] < n)
     && isBlockId(edit[3]);
+}
+
+/**
+ * Items are cleaned entry by entry: an unknown id or a bad count is dropped on its own, so one bad
+ * entry never costs the rest of the bag, the blocks or the world. Anything that is not a list or a
+ * record is ignored.
+ */
+function cleanItems(items: unknown, itemOrder: unknown): Pick<SaveData, 'items' | 'itemOrder'> {
+  const kept: Record<number, number> = {};
+  if (isRecord(items)) {
+    for (const [key, n] of Object.entries(items)) {
+      const id = Number(key);
+      if (String(id) === key && isItemId(id) && typeof n === 'number' && Number.isInteger(n) && n >= 0 && n <= MAX_STACK) kept[id] = n;
+    }
+  }
+  const order: number[] = [];
+  if (Array.isArray(itemOrder)) {
+    for (const id of itemOrder) {
+      if (typeof id === 'number' && isItemId(id) && !order.includes(id)) order.push(id);
+    }
+  }
+  for (const key of Object.keys(kept)) if (!order.includes(Number(key))) order.push(Number(key));
+  return order.length === 0 ? {} : { items: kept, itemOrder: order };
 }
 
 function validInventory(inv: unknown): boolean {
@@ -151,6 +187,9 @@ export function inspectSave(raw: string | null): { data: SaveData; skipped: numb
     }
     if (!validInventory(data.inventory)) data.inventory = {};
     if ('order' in data && !Inventory.validOrder(data.order)) delete data.order;
+    delete data.items;
+    delete data.itemOrder;
+    Object.assign(data, cleanItems(parsed.items, parsed.itemOrder));
     return { data, skipped };
   } catch {
     return null;
@@ -174,7 +213,7 @@ export function applySave(data: SaveData): {
   const inHouse = village.houses.some(h => x >= h.rect.x0 && x < h.rect.x1 + 1 && z >= h.rect.z0 && z < h.rect.z1 + 1);
   return {
     world,
-    inventory: Inventory.fromJSON(data.inventory, data.order),
+    inventory: Inventory.fromJSON(data.inventory, data.order, data.items, data.itemOrder),
     spawn: !inHouse && isStandable(world, [Math.floor(x), Math.floor(y), Math.floor(z)])
       ? { ...data.player } : spawn,
     village,
@@ -328,7 +367,7 @@ export function startAutosave(
   game: Game, seed: number, storage: Storage | null, flags: SaveFlags = { ledToVillage: false },
 ): () => void {
   // `flags` is read live, so flipping ledToVillage later also triggers a save.
-  const snapshot = (): string => JSON.stringify([game.inventory.toJSON(), game.inventory.order(), flags]);
+  const snapshot = (): string => JSON.stringify([game.inventory.toJSON(), game.inventory.order(), game.inventory.itemsToJSON(), game.inventory.itemOrder(), flags]);
   let savedInventory = snapshot();
   let savedPos = { ...game.player.pos };
   // Stays true until a write succeeds: a failed or refused write is retried, never forgotten.

@@ -1,7 +1,8 @@
-import { BlockId } from '../core/blocks';
+import { BlockId, dropFor } from '../core/blocks';
 import { insideWall } from '../core/bounds';
 import { canCraft, craft } from '../core/crafting';
 import { Inventory } from '../core/inventory';
+import { isItemId, type StackId } from '../core/items';
 import { findPath, isStandable, pathTowards, smoothPath, type Cell } from '../core/pathfind';
 
 import { canCollect, canPlace, withinReach } from '../core/placement';
@@ -15,7 +16,7 @@ export type GameEvent =
   | { type: 'collected'; id: BlockId }
   | { type: 'placed'; id: BlockId }
   | { type: 'crafted'; recipe: string }
-  | { type: 'full'; id: BlockId }
+  | { type: 'full'; id: StackId }
   | { type: 'noPath' }
   | { type: 'walking'; to: Cell }
   | { type: 'lifted' }
@@ -34,7 +35,7 @@ export class Game {
   readonly world: World;
   readonly inventory: Inventory;
   readonly player: Player;
-  selected: BlockId | 'hand' = 'hand';
+  selected: StackId | 'hand' = 'hand';
   /** Hook for the HUD craft screen (Task 11). */
   /** While true (overlay open) the player does not move. */
   paused = false;
@@ -68,7 +69,7 @@ export class Game {
   }
 
   /** The selection as the player experiences it: an empty stack is the hand. */
-  effectiveSelected(): BlockId | 'hand' {
+  effectiveSelected(): StackId | 'hand' {
     this.normaliseSelection();
     return this.selected;
   }
@@ -174,7 +175,7 @@ export class Game {
 
   private collect(cell: Cell): void {
     if (!canCollect(this.world, cell) || !withinReach(this.player.feetCell(), cell) || this.holdsSomeoneUp(cell)) return;
-    const id = this.world.get(...cell);
+    const id = dropFor(this.world.get(...cell)); // tilled soil gives plain dirt
     if (this.inventory.add(id, 1) === 0) {
       this.emit({ type: 'full', id });
       return;
@@ -185,7 +186,7 @@ export class Game {
 
   private place(cell: Cell): void {
     const id = this.effectiveSelected();
-    if (id === 'hand') return;
+    if (id === 'hand' || isItemId(id)) return; // items are never placed as blocks
     if (!withinReach(this.player.feetCell(), cell) || !canPlace(this.world, cell, this.occupied())) return;
     if (!this.inventory.remove(id, 1)) return;
     this.world.set(...cell, id);
@@ -226,8 +227,7 @@ export class Game {
   }
 
   selectNext(): void {
-    const items = this.inventory.hotbar();
-    const order: Array<BlockId | 'hand'> = ['hand', ...items];
+    const order: Array<StackId | 'hand'> = ['hand', ...this.inventory.slots()];
     const i = order.indexOf(this.selected);
     this.selected = order[(i + 1) % order.length];
   }

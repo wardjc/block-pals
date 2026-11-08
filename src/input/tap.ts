@@ -1,4 +1,4 @@
-import type { BlockId } from '../core/blocks';
+import { isItemId, type StackId } from '../core/items';
 import type { Cell } from '../core/pathfind';
 import { canCollect, canPlace, withinReach } from '../core/placement';
 import type { World } from '../core/world';
@@ -26,14 +26,14 @@ const frontOf = ({ cell: c, normal: n }: { cell: Cell; normal: Cell }): Cell => 
  */
 export function resolveTap(
   hit: { cell: Cell; normal: Cell } | null,
-  selected: BlockId | 'hand',
+  selected: StackId | 'hand',
   playerFeet: Cell,
   world: World,
   occupied: Cell[],
 ): TapIntent {
   if (!hit) return { kind: 'none' };
   const front = frontOf(hit);
-  if (selected !== 'hand' && withinReach(playerFeet, hit.cell) && canPlace(world, front, occupied)) {
+  if (selected !== 'hand' && !isItemId(selected) && withinReach(playerFeet, hit.cell) && canPlace(world, front, occupied)) {
     return { kind: 'place', cell: front };
   }
   return { kind: 'walk', to: front };

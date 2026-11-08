@@ -1,5 +1,6 @@
 import { describe, expect, it } from 'vitest';
 import { BlockId } from '../../src/core/blocks';
+import { ItemId } from '../../src/core/items';
 import type { Cell } from '../../src/core/pathfind';
 import { World } from '../../src/core/world';
 import { createDebouncer, resolveHold, resolveTap } from '../../src/input/tap';
@@ -184,5 +185,15 @@ describe('createDebouncer', () => {
     expect(allow('tap', 0)).toBe(true);
     expect(allow('tap', 200)).toBe(false);
     expect(allow('tap', 300)).toBe(true);
+  });
+});
+
+describe('resolveTap with an item selected', () => {
+  it('walks like the hand: an item is never built as a block', () => {
+    const w = flatWorld();
+    for (const item of [ItemId.WheatSeed, ItemId.Apple, ItemId.Wool]) {
+      expect(resolveTap({ cell: [3, 0, 3], normal: up }, item, feet, w, occupied)).toEqual({ kind: 'walk', to: [3, 1, 3] });
+    }
+    expect(resolveTap({ cell: [3, 0, 3], normal: up }, BlockId.Stone, feet, w, occupied)).toEqual({ kind: 'place', cell: [3, 1, 3] });
   });
 });

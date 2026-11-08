@@ -1,6 +1,7 @@
 import { describe, expect, it, vi } from 'vitest';
 import { BlockId } from '../../src/core/blocks';
 import { Inventory } from '../../src/core/inventory';
+import { ItemId } from '../../src/core/items';
 import * as pathfinding from '../../src/core/pathfind';
 import { World } from '../../src/core/world';
 import { generateWorld } from '../../src/core/worldgen';
@@ -383,4 +384,49 @@ it('falls back to the BFS route if A* exhausts its search', () => {
   } finally {
     search.mockRestore();
   }
+});
+
+describe('items in the game', () => {
+  it('an item is never placed as a block, and keeps its count', () => {
+    const inv = new Inventory();
+    inv.add(ItemId.WheatSeed, 3);
+    const { world, game, events } = setup(inv);
+    game.selected = ItemId.WheatSeed;
+    game.applyIntent({ kind: 'place', cell: [6, 1, 5] });
+    expect(world.get(6, 1, 5)).toBe(BlockId.Air);
+    expect(game.inventory.count(ItemId.WheatSeed)).toBe(3);
+    expect(events.some(e => e.type === 'placed')).toBe(false);
+    expect(game.effectiveSelected()).toBe(ItemId.WheatSeed);
+  });
+
+  it('an emptied item stack falls back to the hand', () => {
+    const inv = new Inventory();
+    inv.add(ItemId.Egg, 1);
+    const { game } = setup(inv);
+    game.selected = ItemId.Egg;
+    inv.remove(ItemId.Egg);
+    expect(game.effectiveSelected()).toBe('hand');
+  });
+
+  it('the pad cycles through the hand, blocks and then items', () => {
+    const inv = new Inventory();
+    inv.add(ItemId.Apple, 1);
+    inv.add(BlockId.Wood, 1);
+    const { game } = setup(inv);
+    game.selectNext();
+    expect(game.selected).toBe(BlockId.Wood);
+    game.selectNext();
+    expect(game.selected).toBe(ItemId.Apple);
+    game.selectNext();
+    expect(game.selected).toBe('hand');
+  });
+
+  it('digging tilled soil gives plain dirt', () => {
+    const { world, game } = setup();
+    world.set(6, 1, 5, BlockId.Farmland);
+    game.applyIntent({ kind: 'dig', cell: [6, 1, 5] });
+    expect(world.get(6, 1, 5)).toBe(BlockId.Air);
+    expect(game.inventory.count(BlockId.Dirt)).toBe(1);
+    expect(game.inventory.count(BlockId.Farmland)).toBe(0);
+  });
 });
