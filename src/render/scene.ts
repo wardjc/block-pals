@@ -3,6 +3,7 @@ import type { World } from '../core/world';
 import { createAtlas } from './atlas';
 import { CameraRig } from './cameraRig';
 import { castVoxelRay, type VoxelHit } from './voxelRay';
+import { DirtyChunks } from './chunkDirty';
 import { ChunkCuller, FOG_FAR } from './chunkCull';
 import { buildChunkGeometry, CHUNK_SIZE, type MeshArrays } from './mesher';
 
@@ -30,6 +31,9 @@ function toGeometry(a: MeshArrays): THREE.BufferGeometry {
   return g;
 }
 
+/** Marked chunks rebuilt per frame, nearest first (a dig or build is next to him, so it is always in this frame). */
+const DIRTY_PER_FRAME = 4;
+
 export class GameScene {
   readonly scene = new THREE.Scene();
   readonly camera: THREE.PerspectiveCamera;
@@ -37,6 +41,7 @@ export class GameScene {
   readonly atlas = createAtlas();
 
   private readonly chunks = new Map<string, ChunkMeshes>();
+  private readonly dirty: DirtyChunks;
   private readonly solidMat: THREE.MeshLambertMaterial;
   private readonly transMat: THREE.MeshLambertMaterial;
   /** Yaw, pitch and the wall-aware distance of the camera (spec §7c). */
@@ -55,6 +60,7 @@ export class GameScene {
   private readonly outline = new THREE.Group();
 
   constructor(private readonly host: HTMLElement, private readonly world: World) {
+    this.dirty = new DirtyChunks(world.sizeX, world.sizeZ);
     this.culler = new ChunkCuller(world.sizeX, world.sizeY, world.sizeZ);
     this.renderer = new THREE.WebGLRenderer({ antialias: false, powerPreference: 'high-performance' });
     this.renderer.setPixelRatio(Math.min(window.devicePixelRatio || 1, 1.5));
@@ -162,19 +168,17 @@ export class GameScene {
     return { chunks: this.chunks.size, visible, triangles: this.renderer.info.render.triangles, drawCalls: this.renderer.info.render.calls };
   }
 
-  /** Rebuilds the chunk containing the cell, plus the neighbour if the cell is on a chunk edge. */
+  /**
+   * Marks the chunk containing the cell (and the neighbour on a chunk edge) for rebuilding. The
+   * rebuild happens once per chunk in `render` (a few per frame, nearest first), or at once with `flush`.
+   */
   rebuildChunkAt(x: number, z: number): void {
-    const cx = Math.floor(x / CHUNK_SIZE);
-    const cz = Math.floor(z / CHUNK_SIZE);
-    const lx = x - cx * CHUNK_SIZE;
-    const lz = z - cz * CHUNK_SIZE;
-    const xs = [cx];
-    const zs = [cz];
-    if (lx === 0) xs.push(cx - 1);
-    if (lx === CHUNK_SIZE - 1) xs.push(cx + 1);
-    if (lz === 0) zs.push(cz - 1);
-    if (lz === CHUNK_SIZE - 1) zs.push(cz + 1);
-    for (const a of xs) for (const b of zs) this.rebuildChunk(a, b);
+    this.dirty.mark(x, z);
+  }
+
+  /** Rebuilds every marked chunk now. */
+  flush(): void {
+    for (const [cx, cz] of this.dirty.take(Infinity, 0, 0)) this.rebuildChunk(cx, cz);
   }
 
   triangleCount(): number {
@@ -282,6 +286,10 @@ export class GameScene {
   }
 
   render(): void {
+    if (this.dirty.size > 0) {
+      const p = this.smoothEye;
+      for (const [cx, cz] of this.dirty.take(DIRTY_PER_FRAME, p.x, p.z)) this.rebuildChunk(cx, cz);
+    }
     this.renderer.render(this.scene, this.camera);
   }
 }
