@@ -397,6 +397,7 @@ if (debugOn) {
     dragging: () => gesture.dragging,
     digSound: () => sfx.digState(),
     voiceLast: () => ({ ...voice.last }),
+    voiceSpeaking: () => voice.speaking(),
     village: () => ({
       houses: village.houses.map(h => ({ id: h.id, rect: h.rect, interior: h.interior, floor: h.floor, doorCells: h.doorCells, groundY: h.groundY, doorFront: h.doorFront, doorInside: h.doorInside, npcSpot: h.npcSpot, greetRect: h.greetRect })),
       route: village.route, square: village.square, gate: village.gate,

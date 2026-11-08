@@ -65,6 +65,8 @@ function bounded<T>(p: Promise<T>, ms: number): Promise<T> {
 
 /** A suspended context may hold a playing clip this much longer past its expected end before it is given up on. */
 const CLIP_GRACE_MS = 30_000;
+/** How long a started utterance gets before `synth.speaking === false` is believed. */
+const TTS_SETTLE_MS = 1500;
 
 export class Voice {
   readonly available: boolean;
@@ -84,6 +86,7 @@ export class Voice {
   private ttsUntil = 0; // an utterance is speaking; cleared by onend / onerror or stop
   private utterance: object | null = null;
   private clipGraceUntil = 0;
+  private ttsStartedAt = 0;
 
   constructor(synth?: SpeechSynthesis | null, private deps?: ClipDeps) {
     this.synth = synth === undefined ? (typeof speechSynthesis !== 'undefined' ? speechSynthesis : null) : synth;
@@ -123,6 +126,13 @@ export class Voice {
       if (ctxState != null && ctxState !== 'running' && now < this.clipGraceUntil) return true;
       this.stop();
       return false;
+    }
+    // The tablet's voice reports it is no longer speaking (and nothing is queued) shortly after it was
+    // started: it has finished (or never started, e.g. no voices) even though no end event arrived.
+    if (this.ttsUntil > 0 && this.utterance && now - this.ttsStartedAt > TTS_SETTLE_MS && this.synth) {
+      let talking = true;
+      try { talking = !!this.synth.speaking || !!this.synth.pending; } catch { /* no signal */ }
+      if (!talking) { this.utterance = null; this.ttsUntil = 0; }
     }
     if (this.ttsUntil > 0 && now >= this.ttsUntil) {
       let talking = false;
@@ -290,6 +300,7 @@ export class Voice {
       if (this.voice) u.voice = this.voice;
       const mine = {};
       this.utterance = mine;
+      this.ttsStartedAt = performance.now();
       this.ttsUntil = performance.now() + Math.max(10_000, text.length * 200); // cap only: onend / onerror end it, and synth.speaking extends it
       const done = (): void => {
         if (this.utterance !== mine) return; // a newer line (or stop) replaced this one

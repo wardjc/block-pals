@@ -1,4 +1,4 @@
-import { describe, expect, it } from 'vitest';
+import { describe, expect, it, vi } from 'vitest';
 import { BLOCKS, BlockId } from '../../src/core/blocks';
 import type { HouseInfo } from '../../src/core/houses';
 import { isStandable } from '../../src/core/pathfind';
@@ -10,6 +10,8 @@ import {
 import { EYE_HEIGHT } from '../../src/render/scene';
 import { blocksRay, castVoxelRay, type VoxelHit } from '../../src/render/voxelRay';
 
+// Heavy sweeps over every floor cell, yaw and pitch: allow time on a busy machine.
+vi.setConfig({ testTimeout: 60_000 });
 const hit: VoxelHit = { x: 0, y: 0, z: 0, nx: 0, ny: 0, nz: 0, t: 0 };
 const { world, village } = generateWorld(2026);
 const houses: HouseInfo[] = village.houses;

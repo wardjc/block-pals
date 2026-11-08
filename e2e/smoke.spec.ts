@@ -360,8 +360,9 @@ test.describe('the village', () => {
     const bakery = v.houses.find(h => h.id === 'bakery')!;
     await page.evaluate(([x, y, z]) => window.__debug.teleport(x + 0.5, y, z + 0.5), bakery.doorFront);
     await walkTo(page, bakery.doorInside, 1.2, 15_000);
-    await expect(page.locator('.bubble')).toContainText('Hi!', { timeout: 4000 });
-    await expect(page.locator('.bubble-picture')).toHaveText('🍞');
+    // The neighbour waits for Pip's own welcome to finish (nobody talks over anybody), so allow for that.
+    await expect(page.locator('.bubble-picture')).toHaveText('🍞', { timeout: 25_000 });
+    await expect(page.locator('.bubble')).toContainText('Hi!');
     await expect.poll(() => page.evaluate(() => window.__debug.voiceLast().source), { timeout: 15_000 }).toBe('clip');
     await expect(page.locator('.bubble')).toBeHidden({ timeout: 4500 });
   });

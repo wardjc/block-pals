@@ -346,6 +346,21 @@ describe('Voice.speaking() cases from the review', () => {
     }
   });
 
+  it('speech that the tablet reports as finished (no end event) stops counting after a moment', async () => {
+    vi.useFakeTimers();
+    try {
+      const r = rig({ manifest: {}, synthSpeaking: false });
+      r.voice.say(TEXT);
+      await vi.advanceTimersByTimeAsync(30);
+      expect(r.synth.speak).toHaveBeenCalledTimes(1);
+      expect(r.voice.speaking()).toBe(true); // just started: give it time
+      await vi.advanceTimersByTimeAsync(2000);
+      expect(r.voice.speaking()).toBe(false);
+    } finally {
+      vi.useRealTimers();
+    }
+  });
+
   it('a clip held by a suspended context still counts while it waits, and ends when it finishes after resuming', async () => {
     vi.useFakeTimers();
     try {
