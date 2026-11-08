@@ -32,8 +32,8 @@ function chicken(variant: number): Part[] {
     [0.2, 0.36, -0.02, 0.06, 0.2, 0.3, wing],
     [-0.08, 0.08, 0.02, 0.04, 0.16, 0.04, 0xf39a1c],
     [0.08, 0.08, 0.02, 0.04, 0.16, 0.04, 0xf39a1c],
-    [-0.07, 0.62, 0.29, 0.04, 0.04, 0.02, EYE],
-    [0.07, 0.62, 0.29, 0.04, 0.04, 0.02, EYE],
+    [-0.075, 0.62, 0.29, 0.04, 0.04, 0.02, EYE], // eyes stick out of the head's side a little: never on its plane
+    [0.075, 0.62, 0.29, 0.04, 0.04, 0.02, EYE],
   ];
 }
 
@@ -97,6 +97,8 @@ function pig(variant: number): Part[] {
 }
 
 const PARTS: Record<AnimalKind, (variant: number) => Part[]> = { chicken, cow, sheep, pig };
+/** The box list of a model (for the z-fight test). */
+export const animalParts = (kind: AnimalKind, variant: number): ReadonlyArray<readonly number[]> => PARTS[kind](variant);
 export const ANIMAL_KINDS: readonly AnimalKind[] = ['chicken', 'cow', 'sheep', 'pig'];
 
 const material = new THREE.MeshLambertMaterial({ vertexColors: true });

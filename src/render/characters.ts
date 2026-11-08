@@ -505,12 +505,25 @@ export function biteScale(bite: number): number {
  * small picture of the food shrinks over the bites. `progress` 0 or 1 (or no pose call at all) leaves
  * the model exactly in its rest pose. Gentle: the biggest movement is a small nod.
  */
+/** The munch pose's arm angle (forward and up to his face). */
+export const EAT_ARM = -1.9;
+/** 0 at both ends of the munch, 1 through the middle; the ramps are 40% of it each (about half a second), so nothing snaps. */
+export function eatEnvelope(progress: number): number {
+  const edge = 0.4;
+  return Math.max(0, Math.min(1, progress / edge, (1 - progress) / edge));
+}
+/** current at env 0, target at env 1. */
+export function blendArm(current: number, target: number, env: number): number {
+  return current * (1 - env) + target * env + 0; // + 0: never -0
+}
+
 export function setEatPose(model: THREE.Group, progress: number, bite: number, foodEmoji = '🍎'): void {
   const { armL, armR, head } = model.userData as { armL: THREE.Object3D; armR: THREE.Object3D; head: THREE.Object3D };
   const p = Math.min(1, Math.max(0, progress));
-  const edge = 0.15;
-  const env = Math.max(0, Math.min(1, p / edge, (1 - p) / edge)); // 0 at both ends, 1 through the middle
-  armL.rotation.x = armR.rotation.x = -1.9 * env + 0; // + 0: never -0
+  const env = eatEnvelope(p);
+  // Blend with whatever the walk swing wrote this frame, so a munch begun or ended mid-stride never snaps an arm.
+  armL.rotation.x = blendArm(armL.rotation.x, EAT_ARM, env);
+  armR.rotation.x = blendArm(armR.rotation.x, EAT_ARM, env);
   head.rotation.x = Math.abs(Math.sin(p * Math.PI * 3)) * 0.3 * env;
   let sprites = model.userData.bites as Map<string, THREE.Sprite> | undefined;
   if (!sprites) { sprites = new Map(); model.userData.bites = sprites; }
