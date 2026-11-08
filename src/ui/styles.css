@@ -491,7 +491,7 @@ html, body {
 
 /* Break reminder */
 .break-bubble {
-  position: fixed; top: 18%; left: 50%; transform: translateX(-50%); z-index: 30;
+  position: fixed; top: 18%; left: 50%; transform: translateX(-50%); z-index: 70; /* above the tray (50) and the grown-ups screen (60): always tappable */
   display: flex; align-items: center; gap: 20px; padding: 12px 24px; background: #fff;
   border-radius: 28px; box-shadow: 0 4px 0 rgba(0, 0, 0, 0.2);
 }

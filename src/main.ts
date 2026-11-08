@@ -115,10 +115,14 @@ const speakVariant = (key: LineKey): void => {
   lastSpoken[key] = text;
   voice.say(text, 'pip', { holdForAudio: HELD_KEYS.has(key) });
 };
+/** True when the last sayLine really spoke (a hint is only counted as told then). */
+let lineSpoken = false;
 const sayLine = (key: LineKey): void => {
+  lineSpoken = false;
   // The break reminder has priority: while its bubble is up nothing else talks over it or cuts it.
   if (!allowLine(hud.breakOpen, key)) return;
   if (HELD_KEYS.has(key) && isAudioLocked()) return; // an idle hint or lead line while audio is locked: dropped quietly
+  lineSpoken = true;
   speakVariant(key);
   if (key === 'breakTime') {
     hud.showBreak(() => usage.resetSessionTimer());
@@ -429,6 +433,11 @@ const saveNow = (): void => { storeSave(storage, serialise(game, seed, flags, Da
 const HINT_ORDER: readonly HintKey[] = ['cropReady', 'tryMunch', 'plantSome', 'needWaterSun', 'holdOutFood'];
 const isHintKey = (k: LineKey): k is HintKey => (HINT_ORDER as readonly string[]).includes(k);
 let hintClock = 0;
+let reactionsWarmed = false;
+const REACTION_KEYS: readonly LineKey[] = [
+  'harvested', 'ateApple', 'ateCarrot', 'atePotato', 'drankMilk', 'fedAnimal', 'animalFull', 'petAnimal', 'gotEgg', 'gotMilk', 'gotWool',
+  'plantSome', 'needWaterSun', 'cropReady', 'holdOutFood', 'tryMunch',
+];
 const SEED_ITEMS = [ItemId.WheatSeed, ItemId.CarrotSeed, ItemId.PotatoSeed, ItemId.AppleSapling];
 const within = (r: { x0: number; z0: number; x1: number; z1: number }, c: Cell, pad: number): boolean =>
   c[0] >= r.x0 - pad && c[0] <= r.x1 + pad && c[2] >= r.z0 - pad && c[2] <= r.z1 + pad;
@@ -498,7 +507,8 @@ function updateVillage(dt: number): void {
     pendingPip = null;
     if (isHintKey(said)) {
       // A hint goes through Pip's chatter gap like any reaction, and counts as told only once it was really said.
-      if (!hud.breakOpen && pal.react(said)) {
+      // Checked again with fresh facts (he may have put the food away since it was queued).
+      if (!hud.breakOpen && hints.shouldSay(said, hintContext(cell)) && pal.react(said) && lineSpoken) {
         hints.markSeen(said);
         flags.hints = hints.seen();
       }
@@ -532,6 +542,10 @@ function updateVillage(dt: number): void {
     bubbleTimer = window.setTimeout(() => hud.hideBubble(), 3000);
     pal.hush(5000);
     return;
+  }
+  if (!reactionsWarmed && (within(plotRect, cell, 14) || within(pasture, cell, 14))) {
+    reactionsWarmed = true; // the farm's reaction lines are fetched once he is near, so the first one is not late
+    voice.prefetch(REACTION_KEYS.flatMap(k => LINES[k]));
   }
   hintClock += dt;
   if (hintClock >= 1 && pendingPip === null && !hello && !game.eating.active) {

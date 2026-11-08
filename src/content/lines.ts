@@ -202,10 +202,10 @@ export const LINES: Record<LineKey, string[]> = {
     'Milk from the cow. How lovely!',
   ],
   holdOutFood: [
-    'Hold out some food and animals may come over.',
-    'Animals like food. Hold some out!',
-    'Hold some food out for the animals!',
-    'Shall we hold out food for the animals?',
+    'Pick some food and go near the animals.',
+    'Choose a food, then visit the animals.',
+    'Animals like food. Pick some and visit them.',
+    'Pick a food and walk over to the animals.',
   ],
   fedAnimal: [
     'What a happy animal!',

@@ -26,6 +26,9 @@ describe('lines', () => {
     }
     expect(LINE_ICONS.tryMunch).toBe('👄');
   });
+  it('holdOutFood never says "hold" (that means press-and-hold elsewhere in the game)', () => {
+    for (const l of LINES.holdOutFood) expect(l).not.toMatch(/\bhold/i);
+  });
   it('lines are short', () => {
     for (const k of keys) for (const l of LINES[k]) expect(l.split(/\s+/).length).toBeLessThanOrEqual(12);
   });

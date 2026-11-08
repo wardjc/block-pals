@@ -169,6 +169,11 @@
   "text": "Wonderful! One more for your bag!",
   "duration": 2.52
  },
+ "pip/111ea243e181": {
+  "file": "pip/111ea243e181.ogg",
+  "text": "Pick some food and go near the animals.",
+  "duration": 2.23
+ },
  "pip/11d3afc7feae": {
   "file": "pip/11d3afc7feae.ogg",
   "text": "I can't get there. Let's try another way!",
@@ -434,6 +439,11 @@
   "text": "Lovely! You got one!",
   "duration": 2.0
  },
+ "pip/74d7ae4cb372": {
+  "file": "pip/74d7ae4cb372.ogg",
+  "text": "Pick a food and walk over to the animals.",
+  "duration": 2.4
+ },
  "pip/790510d0b04e": {
   "file": "pip/790510d0b04e.ogg",
   "text": "Shall we go and meet our neighbours?",
@@ -443,11 +453,6 @@
   "file": "pip/7aef1480da01.ogg",
   "text": "Milk from the cow. How lovely!",
   "duration": 2.7
- },
- "pip/7ccdaf530f9c": {
-  "file": "pip/7ccdaf530f9c.ogg",
-  "text": "Hold some food out for the animals!",
-  "duration": 2.01
  },
  "pip/7d7dcc331e66": {
   "file": "pip/7d7dcc331e66.ogg",
@@ -559,6 +564,11 @@
   "text": "Well done! You collected a block!",
   "duration": 2.4
  },
+ "pip/a4551087b53d": {
+  "file": "pip/a4551087b53d.ogg",
+  "text": "Choose a food, then visit the animals.",
+  "duration": 2.19
+ },
  "pip/a83b521c9109": {
   "file": "pip/a83b521c9109.ogg",
   "text": "A lovely fresh egg!",
@@ -628,16 +638,6 @@
   "file": "pip/b7e505e1f223.ogg",
   "text": "This way, follow me!",
   "duration": 1.33
- },
- "pip/ba9e1b3674e7": {
-  "file": "pip/ba9e1b3674e7.ogg",
-  "text": "Hold out some food and animals may come over.",
-  "duration": 2.72
- },
- "pip/bdb4f95f49ae": {
-  "file": "pip/bdb4f95f49ae.ogg",
-  "text": "Shall we hold out food for the animals?",
-  "duration": 2.17
  },
  "pip/be05c367eeb3": {
   "file": "pip/be05c367eeb3.ogg",
@@ -714,6 +714,11 @@
   "text": "We need a few more blocks first.",
   "duration": 1.85
  },
+ "pip/e08a2e286120": {
+  "file": "pip/e08a2e286120.ogg",
+  "text": "Animals like food. Pick some and visit them.",
+  "duration": 3.27
+ },
  "pip/e1fb5580fc4b": {
   "file": "pip/e1fb5580fc4b.ogg",
   "text": "That's a bit tricky. Shall we go round?",
@@ -783,11 +788,6 @@
   "file": "pip/f9296dfd9799.ogg",
   "text": "Let's collect the blocks we need!",
   "duration": 1.71
- },
- "pip/fb0c8edf361f": {
-  "file": "pip/fb0c8edf361f.ogg",
-  "text": "Animals like food. Hold some out!",
-  "duration": 2.95
  },
  "pip/fb5c4ec5a61f": {
   "file": "pip/fb5c4ec5a61f.ogg",
