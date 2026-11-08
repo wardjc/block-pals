@@ -3,7 +3,7 @@ import { afterEach, beforeEach, describe, expect, test, vi } from 'vitest';
 import { BlockId } from '../../src/core/blocks';
 import { isStandable } from '../../src/core/pathfind';
 import {
-  ALL_SAVE_KEYS, BACKUP_KEY, BAD_V2_KEY, LEGACY_SAVE_KEY, SAVE_KEY, applySave, migrateV1, parseSave, readSave, serialise,
+  ALL_SAVE_KEYS, BACKUP_KEY, BAD_V2_KEY, LEGACY_SAVE_KEY, SAVE_KEY, applySave, inspectSave, migrateV1, parseSave, readSave, serialise,
   startAutosave, storeSave, type SaveData,
 } from '../../src/core/save';
 import { GEN_VERSION } from '../../src/core/worldgen';
@@ -98,18 +98,31 @@ describe('save data', () => {
 
   test.each([
     { seed: '1234' }, { seed: null }, { seed: 1.5 },
-    { edits: null }, { edits: {} }, { edits: [[1, 2, 3]] },
-    { edits: [[1, 2, 3, 4, 5]] }, { edits: [[1, 2, 3, -1]] },
-    { edits: [[1, 2, 3, 16]] }, { edits: [[1, 2, 3, 256]] }, { gen: 0 }, { gen: 'x' },
+    { edits: null }, { edits: {} },
+    { gen: 0 }, { gen: 'x' },
     { version: 3 }, { version: 0 },
-    { edits: [[1, 2, 3, '4']] }, { edits: [[1, 2, 3, 1.5]] },
-    { edits: [[-1, 2, 3, 4]] }, { edits: [[96, 2, 3, 4]] },
-    { edits: [[1, 20, 3, 4]] }, { edits: [[1, 2, 96, 4]] },
-    { edits: [[1.5, 2, 3, 4]] }, { edits: [null] },
     { player: null }, { player: [] },
     { player: { x: 24, y: 9 } }, { player: { x: '24', y: 9, z: 24 } },
   ])('rejects malformed fields: %j', patch => {
     expect(parseSave(JSON.stringify({ ...validSave(), ...patch }))).toBeNull();
+  });
+
+  const BAD_EDITS: unknown[] = [[1, 2, 3], [1, 2, 3, 4, 5], [1, 2, 3, -1], [1, 2, 3, 16], [1, 2, 3, 999], [1, 2, 3, '4'],
+    [1, 2, 3, 1.5], [-1, 2, 3, 4], [96, 2, 3, 4], [1, 20, 3, 4], [1, 2, 96, 4], [1.5, 2, 3, 4], null];
+
+  test.each(BAD_EDITS.map(e => [e]))('one invalid edit %j is skipped, the valid ones are kept', bad => {
+    const good: Array<[number, number, number, number]> = [[5, 5, 5, BlockId.Stone], [90, 6, 90, BlockId.Planks]];
+    const raw = JSON.stringify({ ...validSave(), edits: [good[0], bad, good[1]] });
+    const parsed = parseSave(raw)!;
+    expect(parsed).not.toBeNull();
+    expect(parsed.edits).toEqual(good);
+    expect(inspectSave(raw)!.skipped).toBe(1);
+  });
+
+  test('structural problems still reject the whole save', () => {
+    for (const patch of [{ edits: 'x' }, { seed: 'x' }, { version: 9 }, { player: 3 }]) {
+      expect(inspectSave(JSON.stringify({ ...validSave(), ...patch }))).toBeNull();
+    }
   });
 
   test('rejects non-finite JSON numbers and missing required fields', () => {
@@ -367,11 +380,11 @@ describe('save v2 and migration', () => {
     expect(inWall.spawn).toEqual(game.player.pos);
   });
 
-  test('v1 edit outside 48 is rejected; v2 allows up to 95/19/95', () => {
+  test('v1 edit outside 48 is skipped; v2 allows up to 95/19/95', () => {
     const v1 = JSON.parse(legacySave().raw);
-    expect(parseSave(JSON.stringify({ ...v1, edits: [[60, 5, 5, BlockId.Stone]] }))).toBeNull();
+    expect(parseSave(JSON.stringify({ ...v1, edits: [[60, 5, 5, BlockId.Stone]] }))!.edits).toEqual([]);
     expect(parseSave(JSON.stringify({ ...validSave(), edits: [[95, 19, 95, BlockId.Stone]] }))).not.toBeNull();
-    expect(parseSave(JSON.stringify({ ...validSave(), edits: [[96, 19, 95, BlockId.Stone]] }))).toBeNull();
+    expect(parseSave(JSON.stringify({ ...validSave(), edits: [[96, 19, 95, BlockId.Stone]] }))!.edits).toEqual([]);
   });
 
   test('accepts new block ids in edits and bag', () => {
@@ -513,6 +526,153 @@ describe('save v2 and migration', () => {
   });
 
   test('the reset key list covers v2, v1 and the backup', () => {
-    expect([...ALL_SAVE_KEYS].sort()).toEqual([BACKUP_KEY, BAD_V2_KEY, LEGACY_SAVE_KEY, SAVE_KEY].sort());
+    expect([...ALL_SAVE_KEYS]).toEqual(expect.arrayContaining([BACKUP_KEY, BAD_V2_KEY, LEGACY_SAVE_KEY, SAVE_KEY]));
+  });
+});
+
+describe('save safety: damaged, unreadable and failing storage', () => {
+  const PLANK_EDIT = [30, 6, 30, BlockId.Planks];
+  const lossyV2 = (): string => JSON.stringify({ ...validSave(), edits: [PLANK_EDIT, [1, 2, 3, 999]] });
+  const throwOn = (keys: string[], what: 'getItem' | 'setItem') => {
+    const real = Storage.prototype[what] as (this: Storage, ...a: string[]) => string | null | void;
+    return vi.spyOn(Storage.prototype, what).mockImplementation(function (this: Storage, k: string, v?: string) {
+      if (keys.includes(k)) throw new Error('blocked');
+      return (real as (this: Storage, k: string, v?: string) => string | null | void).call(this, k, v);
+    } as never);
+  };
+
+  test('S1: a damaged v2 keeps its valid edits and is preserved once before the next save', () => {
+    const raw = lossyV2();
+    localStorage.setItem(SAVE_KEY, raw);
+    localStorage.setItem(LEGACY_SAVE_KEY, legacySave().raw);
+    const data = readSave(localStorage)!;
+    expect(data.edits).toEqual([PLANK_EDIT]); // not v1's edits
+    expect(localStorage.getItem(BAD_V2_KEY)).toBe(raw);
+    const game = new Game(applySave(data));
+    expect(storeSave(localStorage, serialise(game, 1234))).toBe(true);
+    expect(parseSave(localStorage.getItem(SAVE_KEY))!.edits).toEqual([PLANK_EDIT]);
+    expect(localStorage.getItem(BAD_V2_KEY)).toBe(raw);
+  });
+
+  test('S1: if the copy of a damaged v2 cannot be kept, v2 is not replaced and the next tick retries', () => {
+    vi.useFakeTimers();
+    const raw = lossyV2();
+    localStorage.setItem(SAVE_KEY, raw);
+    throwOn([BAD_V2_KEY, `${BAD_V2_KEY}.2`, `${BAD_V2_KEY}.3`, `${BAD_V2_KEY}.4`], 'setItem');
+    const data = readSave(localStorage)!;
+    const game = new Game(applySave(data));
+    const stop = startAutosave(game, 1234, localStorage);
+    game.world.set(24, 1, 24, BlockId.Air);
+    vi.advanceTimersByTime(10_000);
+    expect(localStorage.getItem(SAVE_KEY)).toBe(raw); // untouched
+    vi.restoreAllMocks();
+    vi.advanceTimersByTime(10_000); // the copy works now: the retry saves and the original is kept
+    expect(localStorage.getItem(BAD_V2_KEY)).toBe(raw);
+    expect(parseSave(localStorage.getItem(SAVE_KEY))!.edits).toEqual(expect.arrayContaining([PLANK_EDIT]));
+    expect(parseSave(localStorage.getItem(SAVE_KEY))!.edits).toHaveLength(2);
+    stop();
+    vi.useRealTimers();
+  });
+
+  test('S2: a corrupt v2 plus v1: when the .bad write throws, v2 is not overwritten by the older v1', () => {
+    localStorage.setItem(SAVE_KEY, '{"version":2,"broken":true}');
+    localStorage.setItem(LEGACY_SAVE_KEY, legacySave().raw);
+    throwOn([BAD_V2_KEY, `${BAD_V2_KEY}.2`, `${BAD_V2_KEY}.3`, `${BAD_V2_KEY}.4`], 'setItem');
+    const data = readSave(localStorage);
+    expect(data).not.toBeNull(); // he still plays (in memory)
+    expect(localStorage.getItem(SAVE_KEY)).toBe('{"version":2,"broken":true}');
+  });
+
+  test('a second damaged payload goes to a spare slot, the first copy is never overwritten', () => {
+    localStorage.setItem(LEGACY_SAVE_KEY, legacySave().raw);
+    localStorage.setItem(SAVE_KEY, 'garbage-one');
+    readSave(localStorage);
+    localStorage.setItem(SAVE_KEY, 'garbage-two');
+    readSave(localStorage);
+    expect(localStorage.getItem(BAD_V2_KEY)).toBe('garbage-one');
+    expect(localStorage.getItem(`${BAD_V2_KEY}.2`)).toBe('garbage-two');
+  });
+
+  test('S3: a throwing v2 READ is not "absent": v1 is not migrated and nothing is written', () => {
+    const v2 = JSON.stringify({ ...validSave(), edits: [PLANK_EDIT] });
+    localStorage.setItem(SAVE_KEY, v2);
+    localStorage.setItem(LEGACY_SAVE_KEY, legacySave().raw);
+    const spy = throwOn([SAVE_KEY], 'getItem');
+    const write = vi.spyOn(Storage.prototype, 'setItem');
+    expect(readSave(localStorage)).toBeNull();
+    expect(write).not.toHaveBeenCalled();
+    expect(storeSave(localStorage, serialise(makeGame(), 1234))).toBe(false);
+    expect(write).not.toHaveBeenCalled();
+    spy.mockRestore();
+    write.mockRestore();
+    // The storage reads again, but this page started blind: it still never overwrites what it now finds.
+    expect(storeSave(localStorage, serialise(makeGame(), 1234))).toBe(false);
+    expect(localStorage.getItem(SAVE_KEY)).toBe(v2);
+  });
+
+  test('S3: a throwing read of a version-3 guard cannot be overwritten', () => {
+    const newer = JSON.stringify({ ...validSave(), version: 3 });
+    localStorage.setItem(SAVE_KEY, newer);
+    throwOn([SAVE_KEY], 'getItem');
+    expect(storeSave(localStorage, serialise(makeGame(), 1234))).toBe(false);
+    vi.restoreAllMocks();
+    expect(localStorage.getItem(SAVE_KEY)).toBe(newer);
+  });
+
+  test('S3: a throwing v1 read with no v2 does not start a blind overwrite either', () => {
+    localStorage.setItem(LEGACY_SAVE_KEY, legacySave().raw);
+    throwOn([LEGACY_SAVE_KEY], 'getItem');
+    expect(readSave(localStorage)).toBeNull();
+    expect(localStorage.getItem(SAVE_KEY)).toBeNull();
+    vi.restoreAllMocks();
+    expect(storeSave(localStorage, serialise(makeGame(), 1234))).toBe(false); // v1 holds a world we did not load
+    expect(localStorage.getItem(SAVE_KEY)).toBeNull();
+  });
+
+  test('S3: blind start on a truly empty storage may save once the storage reads again', () => {
+    throwOn([SAVE_KEY], 'getItem');
+    expect(readSave(localStorage)).toBeNull();
+    vi.restoreAllMocks();
+    expect(storeSave(localStorage, serialise(makeGame(), 1234))).toBe(true);
+  });
+
+  test('S4: a failed migration write is retried by the autosave even though nothing is dirty', () => {
+    vi.useFakeTimers();
+    localStorage.setItem(LEGACY_SAVE_KEY, legacySave().raw);
+    const real = Storage.prototype.setItem;
+    let failing = true;
+    vi.spyOn(Storage.prototype, 'setItem').mockImplementation(function (this: Storage, k: string, v: string) {
+      if (failing && k === SAVE_KEY) throw new Error('Quota');
+      real.call(this, k, v);
+    });
+    const data = readSave(localStorage)!;
+    expect(localStorage.getItem(SAVE_KEY)).toBeNull();
+    const game = new Game(applySave(data)); // markClean: nothing is dirty
+    const stop = startAutosave(game, data.seed, localStorage);
+    vi.advanceTimersByTime(10_000);
+    expect(localStorage.getItem(SAVE_KEY)).toBeNull();
+    failing = false;
+    vi.advanceTimersByTime(10_000);
+    expect(localStorage.getItem(SAVE_KEY)).not.toBeNull();
+    stop();
+    vi.useRealTimers();
+  });
+
+  test('S4: walking more than a block with no other change is saved; a small step is not', () => {
+    vi.useFakeTimers();
+    const game = makeGame();
+    const write = vi.spyOn(Storage.prototype, 'setItem');
+    const stop = startAutosave(game, 1234, localStorage);
+    game.player.pos.x += 0.6;
+    vi.advanceTimersByTime(10_000);
+    expect(write).not.toHaveBeenCalled();
+    game.player.pos.x += 3;
+    vi.advanceTimersByTime(10_000);
+    expect(write).toHaveBeenCalledTimes(1);
+    expect(readSave(localStorage)!.player.x).toBeCloseTo(game.player.pos.x);
+    vi.advanceTimersByTime(20_000);
+    expect(write).toHaveBeenCalledTimes(1);
+    stop();
+    vi.useRealTimers();
   });
 });
