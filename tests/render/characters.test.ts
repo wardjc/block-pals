@@ -31,12 +31,12 @@ describe('villager models', () => {
     expect(all.size).toBe(1);
   });
 
-  it('keep their animatable head and hat, and the triangle count is unchanged by merging', () => {
+  it('keep their animatable head and hat, and the triangle count is unchanged by merging (12 per box, neck included)', () => {
     const bramble = makeVillagerModel('bramble');
     expect(bramble.userData.head).toBeDefined();
     expect(bramble.userData.hat).toBeDefined();
-    expect(stats(bramble).tris).toBe(312);
-    expect(stats(makeVillagerModel('willow')).tris).toBe(708);
+    expect(stats(bramble).tris).toBe(324);
+    expect(stats(makeVillagerModel('willow')).tris).toBe(720);
   });
 
   it('disposing frees their own geometry only', () => {
