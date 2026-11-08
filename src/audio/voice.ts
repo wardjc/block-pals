@@ -2,11 +2,15 @@ import { clipKey } from './voiceKey';
 
 /**
  * True while speech cannot be heard yet: before the first tap, or while a created context is still
- * suspended. Callers hold their one-shot lines (hellos, Pip's lead) until it is false instead of
- * spending them silently. Without Web Audio at all (state null after a tap) speech still works.
+ * suspended and recently woken by a tap (a short grace). Callers hold their one-shot lines (hellos, Pip's
+ * lead) until it is false instead of spending them silently. Without Web Audio at all (state null after a tap) speech still works.
  */
-export function audioLocked(tapped: boolean, ctxState: string | null | undefined): boolean {
-  return !tapped || (ctxState != null && ctxState !== 'running');
+export function audioLocked(
+  tapped: boolean, ctxState: string | null | undefined, msSinceGesture = 0, graceMs = 2500,
+): boolean {
+  // A context still suspended well after his last tap is not "waking up": it is not coming (no output
+  // device, say). Then speech falls back to the tablet's voice, so a held line must go ahead.
+  return !tapped || (ctxState != null && ctxState !== 'running' && msSinceGesture < graceMs);
 }
 
 export function pickVoice(voices: SpeechSynthesisVoice[]): SpeechSynthesisVoice | null {

@@ -297,7 +297,9 @@ const warmZones = VILLAGERS.flatMap(def => {
 let currentHello: { text: string; speaker: string } | null = null;
 let tapped = false; // the first tap / button unlocks audio
 const feet: Cell = [0, 0, 0]; // reused every frame
-const isAudioLocked = (): boolean => audioLocked(tapped, sfx.audioOut()?.ctx.state);
+let lastGestureAt = 0; // every tap or press retries the unlock, so the grace restarts
+window.addEventListener('pointerdown', () => { lastGestureAt = performance.now(); }, true);
+const isAudioLocked = (): boolean => audioLocked(tapped, sfx.audioOut()?.ctx.state, performance.now() - lastGestureAt);
 const lead = new LeadToVillage(village.route, village.square, flags.ledToVillage);
 let acted = false;
 game.on(e => { if (e.type !== 'idle') acted = true; });
@@ -398,6 +400,7 @@ if (debugOn) {
     digSound: () => sfx.digState(),
     voiceLast: () => ({ ...voice.last }),
     voiceSpeaking: () => voice.speaking(),
+    audioState: () => ({ ctx: sfx.audioOut()?.ctx.state ?? null, tapped, locked: isAudioLocked(), pending: pendingPip, busy: gesture.busy }),
     village: () => ({
       houses: village.houses.map(h => ({ id: h.id, rect: h.rect, interior: h.interior, floor: h.floor, doorCells: h.doorCells, groundY: h.groundY, doorFront: h.doorFront, doorInside: h.doorInside, npcSpot: h.npcSpot, greetRect: h.greetRect })),
       route: village.route, square: village.square, gate: village.gate,
@@ -449,7 +452,7 @@ function frame(now: number): void {
     } else {
       game.player.setStick(0, 0);
     }
-    if (pressed.length > 0) { sfx.unlock(); tapped = true; }
+    if (pressed.length > 0) { sfx.unlock(); tapped = true; lastGestureAt = performance.now(); }
     for (const action of pressed) game.padAction(action);
     if (look[0] !== 0 || look[1] !== 0) {
       scene.rig.turn(look[0], look[1], dt);

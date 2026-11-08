@@ -176,6 +176,9 @@ describe('hello cancelling and locked audio', () => {
     expect(audioLocked(true, 'suspended')).toBe(true); // tapped, context still waking up
     expect(audioLocked(true, 'running')).toBe(false);
     expect(audioLocked(true, null)).toBe(false); // no Web Audio at all: speech fallback still works
+    expect(audioLocked(true, 'suspended', 1000)).toBe(true); // still waking up
+    expect(audioLocked(true, 'suspended', 3000)).toBe(false); // not coming: the tablet's voice speaks instead
+    expect(audioLocked(false, 'suspended', 99999)).toBe(true); // never before the first tap
   });
 
   it('a held hello keeps its cooldown and visit unspent', () => {
