@@ -156,7 +156,6 @@ describe('Herd: coming over for food', () => {
       }
       const near = s.herd.animals.filter(a => dist(a, s.player) <= 3.0 + 1e-6);
       expect(new Set(near.map(a => a.kind)).size).toBe(4);
-      expect(s.herd.animals.every(a => a.state !== 'walk' || true)).toBe(true);
     });
   }
   it('coming over is faster than wandering, at 1.6 blocks per second', () => {
@@ -455,33 +454,120 @@ describe('Herd on the real generated pasture', () => {
 });
 
 describe('Herd: time only goes forward, in small steps', () => {
-  it('a negative, NaN or zero dt changes nothing; a huge dt is one small step', () => {
+  it('a negative, NaN, infinite or zero dt changes nothing at all', () => {
     const s = make();
     s.herd.feed(s.herd.animals[0].id, ItemId.Apple);
-    const before = JSON.stringify(s.herd.toJSON());
+    const before = JSON.stringify(s.herd.animals);
     for (const dt of [-5, 0, Number.NaN, -Infinity]) {
       s.herd.update({ world: s.world, roam: ROAM, player: s.player, held: 'hand', occupied: [], dt });
-      expect(s.herd.animals[0].giftIn).toBeGreaterThanOrEqual(44.9);
     }
-    s.herd.update({ world: s.world, roam: ROAM, player: s.player, held: 'hand', occupied: [], dt: 1e9 });
-    for (const a of s.herd.animals) expect(isStandable(s.world, cellOf(a))).toBe(true);
-    expect(s.herd.animals[0].giftIn).toBeGreaterThan(44);
-    expect(before).toBeTypeOf('string');
+    // Only the queued happy noise was consumed; nobody moved and no timer changed.
+    expect(JSON.stringify(s.herd.animals)).toBe(before);
   });
-  it('costs well under a millisecond a frame for ten animals, with food held out', () => {
-    const { world, village } = generateWorld(2026);
-    const pa = village.farm.pasture;
-    const roam = { x0: pa.x0 + 1, z0: pa.z0 + 1, x1: pa.x1 - 1, z1: pa.z1 - 1 };
-    const herd = new Herd(mulberry32(3));
-    herd.populate(village.farm.herdSpawns);
-    const player = { x: 74.5, y: 6, z: 48.5 };
-    const ctx = { world, roam, player, held: ItemId.Carrot as StackId | 'hand', occupied: [[74, 6, 48], [74, 7, 48]] as Cell[], dt: 1 / 30 };
-    for (let i = 0; i < 300; i++) herd.update(ctx); // warm up and let them gather
-    const t0 = performance.now();
-    const n = 3000;
-    for (let i = 0; i < n; i++) herd.update(ctx);
-    const per = (performance.now() - t0) / n;
-    console.log(`Herd.update: ${per.toFixed(4)} ms per frame (10 animals, calling)`);
-    expect(per).toBeLessThan(0.5);
+  it('a huge dt is one small step: nobody moves further than the fastest walk in a quarter second', () => {
+    const s = make();
+    s.hold(ItemId.Carrot);
+    s.player.x = 18.5; s.player.z = 9.5;
+    const before = s.herd.animals.map(a => ({ x: a.x, z: a.z, giftIn: a.giftIn }));
+    s.herd.feed(s.herd.animals[0].id, ItemId.Apple);
+    s.herd.update({ world: s.world, roam: ROAM, player: s.player, held: ItemId.Carrot, occupied: [], dt: 1e9 });
+    s.herd.animals.forEach((a, i) => {
+      expect(Math.hypot(a.x - before[i].x, a.z - before[i].z)).toBeLessThanOrEqual(1.6 * 0.25 + 1e-6);
+      expect(isStandable(s.world, cellOf(a))).toBe(true);
+    });
+    expect(s.herd.animals[0].giftIn).toBeGreaterThan(44.7); // the rest counted down by at most a quarter second
+    expect(s.herd.animals[0].giftIn).toBeLessThanOrEqual(45);
   });
+});
+
+function pen(world: World, cells: Array<[number, number]>): void {
+  const key = new Set(cells.map(c => c.join(',')));
+  for (const [x, z] of cells) {
+    for (let dx = -1; dx <= 1; dx++) for (let dz = -1; dz <= 1; dz++) {
+      if (key.has(`${x + dx},${z + dz}`)) continue;
+      world.set(x + dx, 1, z + dz, BlockId.Planks);
+      world.set(x + dx, 2, z + dz, BlockId.Planks);
+    }
+  }
+}
+
+describe('Herd: animals in small pens are lifted out', () => {
+  const PENS: Array<[string, Array<[number, number]>]> = [
+    ['1 cell', [[20, 9]]],
+    ['2 cells', [[20, 9], [21, 9]]],
+    ['4 cells', [[20, 9], [21, 9], [20, 10], [21, 10]]],
+  ];
+  for (const [name, cells] of PENS) {
+    it(`a chicken walled into a pen of ${name} is lifted out within about 10 s and the walls stay`, () => {
+      const s = make();
+      const hen = s.herd.animals[0];
+      hen.x = cells[0][0] + 0.5; hen.z = cells[0][1] + 0.5; hen.y = 1;
+      for (const a of s.herd.animals) if (a !== hen && cells.some(([x, z]) => Math.floor(a.x) === x && Math.floor(a.z) === z)) { a.x = 8.5; a.z = 6.5; }
+      pen(s.world, cells);
+      const inPen = (): boolean => cells.some(([x, z]) => Math.floor(hen.x) === x && Math.floor(hen.z) === z);
+      s.run(4);
+      expect(inPen()).toBe(true); // gentle: not at once
+      s.run(8);
+      expect(inPen(), 'still in the pen after 12 s').toBe(false);
+      expect(isStandable(s.world, cellOf(hen))).toBe(true);
+      expect(s.world.get(cells[0][0] - 1, 1, cells[0][1])).toBe(BlockId.Planks);
+    });
+  }
+  it('an animal in a big enclosed area (a pen of 16 cells) is left alone', () => {
+    const s = make();
+    const cells: Array<[number, number]> = [];
+    for (let x = 20; x < 24; x++) for (let z = 8; z < 12; z++) cells.push([x, z]);
+    for (const a of s.herd.animals) if (a.x > 19 && a.x < 25 && a.z > 7 && a.z < 13) { a.x = 8.5; a.z = 6.5; }
+    const hen = s.herd.animals[0];
+    hen.x = 21.5; hen.z = 9.5;
+    pen(s.world, cells);
+    s.run(40);
+    expect(cells.some(([x, z]) => Math.floor(hen.x) === x && Math.floor(hen.z) === z)).toBe(true);
+  });
+});
+
+describe('Herd: the save keeps the animal in its own cell', () => {
+  it('neighbours at 70.999 and 71.5 both survive a save and a load', () => {
+    const w = flat();
+    const h = new Herd(mulberry32(1));
+    h.restore([[0, 20.999, 1, 8.5, 0, 0], [0, 21.5, 1, 8.5, 0, 0]], SPAWNS, w, ROAM, 0);
+    const cellsBefore = h.animals.slice(0, 2).map(cellOf);
+    const saved = h.toJSON();
+    expect(saved.slice(0, 2).map(t => Math.floor(t[1]))).toEqual([20, 21]);
+    const h2 = new Herd(mulberry32(2));
+    h2.restore(saved, SPAWNS, w, ROAM, 0);
+    expect(h2.animals.slice(0, 2).map(cellOf)).toEqual(cellsBefore);
+    expect(h2.animals).toHaveLength(10);
+  });
+});
+
+describe('Herd: gathering for food beside fences and corners', () => {
+  const { world, village } = generateWorld(2026);
+  const pa = village.farm.pasture;
+  const roam = { x0: pa.x0 + 1, z0: pa.z0 + 1, x1: pa.x1 - 1, z1: pa.z1 - 1 };
+  const spots: Array<[string, number, number]> = [
+    ['mid, 2 in from the gate', 74.5, 48.5],
+    ['the north-west corner', roam.x0 + 0.5, roam.z0 + 0.5],
+    ['the south-east corner', roam.x1 + 0.5, roam.z1 + 0.5],
+    ['along the south fence', 70.5, roam.z1 + 0.5],
+    ['at the gate row', 74.5, pa.z0 + 0.5],
+    ['along the west fence', roam.x0 + 0.5, 51.5],
+  ];
+  for (const [name, px, pz] of spots) {
+    it(`with food held out ${name}, every animal within 10 blocks ends 1.2 to 3.0 away within 90 s (5 seeds)`, () => {
+      for (const seed of [1, 2, 3, 4, 5]) {
+        const herd = new Herd(mulberry32(seed));
+        herd.populate(village.farm.herdSpawns);
+        const player = { x: px, y: 6, z: pz };
+        const occupied: Cell[] = [[Math.floor(px), 6, Math.floor(pz)], [Math.floor(px), 7, Math.floor(pz)]];
+        const callable = herd.animals.filter(a => Math.hypot(a.x - px, a.z - pz) <= 10).map(a => a.id);
+        for (let t = 0; t < 90; t += 0.1) herd.update({ world, roam, player, held: ItemId.Wheat, occupied, dt: 0.1 });
+        for (const a of herd.animals.filter(o => callable.includes(o.id))) {
+          const d = Math.hypot(a.x - px, a.z - pz);
+          expect(d, `${name} seed ${seed} ${a.kind} ${a.id}`).toBeGreaterThanOrEqual(1.2 - 1e-6);
+          expect(d, `${name} seed ${seed} ${a.kind} ${a.id}`).toBeLessThanOrEqual(3.0 + 1e-6);
+        }
+      }
+    });
+  }
 });

@@ -24,6 +24,11 @@ export interface Animal {
   tx: number;
   tz: number;
   waypoint: Cell | null;
+  /** Seconds left to the next small-pen check, and how long the last checks found it walled into a small area. */
+  penCheckIn: number;
+  penFor: number;
+  /** The cells of that small area (keys), while it is in one. */
+  pen: Set<string> | null;
 }
 export interface HerdContext {
   world: World;
@@ -40,6 +45,16 @@ export const DEFAULT_HERD: Record<AnimalKind, number> = { chicken: 4, cow: 2, sh
 export const GIFT_REST_SECONDS = 45;
 /** The longest step the herd will take in one update (seconds). */
 const MAX_DT = 0.25;
+/** An animal walled into fewer cells than this is lifted out after PEN_SECONDS. */
+const PEN_CELLS = 12;
+const PEN_SECONDS = 6;
+/** Gathering cells: their centres are 1.3 to 2.9 from him, so a standing animal is within 1.2 to 3.0. */
+const RING_MIN = 1.3;
+/** Hemmed in at or inside this distance is close enough (the test is 3.0). */
+const RING_EDGE = 2.98;
+/** While he holds food out, an animal closer than this steps back (he is never crowded). */
+const GIVE_WAY_COME = 1.25;
+const RING_MAX = 2.9;
 
 const KINDS: readonly AnimalKind[] = ['chicken', 'cow', 'sheep', 'pig'];
 const SPEED: Record<AnimalKind, number> = { chicken: 1, cow: 0.7, sheep: 0.8, pig: 0.9 };
@@ -73,7 +88,7 @@ export class Herd {
       x: cell[0] + 0.5, y: cell[1], z: cell[2] + 0.5,
       heading: this.rng() * Math.PI * 2, state: 'walk', stateT: 0,
       giftIn: 0, noiseIn: 12 + this.rng() * 18, stuckFor: 0,
-      tx: NaN, tz: NaN, waypoint: null,
+      tx: NaN, tz: NaN, waypoint: null, penCheckIn: 0, penFor: 0, pen: null,
     };
     if (this.rng() < 0.5) this.calm(a);
     this.animals.push(a);
@@ -110,7 +125,7 @@ export class Herd {
     return null;
   }
 
-  private nearest(world: World, roam: Rect, occupied: Cell[], x: number, y: number, z: number, self?: Animal): Cell | null {
+  private nearest(world: World, roam: Rect, occupied: Cell[], x: number, y: number, z: number, self?: Animal, avoid?: Set<string> | null): Cell | null {
     const cx = Math.max(roam.x0, Math.min(roam.x1, Math.floor(x)));
     const cz = Math.max(roam.z0, Math.min(roam.z1, Math.floor(z)));
     const radius = Math.max(cx - roam.x0, roam.x1 - cx, cz - roam.z0, roam.z1 - cz);
@@ -123,6 +138,7 @@ export class Herd {
           if (Math.max(Math.abs(dx), Math.abs(dz)) !== r) continue;
           const c: Cell = [cx + dx, cy, cz + dz];
           if (self && c[0] === Math.floor(self.x) && c[1] === self.y && c[2] === Math.floor(self.z)) continue;
+          if (avoid?.has(c.join(','))) continue;
           if (this.free(c, roam, occupied, self) && isStandable(world, c)) return c;
         }
       }
@@ -211,13 +227,15 @@ export class Herd {
     const px = Math.floor(ctx.player.x), pz = Math.floor(ctx.player.z);
     for (let z = pz - 3; z <= pz + 3; z++) for (let x = px - 3; x <= px + 3; x++) {
       const d = Math.hypot(x + 0.5 - ctx.player.x, z + 0.5 - ctx.player.z);
-      if (d < 1.5 || d > 2.8) continue;
-      if (this.animals.some(o => o !== a && o.state === 'come' && o.tx === x + 0.5 && o.tz === z + 0.5)) continue;
+      if (d < RING_MIN || d > RING_MAX) continue;
       for (const dy of HEIGHTS) {
         this.to[0] = x; this.to[1] = a.y + dy; this.to[2] = z;
         if (!allowed(this.to) || !isStandable(ctx.world, this.to)) continue;
         const angle = Math.atan2(z + 0.5 - ctx.player.z, x + 0.5 - ctx.player.x);
-        const score = Math.hypot(x + 0.5 - a.x, z + 0.5 - a.z) + 0.1 * (1 - Math.cos(angle - a.id * 2.4));
+        // Cells another animal already aims at are a last resort, not forbidden (beside a fence there are few).
+        let shared = 0;
+        for (const o of this.animals) if (o !== a && o.state === 'come' && o.tx === x + 0.5 && o.tz === z + 0.5) shared++;
+        const score = Math.hypot(x + 0.5 - a.x, z + 0.5 - a.z) + 0.1 * (1 - Math.cos(angle - a.id * 2.4)) + 3 * shared;
         if (score < best) { best = score; a.tx = x + 0.5; a.tz = z + 0.5; }
         break;
       }
@@ -260,13 +278,39 @@ export class Herd {
     let best: Cell | null = null, score = Infinity;
     for (const [dx, dz] of NEIGHBOURS) for (const dy of HEIGHTS) {
       this.to[0] = this.from[0] + dx; this.to[1] = a.y + dy; this.to[2] = this.from[2] + dz;
-      if (a.state === 'come' && Math.hypot(this.to[0] + 0.5 - ctx.player.x, this.to[2] + 0.5 - ctx.player.z) < 1.5) continue;
+      if (a.state === 'come' && Math.hypot(this.to[0] + 0.5 - ctx.player.x, this.to[2] + 0.5 - ctx.player.z) < 1.25) continue;
       if (!canStep(ctx.world, this.from, this.to, allowed)) continue;
       const d = Number.isFinite(a.tx) ? Math.hypot(this.to[0] + 0.5 - a.tx, this.to[2] + 0.5 - a.tz) : 0;
       if (d < score) { best = [...this.to]; score = d; }
       break;
     }
     return best;
+  }
+
+  /**
+   * The walkable cells reachable from the animal's own, counted only up to PEN_CELLS (the blocks
+   * alone decide: other animals come and go). A small closed area is a pen he built round it; a
+   * big one, or one that reaches the pasture, is just room. Returns the cells of a small area.
+   */
+  private smallArea(a: Animal, ctx: HerdContext): Set<string> | null {
+    const roam = ctx.roam;
+    const start: Cell = [Math.floor(a.x), a.y, Math.floor(a.z)];
+    const seen = new Set<string>([start.join(',')]);
+    const queue: Cell[] = [start];
+    const within = (c: Cell): boolean => inside(roam, c[0], c[2]);
+    for (let head = 0; head < queue.length; head++) {
+      const from = queue[head];
+      for (const [dx, dz] of NEIGHBOURS) for (const dy of HEIGHTS) {
+        const to: Cell = [from[0] + dx, from[1] + dy, from[2] + dz];
+        const k = to.join(',');
+        if (seen.has(k) || !canStep(ctx.world, from, to, within)) continue;
+        seen.add(k);
+        if (seen.size >= PEN_CELLS) return null;
+        queue.push(to);
+        break;
+      }
+    }
+    return seen;
   }
 
   private blocked(a: Animal, ctx: HerdContext, allowed: (c: Cell) => boolean): void {
@@ -277,8 +321,15 @@ export class Herd {
 
   update(rawCtx: HerdContext): HerdEvent[] {
     // Time only ever goes forward and in small steps: a bad, negative or huge dt never moves anyone far.
-    const ctx: HerdContext = Number.isFinite(rawCtx.dt) && rawCtx.dt > 0 && rawCtx.dt <= MAX_DT
-      ? rawCtx : { ...rawCtx, dt: Number.isFinite(rawCtx.dt) && rawCtx.dt > 0 ? MAX_DT : 0 };
+    const good = Number.isFinite(rawCtx.dt) && rawCtx.dt > 0;
+    if (!good) {
+      // Nothing changes; only the happy noises already queued are handed on.
+      const quiet: HerdEvent[] = [];
+      for (const a of this.happySounds) quiet.push({ type: 'noise', id: a.id, kind: a.kind, dist: Math.hypot(a.x - rawCtx.player.x, a.z - rawCtx.player.z), reason: 'happy' });
+      this.happySounds.length = 0;
+      return quiet;
+    }
+    const ctx: HerdContext = rawCtx.dt <= MAX_DT ? rawCtx : { ...rawCtx, dt: MAX_DT };
     const events: HerdEvent[] = [];
     const distance = (a: Animal): number => Math.hypot(a.x - ctx.player.x, a.z - ctx.player.z);
     for (const a of this.happySounds) events.push({ type: 'noise', id: a.id, kind: a.kind, dist: distance(a), reason: 'happy' });
@@ -302,6 +353,13 @@ export class Herd {
         a.noiseIn = 12 + this.rng() * 18;
       }
       a.stateT = Math.max(0, a.stateT - ctx.dt);
+      a.penCheckIn -= ctx.dt;
+      if (a.penCheckIn <= 0) {
+        a.penCheckIn = 0.5;
+        a.pen = this.smallArea(a, ctx);
+        if (!a.pen) a.penFor = 0;
+      }
+      if (a.pen) a.penFor += ctx.dt;
       this.from[0] = Math.floor(a.x); this.from[1] = a.y; this.from[2] = Math.floor(a.z);
       if (!inside(r, this.from[0], this.from[2]) || !isStandable(ctx.world, this.from)) {
         a.stuckFor += ctx.dt;
@@ -311,7 +369,7 @@ export class Herd {
         continue;
       } else {
         if (a.state === 'happy') { a.state = 'idle'; a.stateT = 1 + this.rng() * 3; }
-        if (d < 1) {
+        if (d < (calling && d <= 10 ? GIVE_WAY_COME : 1)) {
           a.state = 'walk'; a.waypoint = null;
           const ux = d > 1e-8 ? (a.x - p.x) / d : Math.cos(a.id * 2.4);
           const uz = d > 1e-8 ? (a.z - p.z) / d : Math.sin(a.id * 2.4);
@@ -322,10 +380,16 @@ export class Herd {
           if (come && a.state !== 'come') { a.state = 'come'; a.tx = NaN; a.waypoint = null; }
           if (!come && a.state === 'come') this.calm(a);
           if (a.state === 'come') {
+            if (d <= 1.5 + ((a.id * 0.381966) % 1) * 1.3 && d >= GIVE_WAY_COME) {
+              // Close enough: each animal stops at its own distance (1.5 to 2.8) and looks at him, so the
+              // crowd settles in layers, and nobody has to reach one exact cell, even in a corner.
+              a.tx = NaN; a.waypoint = null; a.heading = Math.atan2(p.x - a.x, p.z - a.z);
+              continue;
+            }
             if (Number.isFinite(a.tx)) {
               const td = Math.hypot(a.tx - p.x, a.tz - p.z);
               this.to[0] = Math.floor(a.tx); this.to[1] = a.y; this.to[2] = Math.floor(a.tz);
-              if (td < 1.5 || td > 2.8 || !allowed(this.to)) { a.tx = NaN; a.waypoint = null; }
+              if (td < RING_MIN || td > RING_MAX || !allowed(this.to)) { a.tx = NaN; a.waypoint = null; }
             }
             if (!Number.isFinite(a.tx)) this.comeTarget(a, ctx, allowed);
           } else if (a.state !== 'walk' && a.stateT === 0) {
@@ -343,6 +407,9 @@ export class Herd {
                 else if (!come) this.calm(a);
                 else a.heading = Math.atan2(p.x - a.x, p.z - a.z);
                 a.stuckFor = 0;
+              } else if (result === 'blocked' && come && d <= RING_EDGE && d >= GIVE_WAY_COME) {
+                // Hemmed in by the others but already close enough: stand here, he is within reach.
+                a.tx = NaN; a.waypoint = null; a.stuckFor = 0;
               } else if (result === 'blocked') {
                 this.blocked(a, ctx, allowed);
                 if (!come) { a.tx = NaN; a.waypoint = null; }
@@ -352,10 +419,15 @@ export class Herd {
           }
         }
       }
-      if (a.stuckFor >= 6) {
-        const c = this.nearest(ctx.world, r, ctx.occupied, a.x, a.y, a.z, a)
+      if (a.stuckFor >= PEN_SECONDS || a.penFor >= PEN_SECONDS) {
+        // Lifted to the nearest free cell outside the pen (an instant, gentle hop), never into the same pen.
+        const c = this.nearest(ctx.world, r, ctx.occupied, a.x, a.y, a.z, a, a.pen)
           ?? this.spawn(ctx.world, r, ctx.occupied, a);
-        if (c) { a.x = c[0] + 0.5; a.y = c[1]; a.z = c[2] + 0.5; a.stuckFor = 0; this.calm(a); }
+        a.stuckFor = 0;
+        a.penFor = 0;
+        a.pen = null;
+        a.penCheckIn = 0.5;
+        if (c) { a.x = c[0] + 0.5; a.y = c[1]; a.z = c[2] + 0.5; this.calm(a); }
       }
     }
     return events;
@@ -370,6 +442,8 @@ export class Herd {
   }
 
   toJSON(): SavedAnimalTuple[] {
-    return this.animals.map(a => [KINDS.indexOf(a.kind), Math.round(a.x * 100) / 100, a.y, Math.round(a.z * 100) / 100, Math.ceil(a.giftIn), a.variant]);
+    // Rounded to 2 decimals but never out of its own cell (70.999 must not become 71.0).
+    const inCell = (v: number): number => Math.min(Math.max(Math.round(v * 100) / 100, Math.floor(v) + 0.01), Math.floor(v) + 0.99);
+    return this.animals.map(a => [KINDS.indexOf(a.kind), inCell(a.x), a.y, inCell(a.z), Math.ceil(a.giftIn), a.variant]);
   }
 }
