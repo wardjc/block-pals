@@ -6,6 +6,9 @@ import { generateWorld } from './core/worldgen';
 import { GrowthClock } from './core/growth';
 import { cropBlock, seedFor, type CropKind } from './core/crops';
 import { Game } from './game/game';
+import { reactionKey } from './game/eating';
+import { FarmHints, type HintContext, type HintKey } from './game/hints';
+import { fernGift } from './game/fern';
 import { Herd } from './game/animals';
 import { mulberry32 } from './core/rng';
 import { AnimalView, ANIMAL_VIEW_RANGE } from './render/animals';
@@ -15,13 +18,13 @@ import { GamepadInput } from './input/gamepad';
 import { loadMapping } from './input/mapping';
 import { GestureClassifier, type GestureEvent } from './input/gesture';
 import { createDebouncer, resolveHold, resolveTap } from './input/tap';
-import { idleVillager, makeEmblem, makePalModel, makePlayerModel, makeVillagerModel } from './render/characters';
+import { idleVillager, makeEmblem, makePalModel, makePlayerModel, makeVillagerModel, setEatPose } from './render/characters';
 import { pipHiddenFor } from './render/cameraRig';
 import { GameScene } from './render/scene';
 import { sfx } from './audio/sfx';
 import { CraftScreen } from './ui/craft';
 import { BagTray } from './ui/bag';
-import { isItemId, ITEMS, type StackId } from './core/items';
+import { FEEDS, isItemId, ItemId, ITEMS, type StackId } from './core/items';
 import { Hud, hudStateFor } from './ui/hud';
 import { Voice, audioLocked } from './audio/voice';
 import { LINES, LINE_ICONS, pickLine, type LineKey } from './content/lines';
@@ -29,7 +32,7 @@ import { Pal } from './game/pal';
 import { LeadToVillage } from './game/lead';
 import { GreetTracker } from './game/villagers';
 import { DeferredOnce, LockedHold, allowLine, craftSpeech, helperDt, leadPaused, mayGreet, mayPipSpeakQueued, type SpeechContext } from './game/speechPolicy';
-import { DOOR_EMBLEMS, VILLAGERS, VILLAGER_LINES, pickVillagerLine, type VillagerId } from './content/villagers';
+import { DOOR_EMBLEMS, FERN_LINES, VILLAGERS, VILLAGER_LINES, pickVillagerLine, type VillagerId } from './content/villagers';
 import { isStandable } from './core/pathfind';
 import { UsageTracker } from './core/usage';
 import { GrownUps } from './ui/grownups';
@@ -61,6 +64,7 @@ const scene = new GameScene(document.getElementById('game')!, world);
 const animalView = new AnimalView(scene.scene);
 const sparkles = new Sparkles(scene.scene);
 const flags = loaded?.flags ?? { ledToVillage: false };
+const hints = new FarmHints(flags.hints ?? []);
 const stopAutosave = startAutosave(game, seed, storage, flags, () => herd.toJSON());
 const usage = new UsageTracker(storage);
 world.onChange((x, _y, z) => scene.rebuildChunkAt(x, z));
@@ -105,6 +109,7 @@ const lastSpoken: Partial<Record<LineKey, string>> = {};
 /** Pip's lead and idle lines: held until the audio context runs, never spoken by the tablet voice while it is locked. */
 const HELD_KEYS: ReadonlySet<LineKey> = new Set<LineKey>([
   'letsMeetNeighbours', 'comeOn', 'thisWay', 'weAreHere', 'cosyHome', 'idleHint', 'letsFindWood',
+  'plantSome', 'needWaterSun', 'cropReady', 'holdOutFood', 'tryMunch',
 ]);
 const speakVariant = (key: LineKey): void => {
   if (!allowLine(hud.breakOpen, key)) return; // the break reminder is never cut by another line
@@ -166,7 +171,8 @@ game.farm.onEvent(e => {
   else if (e.type === 'helped') {
     if (e.cue === 'water') sfx.water(); else sfx.sun();
     burstAt(e.cell, e.cue);
-  } else if (e.type === 'harvested') sfx.pick();
+  } else if (e.type === 'harvested') { sfx.pick(); react('harvested'); }
+  else if (e.type === 'ripe') sfx.chime();
 });
 const NOISE = { chicken: sfx.cluck, cow: sfx.moo, sheep: sfx.baa, pig: sfx.oink } as const;
 game.on(e => {
@@ -177,10 +183,24 @@ game.on(e => {
     sfx.gift();
     sparkles.burst(at, 'heart');
     hud.showBubble(ITEMS[e.gift].icon);
+    react(e.gift === ItemId.Egg ? 'gotEgg' : e.gift === ItemId.Milk ? 'gotMilk' : e.gift === ItemId.Wool ? 'gotWool' : 'fedAnimal');
   } else if (e.type === 'petted' || e.type === 'resting') {
     sfx.pet();
     sparkles.burst(at, 'heart', 6);
+    react(e.type === 'resting' ? 'animalFull' : 'petAnimal');
   }
+});
+
+/** Pip's plain-word reaction: once per kind per 20 s, then the Pal's own gap, and never over the break reminder. */
+function react(key: LineKey): void {
+  if (hud.breakOpen || !hints.reactionAllowed(key, Date.now())) return;
+  pal.react(key);
+}
+// Eating: sound at once, the pose and crumbs follow the 1.3 s munch clock, Pip speaks when it ends.
+game.on(e => {
+  if (e.type !== 'ate') return;
+  if (e.id === ItemId.Milk) sfx.drink(); else sfx.munch();
+  eatEmoji = ITEMS[e.id].icon;
 });
 
 game.on(e => {
@@ -189,6 +209,9 @@ game.on(e => {
   else if (e.type === 'walking') { sfx.walk(); scene.showMarker(e.to); }
 });
 
+let eatEmoji = '🍎';
+let eatBite = 0;
+let eatPosed = false;
 let hudRevision = -1;
 let hudSelected: StackId | 'hand' | null = null;
 const bagStacks = (): Array<{ id: StackId; count: number }> =>
@@ -215,6 +238,8 @@ const hud = new Hud(document.getElementById('ui')!, stackIcon, {
   onGrownUps: () => {},
   onGrownUpsHold: (down, id) => (down ? grownUps.holdStart(id) : grownUps.holdEnd(id)),
 });
+
+hud.onMunch(() => game.applyIntent({ kind: 'eat' }));
 
 function syncOverlays(): void {
   const open = craftScreen.isOpen || grownUps.isOpen || bagTray.isOpen;
@@ -403,6 +428,29 @@ let cosySaid = false;
 const cottage = village.houses.find(h => h.id === 'cottage');
 const saveNow = (): void => { storeSave(storage, serialise(game, seed, flags, Date.now(), herd.toJSON())); };
 
+const HINT_ORDER: readonly HintKey[] = ['cropReady', 'tryMunch', 'plantSome', 'needWaterSun', 'holdOutFood'];
+const isHintKey = (k: LineKey): k is HintKey => (HINT_ORDER as readonly string[]).includes(k);
+let hintClock = 0;
+const SEED_ITEMS = [ItemId.WheatSeed, ItemId.CarrotSeed, ItemId.PotatoSeed, ItemId.AppleSapling];
+const within = (r: { x0: number; z0: number; x1: number; z1: number }, c: Cell, pad: number): boolean =>
+  c[0] >= r.x0 - pad && c[0] <= r.x1 + pad && c[2] >= r.z0 - pad && c[2] <= r.z1 + pad;
+const plotRect = {
+  x0: Math.min(...village.farm.beds.map(b => b.x0)), z0: Math.min(...village.farm.beds.map(b => b.z0)),
+  x1: Math.max(...village.farm.beds.map(b => b.x1)), z1: Math.max(...village.farm.beds.map(b => b.z1)),
+};
+function hintContext(cell: Cell): HintContext {
+  const sel = game.effectiveSelected();
+  return {
+    hasSeeds: SEED_ITEMS.some(id => game.inventory.count(id) > 0),
+    nearPlot: within(plotRect, cell, 8),
+    planted: game.farm.seedsAndGrowing().growing > 0,
+    ripeNearby: game.farm.nearestRipe(cell, 6) !== null,
+    hasFood: FEEDS.some(id => game.inventory.count(id) > 0),
+    nearPasture: within(pasture, cell, 6),
+    edibleSelected: sel !== 'hand' && isItemId(sel) && ITEMS[sel].edible,
+  };
+}
+
 function updateVillage(dt: number): void {
   const breakOpen = hud.breakOpen;
   tryWelcome(); // replays a welcome the break bubble held back, once the bubble has closed
@@ -448,22 +496,48 @@ function updateVillage(dt: number): void {
   };
   // Pip waits for a neighbour to finish (and the other way round): nobody talks over anybody.
   if (pendingPip && mayPipSpeakQueued(speech)) {
-    sayLine(pendingPip);
+    const said = pendingPip;
+    sayLine(said);
     pendingPip = null;
+    if (isHintKey(said) && !hud.breakOpen) { // only counted as told once it was really said
+      hints.markSeen(said);
+      flags.hints = hints.seen();
+    }
     return;
   }
   const hello = greet.update(cell, village.houses, !mayGreet(speech));
   if (hello) {
     const def = villagerById[hello];
-    const text = pickVillagerLine(hello, lastHello[hello]);
+    let text = pickVillagerLine(hello, lastHello[hello]);
+    let icon = def.icon;
+    let word: string | undefined = 'Hi!';
+    if (hello === 'fern') {
+      // Her first hello gives the starter seeds (once per save); later she tops up an empty bag. Saved at once.
+      const gift = fernGift(flags, game.inventory, game.farm.seedsAndGrowing());
+      if (gift) {
+        const pool = gift.kind === 'seedGift' ? FERN_LINES.seedGift : FERN_LINES.moreSeeds;
+        text = pool.filter(l => l !== lastHello.fern)[Math.floor(Math.random() * Math.max(1, pool.length - 1))] ?? pool[0];
+        icon = '🌱';
+        word = undefined;
+        sfx.gift();
+        renderHud();
+        saveNow();
+      }
+    }
     lastHello[hello] = text;
     currentHello = { text, speaker: def.speaker };
     voice.say(text, def.speaker, { holdForAudio: true });
-    hud.showBubble(def.icon, 'Hi!');
+    hud.showBubble(icon, word);
     clearTimeout(bubbleTimer);
     bubbleTimer = window.setTimeout(() => hud.hideBubble(), 3000);
     pal.hush(5000);
     return;
+  }
+  hintClock += dt;
+  if (hintClock >= 1 && pendingPip === null && !hello) {
+    hintClock = 0;
+    const ctx = hintContext(cell);
+    for (const k of HINT_ORDER) if (hints.shouldSay(k, ctx)) { pendingPip = k; break; }
   }
   if (!cosySaid && cottage) {
     const r = cottage.rect;
@@ -483,6 +557,38 @@ function updateHerd(dt: number, seconds: number): void {
   }
   const cam = scene.camera.position;
   animalView.sync(herd.animals, (x, z) => Math.hypot(x - cam.x, z - cam.z) < ANIMAL_VIEW_RANGE, seconds);
+}
+
+/** The munch: arms up, head dips, the little picture shrinks, crumbs on each bite, Pip speaks when it ends. */
+function updateEating(): void {
+  const e = game.eating;
+  if (e.active) {
+    setEatPose(playerModel, e.progress, e.bite, eatEmoji);
+    if (e.bite > eatBite) {
+      eatBite = e.bite;
+      const q = game.player.pos;
+      const h = game.player.heading;
+      sparkles.burst({ x: q.x + Math.sin(h) * 0.35, y: q.y + 1.3, z: q.z + Math.cos(h) * 0.35 }, 'crumb', 3);
+    }
+    eatPosed = true;
+  } else if (eatPosed) {
+    setEatPose(playerModel, 0, 0);
+    eatPosed = false;
+    eatBite = 0;
+  }
+  const done = e.takeFinished();
+  if (done !== null) react(reactionKey(done));
+}
+
+/** A rare, gentle sparkle over one ripe plant near him, so a ready crop catches the eye. */
+let shimmerClock = 0;
+function updateShimmer(dt: number): void {
+  shimmerClock += dt;
+  if (shimmerClock < 0.8) return;
+  shimmerClock = 0;
+  if (game.paused || hud.blockingOverlayOpen) return;
+  const ripe = game.farm.nearestRipe(game.player.feetCell(), 10);
+  if (ripe) sparkles.burst({ x: ripe[0] + 0.5, y: ripe[1] + 1.1, z: ripe[2] + 0.5 }, 'sun', 2);
 }
 
 let fpsValue = 0;
@@ -535,6 +641,9 @@ if (debugOn) {
     burst: (kind: 'water' | 'sun' | 'both' | 'heart' | 'crumb') => { const q = game.player.pos; sparkles.burst({ x: q.x + 1.2, y: q.y + 1.6, z: q.z }, kind); },
     worldSize: () => ({ x: world.sizeX, y: world.sizeY, z: world.sizeZ }),
     saveNow,
+    eating: () => ({ active: game.eating.active, progress: game.eating.progress, bite: game.eating.bite, food: game.eating.food }),
+    layoutFarm: () => ({ beds: village.farm.beds, pool: village.farm.pool, irrigation: village.farm.irrigation, pasture, gate: village.farm.gate, fence: village.farm.fence, path: village.farm.path }),
+    bag: () => game.inventory.slots().map(id => ({ id, count: game.inventory.count(id) })),
     farm: () => ({ ...game.farm.records(), seeds: game.farm.seedsAndGrowing() }),
     advanceFarm: (ms: number) => game.farm.advance(ms),
     plantAt: (x: number, z: number, kind: CropKind) => {
@@ -607,6 +716,8 @@ function frame(now: number): void {
     updateHerd(dt, now / 1000);
   }
   sparkles.update(dt);
+  updateEating();
+  updateShimmer(dt);
   // Usage is counted once a second, not every frame (it caps each tick at 5 s anyway).
   usageMs += rawMs;
   if (usageMs >= 1000) {

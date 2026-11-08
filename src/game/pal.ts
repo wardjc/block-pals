@@ -92,6 +92,11 @@ export class Pal {
     this.speak(hadSave ? 'welcomeBack' : 'hello', true);
   }
 
+  /** A plain-word reaction to something he did (ate, picked, fed). Rate-limited by the chatter gap; never over the break line. */
+  react(key: LineKey): void {
+    this.speak(key);
+  }
+
   /** The gentle break suggestion; never held back by the chatter gap. */
   remindBreak(): void {
     this.speak('breakTime', true);

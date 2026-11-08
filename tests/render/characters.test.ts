@@ -60,3 +60,40 @@ describe('villager models', () => {
     expect([t, m]).toEqual([1, 1]);
   });
 });
+
+describe('munch pose', () => {
+  it('leaves the model in its rest pose at progress 0 and 1', async () => {
+    const { makePlayerModel, setEatPose } = await import('../../src/render/characters');
+    const m = makePlayerModel();
+    for (const p of [0, 1]) {
+      setEatPose(m, 0.5, 1);
+      setEatPose(m, p, 0);
+      const { armL, armR, head } = m.userData as { armL: THREE.Object3D; armR: THREE.Object3D; head: THREE.Object3D };
+      expect([armL.rotation.x, armR.rotation.x, head.rotation.x]).toEqual([0, 0, 0]);
+    }
+  });
+  it('raises the arms and dips the head mid-munch, gently', async () => {
+    const { makePlayerModel, setEatPose } = await import('../../src/render/characters');
+    const m = makePlayerModel();
+    setEatPose(m, 0.5, 1);
+    const { armL, head } = m.userData as { armL: THREE.Object3D; head: THREE.Object3D };
+    expect(armL.rotation.x).toBeLessThan(-1);
+    expect(Math.abs(head.rotation.x)).toBeLessThanOrEqual(0.31);
+  });
+  it('the bite picture shrinks over three bites and is gone at the end', async () => {
+    const { makePlayerModel, setEatPose, biteScale } = await import('../../src/render/characters');
+    expect([0, 1, 2, 3].map(b => Math.round(biteScale(b) * 100))).toEqual([100, 67, 33, 0]);
+    const m = makePlayerModel();
+    const sizes: number[] = [];
+    for (const [p, b] of [[0.2, 0], [0.45, 1], [0.7, 2], [0.9, 3]] as const) {
+      setEatPose(m, p, b);
+      const s = (m.userData.bites as Map<string, THREE.Sprite>).get('🍎')!;
+      sizes.push(s.visible ? s.scale.x : 0);
+    }
+    expect(sizes[0]).toBeGreaterThan(sizes[1]);
+    expect(sizes[1]).toBeGreaterThan(sizes[2]);
+    expect(sizes[3]).toBe(0);
+    setEatPose(m, 1, 0);
+    expect([...(m.userData.bites as Map<string, THREE.Sprite>).values()].every(s => !s.visible)).toBe(true);
+  });
+});
