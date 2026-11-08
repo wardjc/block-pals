@@ -10,7 +10,13 @@ import {
 import { GEN_VERSION, generateWorld } from '../../src/core/worldgen';
 import { Game } from '../../src/game/game';
 
+/** A version 3 save (world coordinates). */
 const base = (): SaveData => ({
+  version: 3, gen: 1, origin: [48, 48, 48], seed: 1234, edits: [], inventory: { [BlockId.Wood]: 4 }, player: { x: 72, y: 57, z: 72 },
+  flags: { ledToVillage: false },
+});
+/** A step 1 version 2 save (meadow coordinates). */
+const baseV2 = () => ({
   version: 2, gen: 1, seed: 1234, edits: [], inventory: { [BlockId.Wood]: 4 }, player: { x: 24, y: 9, z: 24 },
   flags: { ledToVillage: false },
 });
@@ -20,8 +26,8 @@ beforeEach(() => localStorage.clear());
 
 /** Neighbouring Grass cells (x, x+1, x+2 in a row) somewhere in the spawn meadow. */
 function grassRow(world: Game['world']): Array<[number, number, number]> {
-  for (let z = 30; z < 40; z++) {
-    for (let x = 28; x < 38; x++) {
+  for (let z = 78; z < 88; z++) { // meadow z 30..39, x 28..37, at +48
+    for (let x = 76; x < 86; x++) {
       const cells = [0, 1, 2, 3].map(d => [x + d, world.topSolidY(x + d, z) + 1, z] as [number, number, number]);
       if (cells.every(c => world.get(c[0], c[1] - 1, c[2]) === BlockId.Grass && c[1] === cells[0][1] && world.get(c[0], c[1], c[2]) === BlockId.Air && world.get(c[0], c[1] + 1, c[2]) === BlockId.Air)) return cells;
     }
@@ -40,7 +46,7 @@ function reload(game: Game, now = NOW): { game: Game; data: SaveData } {
 
 describe('farm fields in the save', () => {
   test('a step 1 v2 save without any new field loads', () => {
-    const data = parseSave(JSON.stringify(base()))!;
+    const data = parseSave(JSON.stringify(baseV2()))!;
     expect(data.items).toBeUndefined();
     expect(data.crops).toBeUndefined();
     expect(data.flags).toEqual({ ledToVillage: false });
@@ -63,7 +69,7 @@ describe('farm fields in the save', () => {
     expect(game.farm.plant(at(2), ItemId.AppleSapling, [])).toBe(true);
     game.farm.advance(40_000);
     const flags = { ledToVillage: true, fernSeeds: true, hints: ['plantSome', 'cropReady'] };
-    const animals: SaveData['animals'] = [[1, 66.5, 6, 49.5, 12, 0], [0, 70.5, 6, 52.5, 0, 1]];
+    const animals: SaveData['animals'] = [[1, 114.5, 54, 97.5, 12, 0], [0, 118.5, 54, 100.5, 0, 1]];
     const data = serialise(game, 1234, flags, NOW, animals);
     expect(storeSave(localStorage, data)).toBe(true);
     const back = readSave(localStorage)!;
@@ -79,17 +85,17 @@ describe('farm fields in the save', () => {
     expect(applied.flags).toEqual(flags);
   });
 
-  test('gen is written as the generator version (2) and a stored higher gen is never lowered', () => {
+  test('gen is written as the generator version (3) and a stored higher gen is never lowered', () => {
     const game = new Game(generateWorld(1234));
-    expect(GEN_VERSION).toBe(2);
-    expect(serialise(game, 1234, undefined, NOW).gen).toBe(2);
+    expect(GEN_VERSION).toBe(3);
+    expect(serialise(game, 1234, undefined, NOW).gen).toBe(3);
     localStorage.setItem(SAVE_KEY, JSON.stringify({ ...base(), gen: 5 }));
     storeSave(localStorage, serialise(game, 1234, undefined, NOW));
     expect(JSON.parse(localStorage.getItem(SAVE_KEY)!).gen).toBe(5);
   });
 
-  test('a save from a newer build (version above 2) is never overwritten', () => {
-    const newer = JSON.stringify({ ...base(), version: 3, extra: 'future' });
+  test('a save from a newer build (version above 3) is never overwritten', () => {
+    const newer = JSON.stringify({ ...base(), version: 4, extra: 'future' });
     localStorage.setItem(SAVE_KEY, newer);
     const game = new Game(generateWorld(1234));
     expect(storeSave(localStorage, serialise(game, 1234, undefined, NOW))).toBe(false);
@@ -123,7 +129,7 @@ describe('farm fields in the save', () => {
 
   test('a bad crops list is dropped and the edits survive', () => {
     const edits = [[5, 5, 5, BlockId.Stone]];
-    for (const crops of ['x', 7, { a: 1 }, null, [null, 'x', [1], [1, 2, 3], [NaN, 1, 1, 0], [1.5, 1, 1, 0], [-1, 1, 1, 0], [96, 1, 1, 0], [1, 20, 1, 0], [1, 1, 1, 'x'], [1, 1, 1, NaN]]]) {
+    for (const crops of ['x', 7, { a: 1 }, null, [null, 'x', [1], [1, 2, 3], [NaN, 1, 1, 0], [1.5, 1, 1, 0], [-1, 1, 1, 0], [192, 1, 1, 0], [1, 68, 1, 0], [1, 1, 1, 'x'], [1, 1, 1, NaN]]]) {
       const data = parseSave(JSON.stringify({ ...base(), edits, crops, trees: crops, animals: crops }))!;
       expect(data.edits).toEqual(edits);
       expect(data.crops).toBeUndefined();
@@ -159,10 +165,10 @@ describe('farm fields in the save', () => {
     const crops: Array<[number, number, number, number]> = [];
     const edits: Array<[number, number, number, number]> = [];
     for (let i = 0; i < 2100; i++) {
-      const x = i % 90;
-      const z = Math.floor(i / 90);
-      crops.push([x, 5, z, 0]);
-      edits.push([x, 5, z, BlockId.Wheat0]);
+      const x = 48 + i % 90;
+      const z = 48 + Math.floor(i / 90);
+      crops.push([x, 53, z, 0]);
+      edits.push([x, 53, z, BlockId.Wheat0]);
     }
     const data = parseSave(JSON.stringify({ ...base(), crops, edits }))!;
     expect(data.crops).toHaveLength(MAX_FARM_RECORDS);
@@ -172,7 +178,7 @@ describe('farm fields in the save', () => {
     game.farm.restore(applied.farm.crops, applied.farm.trees);
     // Plants without a record get one from the world's edits, so nothing is lost.
     expect(game.farm.seedsAndGrowing().growing).toBe(2100);
-    expect(applied.world.get(29, 5, 23)).toBe(BlockId.Wheat0);
+    expect(applied.world.get(77, 53, 71)).toBe(BlockId.Wheat0);
   });
 
   test('unknown hints are dropped and non-boolean flags ignored', () => {
@@ -195,15 +201,15 @@ describe('farm fields in the save', () => {
     expect(at(-5)).toBe(0);
   });
 
-  test('a damaged v2 is copied to .bad before replacement, with the new fields present', () => {
+  test('a damaged v3 is copied to .bad before replacement, with the new fields present', () => {
     const damaged = JSON.stringify({ ...base(), edits: [[1, 2, 3], [5, 5, 5, BlockId.Stone]], crops: [[1, 5, 1, 0]] });
     localStorage.setItem(SAVE_KEY, damaged);
     const read = readSave(localStorage)!;
     expect(read.edits).toEqual([[5, 5, 5, BlockId.Stone]]);
-    expect(localStorage.getItem('blockpals.save.v2.bad')).toBe(damaged);
+    expect(localStorage.getItem('blockpals.save.v3.bad')).toBe(damaged);
     const game = new Game(generateWorld(1234));
     expect(storeSave(localStorage, serialise(game, 1234, undefined, NOW))).toBe(true);
-    expect(localStorage.getItem('blockpals.save.v2.bad')).toBe(damaged);
+    expect(localStorage.getItem('blockpals.save.v3.bad')).toBe(damaged);
   });
 
   test('edits containing crop blocks are valid', () => {

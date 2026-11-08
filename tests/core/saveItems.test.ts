@@ -9,7 +9,7 @@ import { generateWorld } from '../../src/core/worldgen';
 import { Game } from '../../src/game/game';
 
 const base = (): SaveData => ({
-  version: 2, gen: 1, seed: 1234, edits: [], inventory: { [BlockId.Wood]: 4 }, player: { x: 24, y: 9, z: 24 },
+  version: 3, gen: 1, origin: [48, 48, 48], seed: 1234, edits: [], inventory: { [BlockId.Wood]: 4 }, player: { x: 72, y: 57, z: 72 },
   flags: { ledToVillage: false },
 });
 
@@ -22,7 +22,7 @@ describe('items in the save', () => {
     const data = serialise(game, 1234);
     expect('items' in data).toBe(false);
     expect('itemOrder' in data).toBe(false);
-    expect(data.version).toBe(2);
+    expect(data.version).toBe(3);
     expect(data.inventory).toEqual({ [BlockId.Wood]: 2 });
   });
 
