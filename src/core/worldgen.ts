@@ -1,5 +1,6 @@
 import { BlockId } from './blocks';
 import { insideWall, LEGACY_WORLD, ORIGIN, V2_WORLD, WORLD } from './bounds';
+import { generateOuter, type OuterInfo } from './outer';
 import { mulberry32, valueNoise2D } from './rng';
 import { ShiftedWorld, shiftLayout, type WorldCells } from './shifted';
 import { buildVillage, type Rect, type VillageLayout } from './village';
@@ -32,11 +33,16 @@ function column(noise: (x: number, z: number) => number, plateau: number, x: num
   return { height, inPond, onShore };
 }
 
-/** The v1 height formula in absolute coordinates: beyond x or z 47 the same noise rolls on. */
-export function heightAt(seed: number, x: number, z: number): number {
+/** The v1 height formula for one seed, built once (meadow coordinates; it rolls on beyond the old edges). */
+export function makeHeightAt(seed: number): (x: number, z: number) => number {
   const noise = valueNoise2D(seed);
   const plateau = 5 + Math.round(noise(24 / 12, 24 / 12) * 4);
-  return column(noise, plateau, x, z).height;
+  return (x, z) => column(noise, plateau, x, z).height;
+}
+
+/** The v1 height formula in absolute coordinates: beyond x or z 47 the same noise rolls on. */
+export function heightAt(seed: number, x: number, z: number): number {
+  return makeHeightAt(seed)(x, z);
 }
 
 export interface GeneratedWorld {
@@ -45,6 +51,8 @@ export interface GeneratedWorld {
   spawn: { x: number; y: number; z: number };
   /** World coordinates (the step 2 layout moved by ORIGIN). */
   village: VillageLayout;
+  /** The new land around the old rectangle (hills, ponds, trees), world coordinates. */
+  outer: OuterInfo;
 }
 
 function plantTree(
@@ -193,6 +201,7 @@ function generateMeadowWorld(seed: number, world: WorldCells): { spawn: Cell3; v
  * runs the step 2 generator UNCHANGED on a ShiftedWorld view at +ORIGIN, so the old region is
  * identical by construction (old streams `seed` and `seed ^ 0x5eed` consumed exactly as before).
  * The one documented difference (D1): the old bedrock row (now y 48) is Stone, so he can dig past it.
+ * Stages 2 and 3 add the outer land (src/core/outer.ts) around the old rectangle, never inside it.
  * Everything runs in bulk mode: no edit records, a clean world.
  */
 export function generateWorld(seed = 2026): GeneratedWorld {
@@ -215,8 +224,11 @@ export function generateWorld(seed = 2026): GeneratedWorld {
   const village = shiftLayout(meadow.village, world);
   const spawn = { x: meadow.spawn.x + ORIGIN.x, y: meadow.spawn.y + ORIGIN.y, z: meadow.spawn.z + ORIGIN.z };
 
+  // Stages 2 and 3: the outer ring (its own streams; only columns outside the old rectangle).
+  const outer = generateOuter(world, seed);
+
   world.endBulk();
   world.clearEdits();
   world.markClean();
-  return { world, spawn, village };
+  return { world, spawn, village, outer };
 }
