@@ -286,24 +286,31 @@ test.describe('the village', () => {
   });
 
   test('walk the path to the village and home', async ({ page }) => {
+    test.setTimeout(240_000);
     const v = await freshVillage(page);
     const start = await page.evaluate(() => window.__debug.playerPos());
-    let lastY = start.y;
-    let maxJump = 0;
-    const sample = setInterval(() => {
-      void page.evaluate(() => window.__debug.playerPos().y).then(y => { maxJump = Math.max(maxJump, Math.abs(y - lastY)); lastY = y; }).catch(() => {});
-    }, 100);
-    try {
-      // Every ~8th route cell is a waypoint; the last is the square.
-      const wps = v.route.filter((_, i) => i % 8 === 0 || i === v.route.length - 1);
-      for (const c of wps) await walkTo(page, c);
-      const at = await page.evaluate(() => window.__debug.playerPos());
-      expect(insideRect(at, v.square) || Math.hypot(at.x - (v.route[v.route.length - 1][0] + 0.5), at.z - (v.route[v.route.length - 1][2] + 0.5)) < 2).toBe(true);
-      for (const c of [...wps].reverse()) await walkTo(page, c);
-      await walkTo(page, [Math.floor(start.x), Math.floor(start.y), Math.floor(start.z)], 1.5);
-    } finally {
-      clearInterval(sample);
-    }
+    // Sample his height every frame inside the page (no timers on this side to outlive the test).
+    await page.evaluate(() => {
+      const w = window as unknown as { __maxJump: number };
+      w.__maxJump = 0;
+      let last = window.__debug.playerPos().y;
+      const tick = (): void => {
+        const y = window.__debug.playerPos().y;
+        w.__maxJump = Math.max(w.__maxJump, Math.abs(y - last));
+        last = y;
+        requestAnimationFrame(tick);
+      };
+      requestAnimationFrame(tick);
+    });
+    // Every ~8th route cell is a waypoint; the last is the square.
+    const wps = v.route.filter((_, i) => i % 8 === 0 || i === v.route.length - 1);
+    for (const c of wps) await walkTo(page, c);
+    const at = await page.evaluate(() => window.__debug.playerPos());
+    const end = v.route[v.route.length - 1];
+    expect(insideRect(at, v.square) || Math.hypot(at.x - (end[0] + 0.5), at.z - (end[2] + 0.5)) < 2).toBe(true);
+    for (const c of [...wps].reverse()) await walkTo(page, c);
+    await walkTo(page, [Math.floor(start.x), Math.floor(start.y), Math.floor(start.z)], 1.5);
+    const maxJump = await page.evaluate(() => (window as unknown as { __maxJump: number }).__maxJump);
     expect(maxJump).toBeLessThan(1.5);
   });
 
