@@ -76,11 +76,11 @@ export function lookDir(yaw: number, pitch: number, out: Vec3): Vec3 {
 const hit: VoxelHit = { x: 0, y: 0, z: 0, nx: 0, ny: 0, nz: 0, t: 0 };
 
 /** Distance from p to the nearest solid block among the 27 cells around it (capped at 1). */
-function clearance(world: World, px: number, py: number, pz: number): number {
+export function clearance(world: World, px: number, py: number, pz: number): number {
   const cx = Math.floor(px), cy = Math.floor(py), cz = Math.floor(pz);
   let best = 1;
   for (let y = cy - 1; y <= cy + 1; y++) for (let z = cz - 1; z <= cz + 1; z++) for (let x = cx - 1; x <= cx + 1; x++) {
-    if (!world.inBounds(x, y, z) || !blocksRay(world.get(x, y, z))) continue;
+    if (!world.inBounds(x, y, z) || !blocksRay(world.get(x, y, z), true)) continue;
     const ex = Math.max(x - px, 0, px - (x + 1));
     const ey = Math.max(y - py, 0, py - (y + 1));
     const ez = Math.max(z - pz, 0, pz - (z + 1));
@@ -98,7 +98,7 @@ function clearance(world: World, px: number, py: number, pz: number): number {
 export function clampDistance(world: World, eye: Vec3, dir: Vec3, maxDist: number): number {
   const bx = -dir.x, by = -dir.y, bz = -dir.z;
   let d = maxDist;
-  if (castVoxelRay(world, eye.x, eye.y, eye.z, bx, by, bz, maxDist, false, hit)) {
+  if (castVoxelRay(world, eye.x, eye.y, eye.z, bx, by, bz, maxDist, false, hit, true)) {
     if (hit.t === 0) return 0; // the eye itself is in a block
     d = Math.min(d, hit.t - CAMERA_MARGIN);
   }

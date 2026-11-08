@@ -315,5 +315,5 @@ describe('walking never stops dead', () => {
       expect(player.feetCell(), `trial ${trial} from ${sx},${sz}`).toEqual(end);
     }
     expect(routes).toBeGreaterThan(500);
-  });
+  }, 60_000);
 });

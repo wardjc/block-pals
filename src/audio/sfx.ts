@@ -163,7 +163,53 @@ function play(fn: () => void): void {
   }
 }
 
+/**
+ * A second identical sound within this long is dropped, so a run of quick taps never stacks the
+ * same chime on top of itself.
+ */
+export const SAME_SOUND_GAP_MS = 80;
+const lastPlayed = new Map<string, number>();
+function once(name: string, fn: () => void): () => void {
+  return () => {
+    const now = typeof performance !== 'undefined' ? performance.now() : Date.now();
+    const last = lastPlayed.get(name);
+    if (last !== undefined && now - last < SAME_SOUND_GAP_MS && now >= last) return;
+    lastPlayed.set(name, now);
+    play(fn);
+  };
+}
+
+/**
+ * Farm and animal sounds. Every one is a few soft oscillator blips (no clips, no speech), under
+ * 1.2 s, with a peak gain of at most 0.4; the animals' are short happy rising or falling notes.
+ */
+export const farmSfx = {
+  /** Three little drops. */
+  water: once('water', () => [0, 0.08, 0.17].forEach((t, i) => blip(1300 - i * 150, t, 0.1, 'sine', 0.22, 900 - i * 100))),
+  /** A warm, bright chime. */
+  sun: once('sun', () => [784, 988, 1175].forEach((f, i) => blip(f, i * 0.07, 0.22, 'sine', 0.2))),
+  /** Seed into the soil. */
+  plant: once('plant', () => { blip(300, 0, 0.1, 'triangle', 0.3, 220); blip(520, 0.06, 0.08, 'sine', 0.14, 600); }),
+  /** A plant picked. */
+  pick: once('pick', () => { blip(600, 0, 0.08, 'sine', 0.28, 880); blip(880, 0.08, 0.12, 'sine', 0.22, 1100); }),
+  /** A gift from an animal: three rising notes. */
+  gift: once('gift', () => [659, 784, 1047].forEach((f, i) => blip(f, i * 0.09, 0.2, 'triangle', 0.26))),
+  /** Three soft crunchy bites, 0.2 s apart. */
+  munch: once('munch', () => [0, 0.2, 0.4].forEach(t => { blip(300, t, 0.1, 'triangle', 0.3, 170); blip(900, t, 0.03, 'sine', 0.12, 600); })),
+  /** Three gentle gulps. */
+  drink: once('drink', () => [0, 0.2, 0.4].forEach((t, i) => blip(420 - i * 40, t, 0.14, 'sine', 0.26, 300 - i * 30))),
+  /** A tiny two-note chime when a plant is ripe. */
+  chime: once('chime', () => { blip(1047, 0, 0.18, 'sine', 0.16); blip(1319, 0.1, 0.24, 'sine', 0.16); }),
+  /** A pat. */
+  pet: once('pet', () => { blip(520, 0, 0.1, 'sine', 0.2, 700); blip(700, 0.1, 0.12, 'sine', 0.2, 880); }),
+  cluck: once('cluck', () => { blip(700, 0, 0.06, 'triangle', 0.2, 920); blip(820, 0.1, 0.07, 'triangle', 0.2, 640); }),
+  moo: once('moo', () => { blip(230, 0, 0.7, 'sine', 0.3, 180); blip(460, 0.02, 0.6, 'triangle', 0.08, 360); }),
+  baa: once('baa', () => { blip(420, 0, 0.4, 'triangle', 0.2, 360); blip(430, 0.05, 0.35, 'sine', 0.14, 380); }),
+  oink: once('oink', () => { blip(300, 0, 0.12, 'triangle', 0.25, 210); blip(270, 0.16, 0.14, 'triangle', 0.22, 190); }),
+};
+
 export const sfx = {
+  ...farmSfx,
   /** The shared AudioContext and its master gain, for voice clips. Null when Web Audio is unavailable. */
   audioOut: (): { ctx: AudioContext; out: AudioNode } | null => {
     const c = ensure();

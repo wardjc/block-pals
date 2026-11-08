@@ -1,5 +1,6 @@
 import { describe, expect, it } from 'vitest';
 import { BlockId } from '../../src/core/blocks';
+import { FEEDS, ItemId } from '../../src/core/items';
 import type { Cell } from '../../src/core/pathfind';
 import { World } from '../../src/core/world';
 import { createDebouncer, resolveHold, resolveTap } from '../../src/input/tap';
@@ -184,5 +185,126 @@ describe('createDebouncer', () => {
     expect(allow('tap', 0)).toBe(true);
     expect(allow('tap', 200)).toBe(false);
     expect(allow('tap', 300)).toBe(true);
+  });
+});
+
+describe('resolveTap with an item selected', () => {
+  it('walks like the hand: a non-seed item is never built as a block', () => {
+    const w = flatWorld();
+    for (const item of [ItemId.Apple, ItemId.Wool, ItemId.Egg]) {
+      expect(resolveTap({ cell: [3, 0, 3], normal: up }, item, feet, w, occupied)).toEqual({ kind: 'walk', to: [3, 1, 3] });
+    }
+    expect(resolveTap({ cell: [3, 0, 3], normal: up }, BlockId.Stone, feet, w, occupied)).toEqual({ kind: 'place', cell: [3, 1, 3] });
+  });
+});
+
+describe('resolveTap: plants and seeds (farm)', () => {
+  const plantWorld = (): World => {
+    const w = flatWorld();
+    w.set(4, 1, 2, BlockId.Wheat2);
+    w.set(8, 1, 8, BlockId.Carrot3);
+    return w;
+  };
+
+  it('tap on a plant in reach helps (any selection, even a block)', () => {
+    const w = plantWorld();
+    for (const sel of ['hand', BlockId.Planks, ItemId.WheatSeed, ItemId.Apple] as const) {
+      expect(resolveTap({ cell: [4, 1, 2], normal: up }, sel, feet, w, occupied)).toEqual({ kind: 'help', cell: [4, 1, 2] });
+      expect(resolveTap({ cell: [4, 1, 2], normal: [-1, 0, 0] }, sel, feet, w, occupied)).toEqual({ kind: 'help', cell: [4, 1, 2] });
+    }
+  });
+  it('tap on a plant out of reach walks to the plants own cell, not on top of it', () => {
+    const w = plantWorld();
+    expect(resolveTap({ cell: [8, 1, 8], normal: up }, 'hand', feet, w, occupied)).toEqual({ kind: 'walk', to: [8, 1, 8] });
+    expect(resolveTap({ cell: [8, 1, 8], normal: [0, 1, 0] }, BlockId.Planks, feet, w, occupied)).toEqual({ kind: 'walk', to: [8, 1, 8] });
+  });
+  it('a ripe plant tap is still help (the farm answers rest)', () => {
+    const w = plantWorld();
+    w.set(4, 1, 2, BlockId.Wheat3);
+    expect(resolveTap({ cell: [4, 1, 2], normal: up }, 'hand', feet, w, occupied)).toEqual({ kind: 'help', cell: [4, 1, 2] });
+  });
+  it('plantAt lets the farm mark apple tree blocks as plants', () => {
+    const w = flatWorld();
+    w.set(4, 1, 4, BlockId.Wood);
+    expect(resolveTap({ cell: [4, 1, 4], normal: up }, 'hand', feet, w, occupied, { plantAt: c => c[0] === 4 && c[2] === 4 }))
+      .toEqual({ kind: 'help', cell: [4, 1, 4] });
+    expect(resolveTap({ cell: [4, 1, 4], normal: up }, 'hand', feet, w, occupied)).toEqual({ kind: 'walk', to: [4, 2, 4] });
+  });
+  it('seed selected: tap on grass in reach plants, out of reach walks, on sand walks', () => {
+    const w = flatWorld();
+    expect(resolveTap({ cell: [3, 0, 3], normal: up }, ItemId.WheatSeed, feet, w, occupied)).toEqual({ kind: 'plant', cell: [3, 1, 3] });
+    expect(resolveTap({ cell: [8, 0, 8], normal: up }, ItemId.WheatSeed, feet, w, occupied)).toEqual({ kind: 'walk', to: [8, 1, 8] });
+    w.set(4, 0, 4, BlockId.Sand);
+    expect(resolveTap({ cell: [4, 0, 4], normal: up }, ItemId.CarrotSeed, feet, w, occupied)).toEqual({ kind: 'walk', to: [4, 1, 4] });
+  });
+  it('a sapling plants like a seed, and farmland and dirt work too', () => {
+    const w = flatWorld();
+    w.set(4, 0, 4, BlockId.Farmland);
+    w.set(5, 0, 5, BlockId.Dirt);
+    for (const c of [[3, 0, 3], [4, 0, 4], [5, 0, 5]] as Cell[]) {
+      expect(resolveTap({ cell: c, normal: up }, ItemId.AppleSapling, feet, w, occupied)).toEqual({ kind: 'plant', cell: [c[0], 1, c[2]] });
+    }
+  });
+  it('a seed is never placed as a block (planks beside the tapped face)', () => {
+    const w = flatWorld();
+    w.set(4, 1, 4, BlockId.Stone);
+    expect(resolveTap({ cell: [4, 1, 4], normal: up }, ItemId.WheatSeed, feet, w, occupied).kind).not.toBe('place');
+  });
+  it('a plant block is never placed', () => {
+    const w = flatWorld();
+    expect(resolveTap({ cell: [3, 0, 3], normal: up }, BlockId.Wheat3, feet, w, occupied)).toEqual({ kind: 'walk', to: [3, 1, 3] });
+  });
+  it('a tap on a close animal with any food feeds, otherwise pets, far away walks', () => {
+    const w = flatWorld();
+    for (const food of FEEDS) {
+      expect(resolveTap({ cell: [3, 0, 3], normal: up }, food, feet, w, occupied, { animalHit: { id: 7, dist: 2 } })).toEqual({ kind: 'feed', animal: 7 });
+    }
+    for (const other of ['hand', BlockId.Planks, ItemId.WheatSeed, ItemId.Egg, ItemId.Milk] as const) {
+      expect(resolveTap({ cell: [3, 0, 3], normal: up }, other, feet, w, occupied, { animalHit: { id: 7, dist: 3 } })).toEqual({ kind: 'pet', animal: 7 });
+    }
+    expect(resolveTap({ cell: [3, 0, 3], normal: up }, ItemId.Apple, feet, w, occupied, { animalHit: { id: 7, dist: 6, cell: [8, 1, 8] } }))
+      .toEqual({ kind: 'walk', to: [8, 1, 8] });
+    // an animal tap needs no block hit at all
+    expect(resolveTap(null, ItemId.Apple, feet, w, occupied, { animalHit: { id: 1, dist: 1 } })).toEqual({ kind: 'feed', animal: 1 });
+  });
+  it('a tap never digs: no intent from a tap is dig, collect or harvest', () => {
+    const w = plantWorld();
+    for (const sel of ['hand', BlockId.Planks, ItemId.WheatSeed] as const) {
+      for (const cell of [[4, 1, 2], [8, 1, 8], [3, 0, 3]] as Cell[]) {
+        const kind = resolveTap({ cell, normal: up }, sel, feet, w, occupied).kind;
+        expect(['walk', 'place', 'plant', 'help', 'none']).toContain(kind);
+      }
+    }
+  });
+});
+
+describe('resolveHold: plants and animals (farm)', () => {
+  it('hold on a plant harvests (dig intent) in reach and walks beside it when far', () => {
+    const w = flatWorld();
+    w.set(4, 1, 2, BlockId.Wheat3);
+    w.set(8, 1, 8, BlockId.Wheat1);
+    expect(resolveHold({ cell: [4, 1, 2], normal: up }, feet, w, occupied)).toEqual({ kind: 'dig', cell: [4, 1, 2] });
+    expect(resolveHold({ cell: [8, 1, 8], normal: up }, feet, w, occupied)).toEqual({ kind: 'walkNear', block: [8, 1, 8] });
+  });
+  it('ripe apples four blocks up are picked from the ground; a plain block that high is not in reach', () => {
+    const w = flatWorld();
+    w.set(4, 5, 2, BlockId.AppleLeaves);
+    w.set(5, 5, 2, BlockId.Leaves);
+    expect(resolveHold({ cell: [4, 5, 2], normal: up }, feet, w, occupied)).toEqual({ kind: 'dig', cell: [4, 5, 2] });
+    expect(resolveHold({ cell: [5, 5, 2], normal: up }, feet, w, occupied)).toEqual({ kind: 'walkNear', block: [5, 5, 2] });
+  });
+  it('apples behind a wall are out of reach: a hold walks beside the tree instead', () => {
+    const w = flatWorld();
+    w.set(4, 5, 2, BlockId.AppleLeaves);
+    for (const y of [2, 3, 4]) w.set(3, y, 2, BlockId.Planks);
+    for (const y of [2, 3, 4, 5]) w.set(4, y, 2 - 0, y === 5 ? BlockId.AppleLeaves : BlockId.Planks);
+    expect(resolveHold({ cell: [4, 5, 2], normal: up }, feet, w, occupied)).toEqual({ kind: 'walkNear', block: [4, 5, 2] });
+  });
+  it('hold on an animal gives none and never digs the ground behind it', () => {
+    expect(resolveHold({ cell: [4, 0, 4], normal: up }, feet, flatWorld(), occupied, true)).toEqual({ kind: 'none' });
+  });
+  it('hold on the block under an animal gives none', () => {
+    const animalCells: Cell[] = [...occupied, [5, 1, 5], [5, 2, 5]];
+    expect(resolveHold({ cell: [5, 0, 5], normal: up }, feet, flatWorld(), animalCells)).toEqual({ kind: 'none' });
   });
 });

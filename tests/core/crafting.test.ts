@@ -1,6 +1,7 @@
 import { describe, expect, test } from 'vitest';
 import { BlockId } from '../../src/core/blocks';
 import { Inventory, MAX_STACK } from '../../src/core/inventory';
+import { ItemId } from '../../src/core/items';
 import { RECIPES } from '../../src/core/recipes';
 import { canCraft, craft } from '../../src/core/crafting';
 
@@ -114,8 +115,8 @@ describe('Inventory', () => {
 });
 
 describe('crafting', () => {
-  test('defines the exact recipes and words', () => {
-    expect(RECIPES).toEqual([
+  test('defines the exact original recipes and words (wool recipes follow)', () => {
+    expect(RECIPES.slice(0, 3)).toEqual([
       { id: 'planks', inputs: [{ id: BlockId.Wood, n: 1 }], output: { id: BlockId.Planks, n: 2 }, word: 'wood' },
       { id: 'glass', inputs: [{ id: BlockId.Sand, n: 3 }], output: { id: BlockId.Glass, n: 1 }, word: 'glass' },
       { id: 'bricks', inputs: [{ id: BlockId.Dirt, n: 2 }, { id: BlockId.Stone, n: 2 }], output: { id: BlockId.Bricks, n: 1 }, word: 'brick' },
@@ -183,5 +184,59 @@ describe('crafting', () => {
     inv.remove(BlockId.Planks);
     expect(craft(inv, RECIPES[0])).toBe(true);
     expect(inv.count(BlockId.Planks)).toBe(99);
+  });
+});
+
+describe('wool recipes', () => {
+  const wool = (colour: string) => RECIPES.find(r => r.id === `wool-${colour}`)!;
+
+  test('wool crafts into 2 coloured blocks of the chosen colour', () => {
+    const cases: Array<[string, BlockId]> = [
+      ['white', BlockId.WoolWhite], ['red', BlockId.WoolRed], ['blue', BlockId.WoolBlue], ['yellow', BlockId.WoolYellow],
+    ];
+    for (const [colour, block] of cases) {
+      const inv = new Inventory();
+      inv.add(ItemId.Wool, 3);
+      expect(craft(inv, wool(colour))).toBe(true);
+      expect(inv.count(ItemId.Wool)).toBe(2);
+      expect(inv.count(block)).toBe(2);
+      expect(wool(colour).word).toBe(colour);
+    }
+  });
+
+  test('refuses without wool and uses nothing', () => {
+    const inv = new Inventory();
+    inv.add(BlockId.Wood, 3);
+    expect(canCraft(inv, wool('red'))).toBe(false);
+    expect(craft(inv, wool('red'))).toBe(false);
+    expect(inv.count(BlockId.Wood)).toBe(3);
+  });
+
+  test('canCraft refuses when the output stack would pass 99 and uses nothing', () => {
+    const inv = new Inventory();
+    inv.add(ItemId.Wool, 5);
+    inv.add(BlockId.WoolRed, 98);
+    expect(canCraft(inv, wool('red'))).toBe(false);
+    expect(craft(inv, wool('red'))).toBe(false);
+    expect(inv.count(ItemId.Wool)).toBe(5);
+    expect(inv.count(BlockId.WoolRed)).toBe(98);
+    inv.remove(BlockId.WoolRed, 1);
+    expect(craft(inv, wool('red'))).toBe(true);
+    expect(inv.count(BlockId.WoolRed)).toBe(99);
+  });
+
+  test('existing three recipes behave exactly as before', () => {
+    expect(RECIPES.slice(0, 3).map(r => r.id)).toEqual(['planks', 'glass', 'bricks']);
+    const inv = new Inventory();
+    inv.add(BlockId.Wood, 1);
+    expect(craft(inv, RECIPES[0])).toBe(true);
+    expect(inv.count(BlockId.Planks)).toBe(2);
+  });
+
+  test('every recipe input and output count is 20 or fewer', () => {
+    for (const r of RECIPES) {
+      for (const i of r.inputs) expect(i.n).toBeLessThanOrEqual(20);
+      expect(r.output.n).toBeLessThanOrEqual(20);
+    }
   });
 });

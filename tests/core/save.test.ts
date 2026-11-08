@@ -1,6 +1,6 @@
 // @vitest-environment jsdom
 import { afterEach, beforeEach, describe, expect, test, vi } from 'vitest';
-import { BlockId } from '../../src/core/blocks';
+import { BLOCKS, BlockId } from '../../src/core/blocks';
 import { isStandable } from '../../src/core/pathfind';
 import {
   ALL_SAVE_KEYS, BACKUP_KEY, BAD_V2_KEY, LEGACY_SAVE_KEY, SAVE_KEY, applySave, inspectSave, migrateV1, parseSave, readSave, serialise,
@@ -9,6 +9,9 @@ import {
 import { GEN_VERSION } from '../../src/core/worldgen';
 import { generateWorld } from '../../src/core/worldgen';
 import { Game } from '../../src/game/game';
+
+/** One past the highest registered block id: never a valid block, however many blocks are added later. */
+const FIRST_INVALID_ID = Math.max(...Object.keys(BLOCKS).map(Number)) + 1;
 
 function makeGame(seed = 1234): Game {
   return new Game(generateWorld(seed));
@@ -60,7 +63,7 @@ describe('save data', () => {
       version: 2, gen: GEN_VERSION, seed: 1234, flags: { ledToVillage: false },
       edits: [[24, 1, 24, BlockId.Air], [25, 14, 25, BlockId.Bricks]],
       inventory: { [BlockId.Wood]: 7, [BlockId.Glass]: 99 }, player: game.player.pos,
-      order: [BlockId.Wood, BlockId.Glass],
+      order: [BlockId.Wood, BlockId.Glass], savedAt: expect.any(Number),
     });
     expect(game.world.isDirty()).toBe(true);
     expect(storeSave(localStorage, data)).toBe(true);
@@ -107,7 +110,7 @@ describe('save data', () => {
     expect(parseSave(JSON.stringify({ ...validSave(), ...patch }))).toBeNull();
   });
 
-  const BAD_EDITS: unknown[] = [[1, 2, 3], [1, 2, 3, 4, 5], [1, 2, 3, -1], [1, 2, 3, 16], [1, 2, 3, 999], [1, 2, 3, '4'],
+  const BAD_EDITS: unknown[] = [[1, 2, 3], [1, 2, 3, 4, 5], [1, 2, 3, -1], [1, 2, 3, FIRST_INVALID_ID], [1, 2, 3, 999], [1, 2, 3, '4'],
     [1, 2, 3, 1.5], [-1, 2, 3, 4], [96, 2, 3, 4], [1, 20, 3, 4], [1, 2, 96, 4], [1.5, 2, 3, 4], null];
 
   test.each(BAD_EDITS.map(e => [e]))('one invalid edit %j is skipped, the valid ones are kept', bad => {
@@ -228,7 +231,7 @@ describe('autosave', () => {
     if (kind === 'world') expect(game.world.isDirty()).toBe(true);
     vi.advanceTimersByTime(10_000);
     expect(write).toHaveBeenCalledTimes(2);
-    expect(readSave(localStorage)).toEqual(serialise(game, 1234));
+    expect(readSave(localStorage)).toEqual({ ...serialise(game, 1234), savedAt: expect.any(Number) });
     expect(game.world.isDirty()).toBe(false);
   });
 
@@ -252,7 +255,7 @@ describe('autosave', () => {
 });
 
 describe('save extras', () => {
-  test.each([null, [], { 4: 100 }, { 4: -1 }, { 4: 1.5 }, { 4: '3' }, { 0: 1 }, { 11: 1 }, { 16: 1 }, { '04': 1 }])(
+  test.each([null, [], { 4: 100 }, { 4: -1 }, { 4: 1.5 }, { 4: '3' }, { 0: 1 }, { 11: 1 }, { [FIRST_INVALID_ID]: 1 }, { '04': 1 }])(
     'bad inventory %j is emptied, save kept', inv => {
       const d = parseSave(JSON.stringify({ ...validSave(), inventory: inv }));
       expect(d).not.toBeNull();

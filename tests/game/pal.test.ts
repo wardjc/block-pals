@@ -337,3 +337,16 @@ describe('blocked Pip', () => {
     expect(said).toEqual(['crafted', 'noPath']);
   });
 });
+
+describe('Pal.react', () => {
+  it('says a reaction and reports it, but not inside the chatter gap', () => {
+    const { pal, said, time } = setup();
+    time(10_000);
+    expect(pal.react('ateApple')).toBe(true);
+    time(11_000);
+    expect(pal.react('ateCarrot')).toBe(false);
+    time(14_100);
+    expect(pal.react('ateCarrot')).toBe(true);
+    expect(said).toEqual(['ateApple', 'ateCarrot']);
+  });
+});

@@ -52,6 +52,30 @@ class Builder {
     this.indices.push(base, base + 1, base + 2, base, base + 2, base + 3);
   }
 
+  /**
+   * Two crossed vertical planes (an X seen from above), each emitted with both windings so the
+   * single-sided material shows them from every side: 4 quads, 16 vertices, 8 triangles. Normals
+   * point up, so a plant is lit like the sky whichever way it faces.
+   */
+  cross(x: number, y: number, z: number, uv: [number, number, number, number]): void {
+    const [u0, v0, u1, v1] = uv;
+    const planes: Array<[number, number, number, number]> = [[0, 0, 1, 1], [1, 0, 0, 1]];
+    for (const [ax, az, bx, bz] of planes) {
+      for (const flip of [false, true]) {
+        const base = this.positions.length / 3;
+        const [lx, lz, rx, rz] = flip ? [bx, bz, ax, az] : [ax, az, bx, bz];
+        // left-bottom, right-bottom, right-top, left-top (texture left to right follows the order)
+        this.positions.push(
+          x + lx, y, z + lz, x + rx, y, z + rz,
+          x + rx, y + 1, z + rz, x + lx, y + 1, z + lz,
+        );
+        for (let i = 0; i < 4; i++) this.normals.push(0, 1, 0);
+        this.uvs.push(u0, v0, u1, v0, u1, v1, u0, v1);
+        this.indices.push(base, base + 1, base + 2, base, base + 2, base + 3);
+      }
+    }
+  }
+
   finish(): MeshArrays {
     return {
       positions: new Float32Array(this.positions),
@@ -76,6 +100,10 @@ export function buildChunkGeometry(world: World, cx: number, cz: number, uvFor: 
       for (let x = x0; x < x1; x++) {
         const id = world.get(x, y, z);
         if (id === BlockId.Air) continue;
+        if (BLOCKS[id].shape === 'cross') {
+          trans.cross(x, y, z, uvFor(id, 'south'));
+          continue;
+        }
         const isTrans = BLOCKS[id].transparent;
         const target = isTrans ? trans : solid;
         for (const def of FACES) {

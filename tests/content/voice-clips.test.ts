@@ -1,12 +1,10 @@
 import { describe, it, expect } from 'vitest';
 import { existsSync, readFileSync } from 'node:fs';
-import { LINES } from '../../src/content/lines';
-import { VILLAGER_LINES, VILLAGERS } from '../../src/content/villagers';
+import { spokenLines } from '../../src/content/spoken';
 import { clipKey } from '../../src/audio/voiceKey';
 
 /** Every spoken line, per speaker. */
-const bySpeaker: Record<string, string[]> = { pip: Object.values(LINES).flat() };
-for (const v of VILLAGERS) bySpeaker[v.speaker] = [...(bySpeaker[v.speaker] ?? []), ...VILLAGER_LINES[v.id]];
+const bySpeaker = spokenLines();
 const entries = Object.entries(bySpeaker).flatMap(([speaker, lines]) => lines.map((l) => ({ speaker, line: l })));
 const manifest = JSON.parse(readFileSync('public/voice/manifest.json', 'utf8')) as Record<string, { file: string; text: string; duration: number }>;
 const exported = JSON.parse(readFileSync('tools/voice/lines.json', 'utf8')) as Record<string, string[]>;
@@ -14,7 +12,7 @@ const voices = JSON.parse(readFileSync('tools/voice/voices.json', 'utf8')) as Re
 
 describe('voice clips', () => {
   it('no line contains a cheer or sound-effect word (the voice would read it out)', () => {
-    for (const { line } of entries) expect(line).not.toMatch(/\b(whee+|yippee|woo-?hoo|yay|hooray|hee hee|ha ha|wahoo|ooh+|hmm+|ta-?da|hup)\b/i);
+    for (const { line } of entries) expect(line).not.toMatch(/\b(whee+|yippee|woo-?hoo|yay|hooray|hee hee|ha ha|wahoo|ooh+|hmm+|mmm+|aww+|yum+|ta-?da|hup)\b/i);
   });
   it('every speaker has a voice defined', () => {
     for (const s of Object.keys(bySpeaker)) expect(voices[s], s).toBeDefined();

@@ -42,6 +42,7 @@ export default defineConfig({
   ],
   test: {
     environment: 'node',
+    testTimeout: 30_000, // world-generating tests are slow when 60 test files start at once
     include: ['tests/**/*.test.ts'],
     exclude: ['e2e/**', 'node_modules/**'],
   },

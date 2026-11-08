@@ -5,7 +5,7 @@ import { buildVillage, type Rect, type VillageLayout } from './village';
 import { World } from './world';
 
 /** Bump when later steps add stamps, so saves can tell which generator made the world. */
-export const GEN_VERSION = 1;
+export const GEN_VERSION = 2;
 
 type Cell3 = { x: number; y: number; z: number };
 type Tree = { x: number; z: number };

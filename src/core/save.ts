@@ -1,7 +1,10 @@
+import type { CropRec, TreeRec } from '../game/farm';
 import type { Game } from '../game/game';
-import { BLOCKS, BlockId } from './blocks';
+import { BLOCKS, BlockId, isCarriable } from './blocks';
 import { LEGACY_WORLD, WORLD } from './bounds';
+import { GrowthClock, STAGE_MS, TREE_STAGE_MS } from './growth';
 import { Inventory, MAX_STACK } from './inventory';
+import { isItemId } from './items';
 import { isStandable } from './pathfind';
 import type { VillageLayout } from './village';
 import type { World } from './world';
@@ -24,7 +27,15 @@ export const ALL_SAVE_KEYS: readonly string[] = [
   SAVE_KEY, LEGACY_SAVE_KEY, BACKUP_KEY, BAD_V2_KEY, `${BAD_V2_KEY}.2`, `${BAD_V2_KEY}.3`, `${BAD_V2_KEY}.4`,
 ];
 
-export interface SaveFlags { ledToVillage: boolean }
+/** Hint names the farm may save; anything else in a save is ignored. */
+export const HINT_NAMES: readonly string[] = ['plantSome', 'needWaterSun', 'cropReady', 'holdOutFood', 'tryMunch'];
+/** More crop or tree records than this in a save are ignored (the plants still exist as blocks). */
+export const MAX_FARM_RECORDS = 2000;
+
+export interface SaveFlags { ledToVillage: boolean; fernSeeds?: boolean; hints?: string[] }
+
+/** kind 0..3 (chicken, cow, sheep, pig), x, y, z, giftIn seconds, variant. */
+export type SavedAnimalTuple = [number, number, number, number, number, number];
 
 export interface SaveDataV1 {
   version: 1;
@@ -45,11 +56,28 @@ export interface SaveData {
   player: { x: number; y: number; z: number };
   /** Hotbar order (first collected first). Optional: saves before the final review lack it. */
   order?: number[];
+  /** Item kinds in the bag (seeds, food, wool and so on). Optional and additive: absent in saves from step 1. */
+  items?: Record<number, number>;
+  /** Item order, first obtained first (emptied kinds keep their place). */
+  itemOrder?: number[];
+  /** Milliseconds since the epoch when this was written; offline growth is counted from it (capped at 8 h). */
+  savedAt?: number;
+  /** x, y, z, progress ms toward the next stage. The plants themselves are blocks in `edits`. */
+  crops?: Array<[number, number, number, number]>;
+  /** x, y, z (trunk base), stage 0..3, progress ms. */
+  trees?: Array<[number, number, number, number, number]>;
+  animals?: SavedAnimalTuple[];
   flags: SaveFlags;
 }
 
-export function serialise(game: Game, seed: number, flags: SaveFlags = { ledToVillage: false }): SaveData {
-  return {
+export function serialise(
+  game: Game, seed: number, flags: SaveFlags = { ledToVillage: false }, now: number = Date.now(), animals?: SavedAnimalTuple[],
+): SaveData {
+  // Records first: this brings any pending plant growth into the world before the edits are read.
+  const farm = game.farm.records();
+  const items = game.inventory.itemsToJSON();
+  const itemOrder = game.inventory.itemOrder();
+  const data: SaveData = {
     version: 2,
     gen: GEN_VERSION,
     seed,
@@ -57,8 +85,20 @@ export function serialise(game: Game, seed: number, flags: SaveFlags = { ledToVi
     inventory: game.inventory.toJSON(),
     player: { ...game.player.pos },
     order: game.inventory.order(),
+    savedAt: now,
     flags: { ledToVillage: flags.ledToVillage },
   };
+  if (flags.fernSeeds === true) data.flags.fernSeeds = true;
+  if (flags.hints && flags.hints.length > 0) data.flags.hints = [...flags.hints];
+  // Only written when there is something, so a block-only bag with no plants saves what step 1 saved (plus savedAt).
+  if (itemOrder.length > 0) {
+    data.items = items;
+    data.itemOrder = itemOrder;
+  }
+  if (farm.crops.length > 0) data.crops = farm.crops.map(c => [c.x, c.y, c.z, c.p]);
+  if (farm.trees.length > 0) data.trees = farm.trees.map(t => [t.x, t.y, t.z, t.stage, t.p]);
+  if (animals && animals.length > 0) data.animals = animals.map(a => [...a] as SavedAnimalTuple);
+  return data;
 }
 
 /** Carries everything over untouched: same seed, edits (the v1 world is the corner of the new one), bag. */
@@ -97,10 +137,100 @@ function validEdit(edit: unknown, size: { x: number; y: number; z: number }): ed
     && isBlockId(edit[3]);
 }
 
+/**
+ * Items are cleaned entry by entry: an unknown id or a bad count is dropped on its own, so one bad
+ * entry never costs the rest of the bag, the blocks or the world. Anything that is not a list or a
+ * record is ignored.
+ */
+function cleanItems(items: unknown, itemOrder: unknown): Pick<SaveData, 'items' | 'itemOrder'> {
+  const kept: Record<number, number> = {};
+  if (isRecord(items)) {
+    for (const [key, n] of Object.entries(items)) {
+      const id = Number(key);
+      if (String(id) === key && isItemId(id) && typeof n === 'number' && Number.isInteger(n) && n >= 0 && n <= MAX_STACK) kept[id] = n;
+    }
+  }
+  const order: number[] = [];
+  if (Array.isArray(itemOrder)) {
+    for (const id of itemOrder) {
+      if (typeof id === 'number' && isItemId(id) && !order.includes(id)) order.push(id);
+    }
+  }
+  for (const key of Object.keys(kept)) if (!order.includes(Number(key))) order.push(Number(key));
+  return order.length === 0 ? {} : { items: kept, itemOrder: order };
+}
+
+const isInt = (v: unknown): v is number => typeof v === 'number' && Number.isInteger(v);
+const isFinite_ = (v: unknown): v is number => typeof v === 'number' && Number.isFinite(v);
+const inBox = (v: unknown[], size: { x: number; y: number; z: number }): boolean =>
+  isInt(v[0]) && isInt(v[1]) && isInt(v[2]) && v[0] >= 0 && v[0] < size.x && v[1] >= 0 && v[1] < size.y && v[2] >= 0 && v[2] < size.z;
+
+/**
+ * Crop, tree and animal lists are cleaned entry by entry: a bad entry, a duplicate cell or anything
+ * past the cap is dropped on its own. A list of the wrong type is dropped as a whole; nothing here
+ * can ever reject the save or cost him his world.
+ */
+function cleanFarm(parsed: Record<string, unknown>): Pick<SaveData, 'crops' | 'trees' | 'animals' | 'savedAt'> {
+  const out: Pick<SaveData, 'crops' | 'trees' | 'animals' | 'savedAt'> = {};
+  if (isFinite_(parsed.savedAt) && parsed.savedAt > 0) out.savedAt = parsed.savedAt;
+  const seen = new Set<string>();
+  const first = <T>(list: unknown, take: (e: unknown[]) => T | null): T[] => {
+    const kept: T[] = [];
+    if (!Array.isArray(list)) return kept;
+    for (const e of list) {
+      if (kept.length >= MAX_FARM_RECORDS) break;
+      if (!Array.isArray(e)) continue;
+      const v = take(e);
+      if (v) kept.push(v);
+    }
+    return kept;
+  };
+  const crops = first(parsed.crops, e => {
+    if (e.length !== 4 || !inBox(e, WORLD) || !isFinite_(e[3])) return null;
+    const key = `c${e[0]},${e[1]},${e[2]}`;
+    if (seen.has(key)) return null;
+    seen.add(key);
+    return [e[0], e[1], e[2], Math.min(Math.max(0, e[3]), STAGE_MS - 1)] as [number, number, number, number];
+  });
+  if (crops.length > 0) out.crops = crops;
+  const trees = first(parsed.trees, e => {
+    if (e.length !== 5 || !inBox(e, WORLD) || !isInt(e[3]) || e[3] < 0 || e[3] > 3 || !isFinite_(e[4])) return null;
+    const key = `t${e[0]},${e[1]},${e[2]}`;
+    if (seen.has(key)) return null;
+    seen.add(key);
+    const len = e[3] >= 3 ? 1 : TREE_STAGE_MS[e[3]];
+    return [e[0], e[1], e[2], e[3], e[3] >= 3 ? 0 : Math.min(Math.max(0, e[4]), len - 1)] as [number, number, number, number, number];
+  });
+  if (trees.length > 0) out.trees = trees;
+  const animals = first(parsed.animals, e => {
+    if (e.length !== 6 || !isInt(e[0]) || e[0] < 0 || e[0] > 3) return null;
+    if (![e[1], e[2], e[3]].every(isFinite_) || !isFinite_(e[4]) || !isInt(e[5]) || e[5] < 0) return null;
+    const n = e as number[];
+    if (n[1] < 0 || n[1] >= WORLD.x || n[2] < 0 || n[2] >= WORLD.y || n[3] < 0 || n[3] >= WORLD.z) return null;
+    // Two animals never share a cell, so the cell (not the rounded spot) is the identity.
+    const key = `a${Math.floor(n[1])},${Math.floor(n[2])},${Math.floor(n[3])}`;
+    if (seen.has(key)) return null;
+    seen.add(key);
+    return [n[0], n[1], n[2], n[3], Math.max(0, n[4]), n[5]] as SavedAnimalTuple;
+  });
+  if (animals.length > 0) out.animals = animals;
+  return out;
+}
+
+function cleanFlags(flags: Record<string, unknown>): SaveFlags {
+  const out: SaveFlags = { ledToVillage: flags.ledToVillage === true };
+  if (flags.fernSeeds === true) out.fernSeeds = true;
+  if (Array.isArray(flags.hints)) {
+    const hints = flags.hints.filter((h, i, all): h is string => typeof h === 'string' && HINT_NAMES.includes(h) && all.indexOf(h) === i);
+    if (hints.length > 0) out.hints = hints;
+  }
+  return out;
+}
+
 function validInventory(inv: unknown): boolean {
   return isRecord(inv) && Object.entries(inv).every(([key, count]) => {
     const id = Number(key);
-    return String(id) === key && isBlockId(id) && id !== BlockId.Air && id !== BlockId.Bedrock
+    return String(id) === key && isCarriable(id)
       && typeof count === 'number' && Number.isInteger(count) && count >= 0 && count <= MAX_STACK;
   });
 }
@@ -144,26 +274,42 @@ export function inspectSave(raw: string | null): { data: SaveData; skipped: numb
       const flags = isRecord(parsed.flags) ? parsed.flags : {};
       data = {
         ...(parsed as unknown as SaveData),
-        flags: { ledToVillage: flags.ledToVillage === true },
+        flags: cleanFlags(flags),
       };
     } else {
       return null;
     }
     if (!validInventory(data.inventory)) data.inventory = {};
     if ('order' in data && !Inventory.validOrder(data.order)) delete data.order;
+    delete data.items;
+    delete data.itemOrder;
+    delete data.savedAt;
+    delete data.crops;
+    delete data.trees;
+    delete data.animals;
+    Object.assign(data, cleanItems(parsed.items, parsed.itemOrder));
+    if (parsed.version === 2) Object.assign(data, cleanFarm(parsed));
     return { data, skipped };
   } catch {
     return null;
   }
 }
 
-export function applySave(data: SaveData): {
+export interface Applied {
   world: World;
   inventory: Inventory;
   spawn: { x: number; y: number; z: number };
   village: VillageLayout;
   flags: SaveFlags;
-} {
+  items: Record<number, number>;
+  /** Plant timers to hand to Farm.restore after the edits are in. */
+  farm: { crops: CropRec[]; trees: TreeRec[] };
+  animals: SavedAnimalTuple[];
+  /** Time to grow while the game was closed: never negative, never more than 8 hours. */
+  offlineMs: number;
+}
+
+export function applySave(data: SaveData, now: number = Date.now()): Applied {
   // Stamps first, then his edits: whatever he built or dug always wins over generated houses and paths.
   const { world, spawn, village } = generateWorld(data.seed);
   for (const [x, y, z, id] of data.edits) world.replayEdit(x, y, z, id);
@@ -174,11 +320,19 @@ export function applySave(data: SaveData): {
   const inHouse = village.houses.some(h => x >= h.rect.x0 && x < h.rect.x1 + 1 && z >= h.rect.z0 && z < h.rect.z1 + 1);
   return {
     world,
-    inventory: Inventory.fromJSON(data.inventory, data.order),
+    inventory: Inventory.fromJSON(data.inventory, data.order, data.items, data.itemOrder),
     spawn: !inHouse && isStandable(world, [Math.floor(x), Math.floor(y), Math.floor(z)])
       ? { ...data.player } : spawn,
     village,
-    flags: { ledToVillage: data.flags.ledToVillage },
+    flags: cleanFlags(data.flags as unknown as Record<string, unknown>),
+    items: { ...(data.items ?? {}) },
+    farm: {
+      crops: (data.crops ?? []).map(([cx, cy, cz, p]) => ({ x: cx, y: cy, z: cz, p })),
+      trees: (data.trees ?? []).map(([tx, ty, tz, stage, p]) => ({ x: tx, y: ty, z: tz, stage: stage as TreeRec['stage'], p })),
+    },
+    animals: (data.animals ?? []).map(a => [...a] as SavedAnimalTuple),
+    // No savedAt (an older save): nothing extra grows. A future savedAt or a backwards clock gives 0.
+    offlineMs: isFinite_(data.savedAt) ? new GrowthClock(data.savedAt).step(now) : 0,
   };
 }
 
@@ -326,9 +480,11 @@ export const SAVE_MOVE_THRESHOLD = 1;
 /** Returns a disposer for the timer and visibility listener. */
 export function startAutosave(
   game: Game, seed: number, storage: Storage | null, flags: SaveFlags = { ledToVillage: false },
+  /** The herd's positions ride along on every save; a gift (game.herdRevision) marks the save dirty. */
+  animals?: () => SavedAnimalTuple[],
 ): () => void {
   // `flags` is read live, so flipping ledToVillage later also triggers a save.
-  const snapshot = (): string => JSON.stringify([game.inventory.toJSON(), game.inventory.order(), flags]);
+  const snapshot = (): string => JSON.stringify([game.inventory.toJSON(), game.inventory.order(), game.inventory.itemsToJSON(), game.inventory.itemOrder(), flags, game.farm.revision, game.herdRevision]);
   let savedInventory = snapshot();
   let savedPos = { ...game.player.pos };
   // Stays true until a write succeeds: a failed or refused write is retried, never forgotten.
@@ -341,7 +497,7 @@ export function startAutosave(
     const inventory = snapshot();
     if (!force && !pending && !game.world.isDirty() && inventory === savedInventory && !moved()) return;
     pending = true;
-    if (storeSave(storage, serialise(game, seed, flags))) {
+    if (storeSave(storage, serialise(game, seed, flags, Date.now(), animals?.()))) {
       pending = false;
       game.world.markClean();
       savedInventory = inventory;

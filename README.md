@@ -35,8 +35,11 @@ screen, and it works in aeroplane mode.
 - **The bag** holds up to 99 of each kind of block. The bottom bar (the hotbar)
   shows a picture and a number for each. The first slot, the ✋ hand, means
   "no block": taps walk. Tap a block picture to select it, and taps build.
-- **The 🛠️ crafting screen** is all pictures. Three recipes: 1 wood makes
-  2 planks; 3 sand makes 1 glass; 2 dirt and 2 stone make 1 brick.
+- **The 🛠️ crafting screen** is all pictures. Recipes: 1 wood makes
+  2 planks; 3 sand makes 1 glass; 2 dirt and 2 stone make 1 brick; 1 wool makes
+  2 coloured blocks (white, red, blue or yellow).
+- **The 🎒 bag slot** appears when he holds more kinds than fit on the bar (eight). It opens a big picture
+  grid of everything, each with its number and, up to 20, dots. Choose one and the grid closes.
 
 ## Playing with a controller
 
@@ -66,6 +69,48 @@ The world is now four times bigger (96 by 96 blocks). Over the hill to the east 
 - **Inside houses.** The camera pulls in and his model fades out when it is close to him, so a small room is never blocked. Dragging to turn the view works inside houses too. Pip steps out of the picture when he would cover the middle of the view.
 - **Saving.** The new version saves under a new name (`blockpals.save.v2`). If the tablet already holds his old world, it is carried over with every block and his position, and the old save (`blockpals.save.v1`) is left byte-for-byte untouched, plus a one-time backup (`blockpals.save.v1.backup`). Going back to an older version of the app still finds his old world. Only the grown-ups' reset deletes saves.
 - **Speed.** Parts of the world beyond the fog are not drawn. This is checked by hand on the tablet (see below).
+
+## Eating and the farm (step 2)
+
+Everything here works with pictures, sounds and the voice. Nothing needs reading, nothing can be lost, and nothing can go wrong.
+
+- **Seeds from Fern.** The first time he walks into Fern's farmhouse she says hello in her own voice and gives him seeds (wheat, carrot, potato and two apple saplings), with a 🌱 picture. This happens once for each saved game. If he ever has no seeds at all and nothing growing, her next hello gives some more. Every harvest also gives seeds back, so he can never run out.
+- **Planting.** Select seeds on the bar, then a quick tap on grass, soil or dirt that is close by plants one. The soil turns dark and tilled. He can plant anywhere, so his own patch can be wherever he likes. Beside the farmhouse is a ready-made plot of three beds.
+- **Growing.** A quick tap on a plant that is close by gives it water or sunshine, with a sparkle and a soft sound, and it grows one step. Three taps take a seed to ripe. Plants also grow by themselves while he plays and while the game is closed (a ripe plant about 7½ minutes after planting; up to 8 hours of being away counts). **Nothing ever wilts, dies or is lost.** A tap on a plant that is too far away just walks him there.
+- **Picking.** Press and hold on a plant (the ring fills, like digging). A ripe plant gives 2 food and 2 seeds; a young one just gives its seed back. Apple trees grow from saplings, and holding on ripe apples picks them (the tree grows more).
+- **Eating.** Select a food (apple, carrot, potato, or milk to drink) and a big 👄 mouth button appears. Tap it: three soft bites, a gentle crunch, and Pip says a plain word or two. It uses up one item and does nothing else. There is no hunger and nothing bad happens if he never eats. Wheat, eggs and wool have no mouth button.
+- **The pasture.** South of the farm is a fenced field with four chickens, two cows, three sheep and a pig. They wander slowly, make small happy noises and are never scary or hurt. Holding out any food (apple, carrot, potato or wheat) makes them wander over. A quick tap on a close animal while holding food gives him a gift (egg, milk, wool, or a potato from the pig) and then the animal rests for 45 seconds; a tap on a resting animal uses no food. A tap with an empty hand pets. Pressing and holding on an animal does nothing, and a block cannot be placed into one. An animal that gets walled in is lifted out after a few seconds.
+- **Wool** is crafted into coloured blocks in the crafting screen.
+- **The bar and the bag.** Seeds and food are on the bar like blocks. See "The bag slot" above.
+- **Voices.** Pip's farm lines and Fern's seed lines are pre-recorded like the rest (Pip and Fern each have their own voice).
+- **His saved game.** Everything new is added to the saved game without changing what was there. The old save is still loaded and still has every block he built. The step 1 save entry is never touched.
+
+### Things to know about step 2
+
+- **The east hill.** The pasture levels the hill on the east side (x 58 to 90, z 45 to 61). If he has built anything there, it keeps its place but may float above the flattened ground.
+- **Not tried on the tablet yet.** All the tests pass in a desktop browser, but the frame rate, the size of the touch targets, the sounds and the new voice clips have not been tried on the Galaxy Tab A8. Please use the checklist below.
+- Eating, animals and farm growth have no coins, shops, hearts or quests yet (those are steps 3 and 4). Villagers have a favourite food stored but it does nothing yet. Flowing water and the bucket come later (the pool beside the plot is reserved for that).
+
+### Step 2 checks on the Tab A8
+
+Use `?debug` once for the frame-rate counter, then play without it.
+
+1. Old save: open the new version on the tablet that has his world. Everything he built and his position are there. The farm, fence, pool and animals are new.
+2. Fern: walk into the farmhouse. She says her seed line in her own voice, a 🌱 picture shows, and he has seeds. Walk out and back in: no second gift.
+3. The bag slot: open it. Pictures with numbers and dots, big enough to hit. Choose seeds; the bar shows them selected.
+4. Plant and grow: tap a bed, a sprout appears. Tap the sprout: sparkle, sound, it grows. Three taps and it is ripe. A tap a long way off just walks. Does he understand what happened without being told?
+5. Pick: press and hold a ripe plant, the ring fills and food and seeds arrive. A young plant gives its seed back. Nothing is lost.
+6. Waiting: plant three, close the game for 10 minutes, open it: they are bigger. Leave it a day: all ripe, none gone.
+7. Eat: select a carrot, tap the big mouth. Three bites, a soft crunch, Pip says a plain line (no "Yum"). Try apple, potato and milk. Wheat has no mouth button.
+8. Animals: walk into the pasture. Hold out any food and they wander over. Tap a close cow: milk. Tap a chicken holding a carrot: an egg. Tap a resting animal: no food used. Tap with the hand: a pet. Nothing is scary or loud.
+9. Not hurt: press and hold on an animal, nothing happens. Try to place a block on one: refused. Wall one in: it is lifted out after a few seconds.
+10. Wool: craft wool into red, blue, yellow and white blocks and build with them.
+11. Apple tree: plant a sapling, tap it to grow, pick the apples (they come back).
+12. Camera: stand in tall wheat and turn the view. The camera is not shoved around.
+13. Controller: eat (the Place button with food selected), feed, plant and choose from the bag with the pad.
+14. Speed: village, farm and pasture in view while turning the view. The counter stays at 30 or more (write down the lowest). After 10 minutes the tablet is not hot.
+15. Voices: all the new lines are British, clear and not too long. Listen especially for "Fern" and "sunshine".
+16. East hill: if he built anything on the east side of the village before, look at it (see "Things to know").
 
 ### Village checks on the Tab A8
 
@@ -101,7 +146,7 @@ Other commands:
 - `npm run build` makes the finished site in the `dist` folder.
 - `npm run preview` serves the finished site so you can try the offline mode.
 - `npm run e2e` runs the quick end-to-end smoke tests in a real browser
-  (loads, tap to walk, crafting, works offline). The first time you may need
+  (loads, tap to walk, crafting, works offline, the village and the farm story: plant, grow, pick, eat, animals, old saves). The first time you may need
   `npx playwright install chromium`. These are not run on GitHub because they
   need a browser installed; run them yourself before a big change.
 
@@ -174,7 +219,7 @@ become new tasks.
 
 ## What's coming
 
-The **Village** is being built in four steps. Step 1 (the bigger world, the village and houses he can walk into) is in; next come eating and a little farm; then shops and
+The **Village** is being built in four steps. Step 1 (the bigger world, the village and houses he can walk into) is in; step 2 (eating, a little farm and friendly animals) is built and waiting for the tablet playtest; then shops and
 coins; then friends, hearts and picture quests. After that come underground
 bases, friendly bad guys, music, science quests and two-player on one screen.
 The details are in the
