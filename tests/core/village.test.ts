@@ -1,6 +1,6 @@
 import { beforeAll, describe, expect, it } from 'vitest';
 import { BLOCKS, BlockId } from '../../src/core/blocks';
-import { WORLD } from '../../src/core/bounds';
+import { V2_WORLD as WORLD } from '../../src/core/bounds';
 import { canStep, findPath, isStandable, smoothPath, type Cell } from '../../src/core/pathfind';
 import { GROUND_Y, VILLAGE_PLAN, type Rect, type VillageLayout } from '../../src/core/village';
 import type { World } from '../../src/core/world';

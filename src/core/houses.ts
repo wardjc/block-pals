@@ -1,6 +1,6 @@
 import { BLOCKS, BlockId } from './blocks';
 import type { Cell } from './pathfind';
-import type { World } from './world';
+import type { WorldCells } from './shifted';
 
 /** Inclusive rectangle on the x/z plane. */
 export interface Rect { x0: number; z0: number; x1: number; z1: number }
@@ -47,7 +47,7 @@ export const DOOR_HEIGHT = 3;
  * Fills Dirt under the floor down to the existing ground and clears everything above the
  * footprint to the top of the world. Only the footprint columns are ever written.
  */
-export function stampHouse(world: World, spec: HouseSpec, groundY: number): HouseInfo {
+export function stampHouse(world: WorldCells, spec: HouseSpec, groundY: number): HouseInfo {
   const g = groundY;
   const { rect, facing } = spec;
   const set = (x: number, y: number, z: number, id: BlockId): void => world.set(x, y, z, id);

@@ -1,7 +1,7 @@
 import type { CropRec, TreeRec } from '../game/farm';
 import type { Game } from '../game/game';
 import { BLOCKS, BlockId, isCarriable } from './blocks';
-import { LEGACY_WORLD, WORLD } from './bounds';
+import { LEGACY_WORLD, V2_WORLD } from './bounds';
 import { GrowthClock, STAGE_MS, TREE_STAGE_MS } from './growth';
 import { Inventory, MAX_STACK } from './inventory';
 import { isItemId } from './items';
@@ -186,7 +186,7 @@ function cleanFarm(parsed: Record<string, unknown>): Pick<SaveData, 'crops' | 't
     return kept;
   };
   const crops = first(parsed.crops, e => {
-    if (e.length !== 4 || !inBox(e, WORLD) || !isFinite_(e[3])) return null;
+    if (e.length !== 4 || !inBox(e, V2_WORLD) || !isFinite_(e[3])) return null;
     const key = `c${e[0]},${e[1]},${e[2]}`;
     if (seen.has(key)) return null;
     seen.add(key);
@@ -194,7 +194,7 @@ function cleanFarm(parsed: Record<string, unknown>): Pick<SaveData, 'crops' | 't
   });
   if (crops.length > 0) out.crops = crops;
   const trees = first(parsed.trees, e => {
-    if (e.length !== 5 || !inBox(e, WORLD) || !isInt(e[3]) || e[3] < 0 || e[3] > 3 || !isFinite_(e[4])) return null;
+    if (e.length !== 5 || !inBox(e, V2_WORLD) || !isInt(e[3]) || e[3] < 0 || e[3] > 3 || !isFinite_(e[4])) return null;
     const key = `t${e[0]},${e[1]},${e[2]}`;
     if (seen.has(key)) return null;
     seen.add(key);
@@ -206,7 +206,7 @@ function cleanFarm(parsed: Record<string, unknown>): Pick<SaveData, 'crops' | 't
     if (e.length !== 6 || !isInt(e[0]) || e[0] < 0 || e[0] > 3) return null;
     if (![e[1], e[2], e[3]].every(isFinite_) || !isFinite_(e[4]) || !isInt(e[5]) || e[5] < 0) return null;
     const n = e as number[];
-    if (n[1] < 0 || n[1] >= WORLD.x || n[2] < 0 || n[2] >= WORLD.y || n[3] < 0 || n[3] >= WORLD.z) return null;
+    if (n[1] < 0 || n[1] >= V2_WORLD.x || n[2] < 0 || n[2] >= V2_WORLD.y || n[3] < 0 || n[3] >= V2_WORLD.z) return null;
     // Two animals never share a cell, so the cell (not the rounded spot) is the identity.
     const key = `a${Math.floor(n[1])},${Math.floor(n[2])},${Math.floor(n[3])}`;
     if (seen.has(key)) return null;
@@ -270,7 +270,7 @@ export function inspectSave(raw: string | null): { data: SaveData; skipped: numb
       if ('order' in parsed) data.order = parsed.order as number[];
     } else if (parsed.version === 2) {
       if (!validShape(parsed) || !Number.isSafeInteger(parsed.gen) || (parsed.gen as number) < 1) return null;
-      keepValid(WORLD);
+      keepValid(V2_WORLD);
       const flags = isRecord(parsed.flags) ? parsed.flags : {};
       data = {
         ...(parsed as unknown as SaveData),

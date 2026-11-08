@@ -422,7 +422,7 @@ let tapped = false; // the first tap / button unlocks audio
 const feet: Cell = [0, 0, 0]; // reused every frame
 const isAudioLocked = (): boolean => audioLocked(tapped, sfx.audioOut()?.ctx.state);
 const lockedHold = new LockedHold();
-const lead = new LeadToVillage(village.route, village.square, flags.ledToVillage);
+const lead = new LeadToVillage(village.route, village.square, flags.ledToVillage, village.pad);
 let acted = false;
 game.on(e => { if (e.type !== 'idle') acted = true; });
 let pendingPip: LineKey | null = null;

@@ -1,6 +1,7 @@
 import { BlockId } from './blocks';
-import { insideWall, LEGACY_WORLD, WORLD } from './bounds';
+import { insideWall, LEGACY_WORLD, V2_WORLD } from './bounds';
 import { mulberry32, valueNoise2D } from './rng';
+import type { WorldCells } from './shifted';
 import { buildVillage, type Rect, type VillageLayout } from './village';
 import { World } from './world';
 
@@ -45,7 +46,7 @@ export interface GeneratedWorld {
 }
 
 function plantTree(
-  world: World, heights: Uint8Array, trees: Tree[], spawn: Cell3, x: number, z: number, maxY: number,
+  world: WorldCells, heights: Uint8Array, trees: Tree[], spawn: Cell3, x: number, z: number, maxY: number,
   blocked: (x: number, z: number) => boolean = () => false,
 ): boolean {
   if (!world.inBounds(x - 1, 0, z - 1) || !world.inBounds(x + 1, 0, z + 1)) return false;
@@ -75,7 +76,7 @@ function plantTree(
 export function generateMeadowStage(seed = 2026): {
   world: World; spawn: Cell3; heights: Uint8Array; trees: Tree[];
 } {
-  const world = new World(WORLD.x, WORLD.y, WORLD.z);
+  const world = new World(V2_WORLD.x, V2_WORLD.y, V2_WORLD.z);
   const noise = valueNoise2D(seed);
   const random = mulberry32(seed);
   const heights = new Uint8Array(world.sizeX * world.sizeZ);
