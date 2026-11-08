@@ -63,7 +63,7 @@ describe('save data', () => {
       version: 2, gen: GEN_VERSION, seed: 1234, flags: { ledToVillage: false },
       edits: [[24, 1, 24, BlockId.Air], [25, 14, 25, BlockId.Bricks]],
       inventory: { [BlockId.Wood]: 7, [BlockId.Glass]: 99 }, player: game.player.pos,
-      order: [BlockId.Wood, BlockId.Glass],
+      order: [BlockId.Wood, BlockId.Glass], savedAt: expect.any(Number),
     });
     expect(game.world.isDirty()).toBe(true);
     expect(storeSave(localStorage, data)).toBe(true);
