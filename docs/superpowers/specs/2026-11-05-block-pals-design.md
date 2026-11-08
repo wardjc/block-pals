@@ -85,7 +85,7 @@ The smallest version he can play and enjoy:
 
 Plus, in v1: voice for everything, British English, touch and controller, local save, and the grown-up area with usage time and break reminders.
 
-**Later versions** (updated 2026-11-07, see §7d): the Village version (in four steps) → Underground bases → bad guys and friendly weapons → beat blocks and music quests → STEM quests → more pals and areas → same-screen two-player.
+**Later versions** (updated 2026-11-08, see §7d, §7f and §7g): Village step 2 (eating and the farm) → **grumps and friendly weapons (§7f)** → **the Wizard's tower (§7g, a wizard living alone in a hilltop tower at the world's edge who gives 8 mythical decoration and light blocks in exchange for gems and for easy picture puzzles)** → Village step 3 (shops and coins) → Village step 4 (friendship and quests) → Water (§7e) → Underground bases → beat blocks and music quests → STEM quests → more pals and areas → same-screen two-player.
 
 ### 7a. v1.1: separate moving from digging (agreed 2026-11-07)
 
@@ -176,6 +176,22 @@ Agreed with the parent. Follows the §4 anti-goals: nothing scary, nothing lost,
 **My calls (the parent can overrule; listed in the plan):** water has levels so it visibly thins out and stops; a walled channel carries water without thinning, so a trench can reach a field; a farm field gets its own small pool and the bucket carries water in step 2; flowing water is recomputed from the blocks on load (only a small list of drained cells is saved).
 
 **Done when:** he can dig a pond bank and watch water run out a few blocks and stop; plug it and see it drain; swim across the pond by tapping, swim down to the pond bed by tapping it and float back up, and climb out onto either bank; drain a stream by holding on it while the pond stays full; see Pip swim alongside and get out with him; stop in the water and float up; see the soft blue tint underwater without it ever going dark; get out of a flooded pit without help; reload with the same water; and the tablet stays at 30 fps with the water running.
+
+### 7g. The wizard's tower (agreed 2026-11-08)
+
+**Status: planned. Build after grumps and friendly weapons (§7f) has merged (gems come from cheering up grumps) and before Village step 3 (shops and coins).** Follows the §4 anti-goals: nothing scary or dark, nothing lost, he can never fail, nothing needs reading, British English, 30 fps on the Tab A8.
+
+**The wizard and his tower.** Orlo, an original wizard with a strong personality of his own and his own British voice, lives alone in a tall tower on a hilltop at the far (south) edge of the 96×96 world, away from the village. He is slow-speaking, gentle and dry, loves stars and riddles, talks to his floating glowing orb Glim, and calls him "young friend". Funny feature: a hat so tall the roof was built round it, and a beard so long it is tucked in his belt. The tower has a gently glowing light at the top, a slow soft pulse (never a flash), that can be seen from far across the meadow. A path leads there from the village. **Pip walks him there the first time** (once per save, like the walk to the village), offered only after he has his first gem. Inside it is never dark (lamps and big windows), the camera is comfortable (turning the view by dragging works on both floors and the camera is never inside a wall), and there is no way to get stuck: the wizard is on the ground floor and a stair leads up to a bright round star room.
+
+**Eight mythical blocks.** All bright and friendly, all original, all placeable and collectable like normal blocks: Starlight crystal (glowing blue-white), Rainbow block (colour bands that slowly shimmer), Cloud block (soft white and fluffy), Moon block (silver, gentle glow), Sun block (warm gold, glowing), Dragon-scale block (green-gold scales), Star block (deep blue with twinkling stars) and Magic mirror glass (sparkly, see-through, glimmers). They are **decorations and light sources with no special powers in this step** (powers such as a bouncy cloud are a later idea). Light sources are always-bright like the lamp. The shimmer is cheap (no shaders, no chunk rebuilds).
+
+**How he gets them: both.**
+- **Trade gems.** Gems come from cheering up grumps (§7f). The wizard's trade screen shows the eight blocks as pictures with the price as a gem picture, a digit and dots. The first visit gives **one free block of his choice** as a welcome gift.
+- **Picture puzzles.** The wizard sets a new puzzle every time: counting (digits up to 20, shown with dots and pictures, for example 3 apples and 2 carrots), patterns ("what comes next?" with colours and shapes) and matching shapes and colours. **Always pictures and numbers, never reading.** He can **never fail**: a wrong answer gets a gentle "try again", there is no timer, no score and no loss, and if he is stuck the wizard and Pip give hints after a short time (and in the end help him through). Puzzles start very easy and get slightly harder as he solves more (the level is saved and never goes down). Solving one gives a mythical block. (Beat-copy puzzles join with the music step.)
+
+**Done when:** a path leads from the village to the tower on its hilltop and its light can be seen from the meadow; after his first gem, Pip walks him there once; the wizard greets him in his own voice and gives a free block the first time; he can trade a gem for blocks and solve counting, pattern and matching puzzles that start easy and get harder, with hints, never failing and never losing anything; all eight blocks can be placed, dug up and built with, and the glowing ones light up his builds; the tower is bright inside with a comfortable camera on both floors; old saves load; nothing is scary, dark, lost or read; and the tablet holds 30 fps with the tower and its light in view.
+
+Plan: [`docs/superpowers/plans/2026-11-08-wizards-tower.md`](../plans/2026-11-08-wizards-tower.md)
 
 ## 8. Left to the builder
 
