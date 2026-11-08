@@ -215,3 +215,99 @@ describe('Voice clips', () => {
     expect(r.voice.last.source).toBe('clip');
   });
 });
+
+describe('Voice.speaking() follows the real state', () => {
+  const utter = (r: Rig) => r.synth.speak.mock.calls[0][0] as { onend?: () => void; onerror?: () => void };
+
+  it('is false before any line and true as soon as one is requested (pending load)', async () => {
+    let release!: () => void;
+    const gate = new Promise<void>((res) => { release = res; });
+    const r = rig({ gate: () => gate, timeoutMs: 5000 });
+    expect(r.voice.speaking()).toBe(false);
+    r.voice.say(TEXT);
+    expect(r.voice.speaking()).toBe(true);
+    await settle();
+    expect(r.voice.speaking()).toBe(true); // still loading, the old timer-from-request would have been fine here but a slow load must stay true
+    release();
+    await settle();
+    expect(r.voice.speaking()).toBe(true); // the clip is playing
+    r.sources[0].onended!();
+    expect(r.voice.speaking()).toBe(false);
+  });
+
+  it('a slow load stays speaking beyond the old estimate, so nothing can talk over the late fallback', async () => {
+    vi.useFakeTimers();
+    try {
+      let release!: () => void;
+      const gate = new Promise<void>((res) => { release = res; });
+      const r = rig({ gate: () => gate, timeoutMs: 20_000 });
+      r.voice.say('Hi.');
+      await vi.advanceTimersByTimeAsync(5000); // the old estimate (2.5 s minimum) would have expired
+      expect(r.voice.speaking()).toBe(true);
+      release();
+      await vi.advanceTimersByTimeAsync(10);
+      expect(r.voice.speaking()).toBe(true);
+    } finally {
+      vi.useRealTimers();
+    }
+  });
+
+  it('fallback speech is speaking until the utterance ends, and an error ends it too', async () => {
+    const r = rig({ manifest: {} });
+    r.voice.say(TEXT);
+    await settle();
+    expect(r.synth.speak).toHaveBeenCalledTimes(1);
+    expect(r.voice.speaking()).toBe(true);
+    utter(r).onend!();
+    expect(r.voice.speaking()).toBe(false);
+
+    const r2 = rig({ manifest: {} });
+    r2.voice.say(TEXT);
+    await settle();
+    expect(r2.voice.speaking()).toBe(true);
+    utter(r2).onerror!();
+    expect(r2.voice.speaking()).toBe(false);
+  });
+
+  it('the end event of a cancelled utterance does not clear the line that replaced it', async () => {
+    const r = rig({ manifest: {} });
+    r.voice.say(TEXT);
+    await settle();
+    const first = utter(r);
+    r.voice.say(TEXT2);
+    await settle();
+    first.onend!(); // the browser reports the cancelled one finishing
+    expect(r.voice.speaking()).toBe(true);
+  });
+
+  it('stop() and failures end it: stop, no audio and no speech support', async () => {
+    const r = rig();
+    r.voice.say(TEXT);
+    await settle();
+    expect(r.voice.speaking()).toBe(true);
+    r.voice.stop();
+    expect(r.voice.speaking()).toBe(false);
+
+    const none = rig({ noAudio: true, manifest: {} });
+    none.voice.say(TEXT);
+    await settle();
+    expect(none.voice.speaking()).toBe(true); // fell back to speech
+    none.voice.stop();
+    expect(none.voice.speaking()).toBe(false);
+
+    const silent = new Voice(null, rig({ noAudio: true }).deps);
+    silent.say(TEXT);
+    await settle();
+    await settle();
+    expect(silent.speaking()).toBe(false); // nothing could be spoken, so nothing is "speaking"
+  });
+
+  it('a superseded line does not leave speaking stuck', async () => {
+    const r = rig();
+    r.voice.say(TEXT);
+    r.voice.say(TEXT2);
+    await settle();
+    r.sources.forEach((s) => s.onended?.());
+    expect(r.voice.speaking()).toBe(false);
+  });
+});

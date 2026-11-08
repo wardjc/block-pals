@@ -65,8 +65,13 @@ export class Voice {
   private buffers = new Map<string, Promise<AudioBuffer>>();
   private current: { src: AudioBufferSourceNode; gain: GainNode } | null = null;
   private token = 0;
-  private endsAt = 0;
   private requested = '';
+  // Real state (not a timer from the request): a line is "speaking" from say() until it has really finished.
+  // Each has a generous hard cap so a lost event (no onend from the tablet's voice, say) can never wedge it on.
+  private loadingUntil = 0; // a say() is waiting for its clip to load or for the fallback to start
+  private clipUntil = 0; // a clip is playing; cleared by onended or stop
+  private ttsUntil = 0; // an utterance is speaking; cleared by onend / onerror or stop
+  private utterance: object | null = null;
 
   constructor(synth?: SpeechSynthesis | null, private deps?: ClipDeps) {
     this.synth = synth === undefined ? (typeof speechSynthesis !== 'undefined' ? speechSynthesis : null) : synth;
@@ -90,16 +95,24 @@ export class Voice {
     }
   }
 
-  /** True while a line is (probably) still being spoken: lets callers avoid talking over each other. */
+  /**
+   * True while a line is really being prepared or spoken: its clip or fallback is still loading, the
+   * clip is playing, or the tablet's voice is talking. Cleared by the real end events, by stop() and by
+   * errors, so a late fallback can never start while this says false.
+   */
   speaking(): boolean {
-    return performance.now() < this.endsAt;
+    const now = performance.now();
+    return now < this.loadingUntil || now < this.clipUntil || now < this.ttsUntil;
   }
 
   /** Stops whatever is being spoken now (clip or speech). */
   stop(): void {
     this.requested = '';
     this.token++;
-    this.endsAt = 0;
+    this.loadingUntil = 0;
+    this.clipUntil = 0;
+    this.ttsUntil = 0;
+    this.utterance = null;
     this.stopClip();
     try { this.synth?.cancel(); } catch { /* speech is optional */ }
   }
@@ -116,19 +129,27 @@ export class Voice {
   say(text: string, speaker = 'pip'): void {
     if (!text) return; // never an empty utterance: it would cancel the line that is playing
     try { this.requested = clipKey(speaker, text); } catch { this.requested = ''; }
-    // Provisional until the clip's real length is known; plain speech is estimated from its length.
-    this.endsAt = performance.now() + Math.max(2500, text.length * 75);
     if (!this.deps) {
       this.speak(text);
       return;
     }
     const token = ++this.token;
+    // Preparing: fetch (each with its timeout), decode, and the context resuming. Ends when the clip
+    // starts or the fallback speech takes over, whichever really happens.
+    const d = this.deps;
+    this.loadingUntil = performance.now() + 2 * (d.timeoutMs ?? FETCH_TIMEOUT_MS) + (d.resumeWaitMs ?? 300) + 1500;
+    this.clipUntil = 0;
+    this.ttsUntil = 0;
+    this.utterance = null;
     this.stopClip();
     try { this.synth?.cancel(); } catch { /* speech is optional */ }
     let key = '';
     try { key = clipKey(speaker, text); } catch { /* fall through to speech */ }
     this.playClip(key, token).then(
-      (played) => { if (!played && token === this.token) this.fallback(text, key); },
+      (played) => {
+        if (token !== this.token) return;
+        if (!played) this.fallback(text, key);
+      },
       () => { if (token === this.token) this.fallback(text, key); },
     );
   }
@@ -145,12 +166,14 @@ export class Voice {
 
   private fallback(text: string, key: string): void {
     this.last = { source: 'tts', key };
+    this.loadingUntil = 0;
     this.speak(text);
   }
 
   private stopClip(): void {
     const cur = this.current;
     this.current = null;
+    this.clipUntil = 0;
     if (!cur) return;
     try { cur.src.stop(); } catch { /* already ended */ }
     try { cur.src.disconnect(); cur.gain.disconnect(); } catch { /* already gone */ }
@@ -213,17 +236,18 @@ export class Voice {
     gain.connect(out.out);
     src.onended = () => {
       try { src.disconnect(); gain.disconnect(); } catch { /* already gone */ }
-      if (this.current?.src === src) this.current = null;
+      if (this.current?.src === src) { this.current = null; this.clipUntil = 0; }
     };
     src.start();
-    this.endsAt = performance.now() + buf.duration * 1000 + 150;
+    this.loadingUntil = 0;
+    this.clipUntil = performance.now() + buf.duration * 1000 + 3000; // cap only: onended ends it
     this.current = { src, gain };
     this.last = { source: 'clip', key };
     return true;
   }
 
   private speak(text: string): void {
-    if (!this.synth || !this.available) return;
+    if (!this.synth || !this.available) { this.loadingUntil = 0; return; }
     try {
       this.synth.cancel();
       if (!this.voice) this.refreshVoice();
@@ -232,9 +256,20 @@ export class Voice {
       u.pitch = 1.1;
       u.lang = this.voice?.lang ?? 'en-GB';
       if (this.voice) u.voice = this.voice;
+      const mine = {};
+      this.utterance = mine;
+      this.ttsUntil = performance.now() + Math.max(6000, text.length * 150); // cap only: onend / onerror end it
+      const done = (): void => {
+        if (this.utterance !== mine) return; // a newer line (or stop) replaced this one
+        this.utterance = null;
+        this.ttsUntil = 0;
+      };
+      u.onend = done;
+      u.onerror = done;
       this.synth.speak(u);
     } catch {
-      /* speech is optional */
+      this.ttsUntil = 0;
+      this.utterance = null;
     }
   }
 }
