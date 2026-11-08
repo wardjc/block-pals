@@ -41,14 +41,14 @@ export function makePlayerModel(): THREE.Group {
   // torso
   box(0.54, 0.6, 0.3, 0x14b8a6, 0, 0.8, 0, g);
   box(0.54, 0.08, 0.31, 0xffd23f, 0, 0.55, 0, g); // yellow belt stripe
-  box(0.26, 0.3, 0.26, skin, 0, 1.27, 0, g); // neck
+  box(0.26, 0.36, 0.26, skin, 0, 1.27, 0, g); // neck (1.09..1.45: overlaps shirt top 1.10 and head base 1.4)
   // arms
   const armL = new THREE.Group();
-  armL.position.set(-0.4, 1.05, 0);
+  armL.position.set(-0.37, 1.05, 0);
   box(0.2, 0.55, 0.22, 0x14b8a6, 0, -0.18, 0, armL);
   box(0.2, 0.16, 0.22, skin, 0, -0.5, 0, armL);
   const armR = armL.clone();
-  armR.position.x = 0.4;
+  armR.position.x = 0.37;
   g.add(armL, armR);
   // head
   const head = new THREE.Group();
@@ -98,14 +98,14 @@ export function makePalModel(): THREE.Group {
       new THREE.ConeGeometry(0.13, 0.32, 4),
       new THREE.MeshLambertMaterial({ color: orange }),
     );
-    ear.position.set(sx, 0.52, 0.06);
+    ear.position.set(sx, 0.5, 0.06);
     ear.rotation.y = Math.PI / 4;
     head.add(ear);
     const inner = new THREE.Mesh(
       new THREE.ConeGeometry(0.06, 0.2, 4),
       new THREE.MeshLambertMaterial({ color: 0xffc9a0 }),
     );
-    inner.position.set(sx, 0.48, 0.12);
+    inner.position.set(sx, 0.47, 0.12);
     inner.rotation.y = Math.PI / 4;
     head.add(inner);
   }
@@ -143,7 +143,7 @@ function person(look: PersonLook): { g: THREE.Group; head: THREE.Group; armR: TH
     box(w + 0.16, 0.08, 0.46, 0xffffff, 0, 0.04, 0, g); // frilly hem
   } else {
     for (const sx of [-0.13, 0.13]) {
-      box(0.24, 0.5, 0.26, look.trousers, sx, 0.25, 0, g);
+      box(0.24, 0.52, 0.26, look.trousers, sx, 0.26, 0, g);
       box(0.26, 0.1, 0.32, look.shoes, sx, 0.05, 0.03, g);
     }
   }
@@ -180,7 +180,7 @@ function bramble(): THREE.Group {
   const hat = new THREE.Group();
   hat.position.set(0, 0.5, 0);
   box(0.56, 0.14, 0.56, 0xffffff, 0, 0.07, 0, hat);
-  box(0.46, 0.5, 0.46, 0xfdfdfd, 0, 0.4, 0, hat);
+  box(0.46, 0.52, 0.46, 0xfdfdfd, 0, 0.4, 0, hat);
   box(0.6, 0.2, 0.6, 0xffffff, 0, 0.75, 0, hat);
   box(0.12, 0.08, 0.04, 0xe8e8e8, -0.14, 0.78, 0.31, hat); // flour smudge
   head.add(hat);

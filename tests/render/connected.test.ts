@@ -1,12 +1,13 @@
 // @vitest-environment jsdom
 import { describe, expect, it } from 'vitest';
 import * as THREE from 'three';
-import { makePalModel, makePlayerModel, makeVillagerParts } from '../../src/render/characters';
+import { idleVillager, makePalModel, makePlayerModel, makeVillagerParts } from '../../src/render/characters';
 import { VILLAGERS } from '../../src/content/villagers';
 
-const EPS = 0.02;
+/** Float-rounding slack only: parts must really touch or overlap, a 0.03 gap must fail. */
+const EPS = 0.001;
 
-/** Every mesh's world-space box, grown by EPS so boxes that merely touch count as joined. */
+/** Every mesh's world-space box, grown by a hair (EPS) so boxes that exactly touch count as joined. */
 function boxes(root: THREE.Object3D): THREE.Box3[] {
   root.updateMatrixWorld(true);
   const out: THREE.Box3[] = [];
@@ -59,6 +60,45 @@ describe('every model is one connected piece', () => {
   it('Pip has no floating parts', () => {
     const bs = boxes(makePalModel());
     expect(strays(bs)).toEqual([]);
+  });
+  describe('mutations: small gaps and animated poses are caught', () => {
+    const moved = (root: THREE.Object3D, pick: (m: THREE.Mesh) => boolean, by: [number, number, number]): THREE.Box3[] => {
+      let n = 0;
+      root.traverse(o => { const m = o as THREE.Mesh; if (m.isMesh && pick(m)) { m.position.add(new THREE.Vector3(...by)); n++; } });
+      expect(n).toBeGreaterThan(0);
+      return boxes(root);
+    };
+    const hex = (m: THREE.Mesh): number => (m.material as THREE.MeshLambertMaterial).color.getHex();
+    it('the unmodified models pass (control)', () => {
+      expect(strays(boxes(makeVillagerParts('willow')))).toEqual([]);
+    });
+    it("Granny's fringe moved out by 0.03 fails", () => {
+      const w = makeVillagerParts('willow');
+      expect(strays(moved(w, m => m.scale.x === 0.2 && m.scale.y === 0.08 && hex(m) === 0xffffff && m.position.z > 0.9, [0, 0, 0.03]))).not.toEqual([]);
+    });
+    it("Granny's floor tail moved out by 0.03 fails", () => {
+      const w = makeVillagerParts('willow');
+      expect(strays(moved(w, m => m.scale.z === 0.3 && m.scale.y === 0.08 && hex(m) === 0xe5484d, [0, 0, 0.03]))).not.toEqual([]);
+    });
+    it("Bramble's head moved up by 0.03 fails", () => {
+      const b = makeVillagerParts('bramble');
+      (b.userData.head as THREE.Object3D).position.y += 0.03;
+      expect(strays(boxes(b))).not.toEqual([]);
+    });
+    it('the player head moved up by 0.03 fails', () => {
+      const p = makePlayerModel();
+      (p.userData.head as THREE.Object3D).position.y += 0.1;
+      expect(strays(boxes(p))).not.toEqual([]);
+    });
+    it('animated poses stay connected: idle sway and head tilt, sampled over time', () => {
+      for (const v of VILLAGERS) {
+        for (const t of [0, 0.7, 1.9, 3.3, 5.1]) {
+          const g = makeVillagerParts(v.id);
+          idleVillager(g, t);
+          expect(strays(boxes(g)), `${v.id} at ${t}s`).toEqual([]);
+        }
+      }
+    });
   });
   it('the checker itself notices a gap', () => {
     const a = new THREE.Box3(new THREE.Vector3(0, 0, 0), new THREE.Vector3(1, 1, 1));
