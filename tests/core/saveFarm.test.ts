@@ -142,6 +142,9 @@ describe('farm fields in the save', () => {
     expect(data.crops).toEqual([[1, 5, 1, 10], [2, 5, 2, 20]]); // duplicate cell and out-of-range dropped
     expect(data.trees).toEqual([[4, 5, 4, 1, 100]]);
     expect(data.animals).toEqual([[0, 66, 6, 49, 3, 0], [2, 70, 6, 50, 0, 1]]); // unknown kind, duplicate spot, off-world dropped
+    // Two neighbours that round to the same whole numbers are different animals: both are kept.
+    const near = parseSave(JSON.stringify({ ...base(), animals: [[0, 73.67, 5, 49.85, 38, 1], [0, 74.3, 6, 49.67, 14, 0]] }))!;
+    expect(near.animals).toHaveLength(2);
   });
 
   test('crop and tree progress is clamped', () => {

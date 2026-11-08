@@ -207,7 +207,8 @@ function cleanFarm(parsed: Record<string, unknown>): Pick<SaveData, 'crops' | 't
     if (![e[1], e[2], e[3]].every(isFinite_) || !isFinite_(e[4]) || !isInt(e[5]) || e[5] < 0) return null;
     const n = e as number[];
     if (n[1] < 0 || n[1] >= WORLD.x || n[2] < 0 || n[2] >= WORLD.y || n[3] < 0 || n[3] >= WORLD.z) return null;
-    const key = `a${n[0]},${Math.round(n[1])},${Math.round(n[3])}`;
+    // Two animals never share a cell, so the cell (not the rounded spot) is the identity.
+    const key = `a${Math.floor(n[1])},${Math.floor(n[2])},${Math.floor(n[3])}`;
     if (seen.has(key)) return null;
     seen.add(key);
     return [n[0], n[1], n[2], n[3], Math.max(0, n[4]), n[5]] as SavedAnimalTuple;
@@ -479,9 +480,11 @@ export const SAVE_MOVE_THRESHOLD = 1;
 /** Returns a disposer for the timer and visibility listener. */
 export function startAutosave(
   game: Game, seed: number, storage: Storage | null, flags: SaveFlags = { ledToVillage: false },
+  /** The herd's positions ride along on every save; a gift (game.herdRevision) marks the save dirty. */
+  animals?: () => SavedAnimalTuple[],
 ): () => void {
   // `flags` is read live, so flipping ledToVillage later also triggers a save.
-  const snapshot = (): string => JSON.stringify([game.inventory.toJSON(), game.inventory.order(), game.inventory.itemsToJSON(), game.inventory.itemOrder(), flags, game.farm.revision]);
+  const snapshot = (): string => JSON.stringify([game.inventory.toJSON(), game.inventory.order(), game.inventory.itemsToJSON(), game.inventory.itemOrder(), flags, game.farm.revision, game.herdRevision]);
   let savedInventory = snapshot();
   let savedPos = { ...game.player.pos };
   // Stays true until a write succeeds: a failed or refused write is retried, never forgotten.
@@ -494,7 +497,7 @@ export function startAutosave(
     const inventory = snapshot();
     if (!force && !pending && !game.world.isDirty() && inventory === savedInventory && !moved()) return;
     pending = true;
-    if (storeSave(storage, serialise(game, seed, flags))) {
+    if (storeSave(storage, serialise(game, seed, flags, Date.now(), animals?.()))) {
       pending = false;
       game.world.markClean();
       savedInventory = inventory;
