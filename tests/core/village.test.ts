@@ -19,7 +19,7 @@ beforeAll(() => {
 
 const inRect = (r: Rect, x: number, z: number): boolean => x >= r.x0 && x <= r.x1 && z >= r.z0 && z <= r.z1;
 const solid = (x: number, y: number, z: number): boolean => BLOCKS[world.get(x, y, z)].solid;
-const TERRAIN = new Set([BlockId.Grass, BlockId.Dirt, BlockId.Stone, BlockId.Sand, BlockId.PathStone, BlockId.Bedrock]);
+const TERRAIN = new Set([BlockId.Grass, BlockId.Dirt, BlockId.Stone, BlockId.Sand, BlockId.PathStone, BlockId.Bedrock, BlockId.Farmland]);
 
 /** Ground height ignoring trees. */
 function ground(x: number, z: number): number {
@@ -104,7 +104,7 @@ describe('village', () => {
 
   it('pads are flat and skirts are gentle', () => {
     const quarry = village.quarry;
-    const skip = (x: number, z: number): boolean => inRect(quarry, x, z) || footprints().some(r => inRect(r, x, z));
+    const skip = (x: number, z: number): boolean => inRect(quarry, x, z) || inRect(village.farm.pool, x, z) || footprints().some(r => inRect(r, x, z));
     for (let x = VILLAGE_PLAN.pad.x0; x <= VILLAGE_PLAN.pad.x1; x++) {
       for (let z = VILLAGE_PLAN.pad.z0; z <= VILLAGE_PLAN.pad.z1; z++) {
         if (!skip(x, z)) expect(ground(x, z), `${x},${z}`).toBe(GROUND_Y);
@@ -147,13 +147,15 @@ describe('village', () => {
     for (const r of rects) expect(overlaps(r, q)).toBe(false);
   });
 
-  it('keeps the farm plot reserved', () => {
+  it('lays out the farm plot: Dirt aisles, Farmland beds, a pool, and nothing above', () => {
     const f = village.farmPlot;
     expect(f.x1 - f.x0 + 1).toBeGreaterThanOrEqual(12);
     expect(f.z1 - f.z0 + 1).toBeGreaterThanOrEqual(9);
+    const { beds, pool } = village.farm;
     for (let x = f.x0; x <= f.x1; x++) {
       for (let z = f.z0; z <= f.z1; z++) {
-        expect(world.get(x, GROUND_Y, z)).toBe(BlockId.Dirt);
+        const expected = beds.some(b => inRect(b, x, z)) ? BlockId.Farmland : inRect(pool, x, z) ? BlockId.Water : BlockId.Dirt;
+        expect(world.get(x, GROUND_Y, z), `${x},${z}`).toBe(expected);
         for (let y = GROUND_Y + 1; y < WORLD.y; y++) expect(world.get(x, y, z)).toBe(BlockId.Air);
       }
     }
@@ -180,6 +182,7 @@ describe('village', () => {
     for (const r of village.stampedRects) {
       for (let x = Math.max(0, r.x0); x <= Math.min(WORLD.x - 1, r.x1); x++) {
         for (let z = Math.max(0, r.z0); z <= Math.min(WORLD.z - 1, r.z1); z++) {
+          if (inRect(village.farm.pool, x, z)) continue; // the farm's small walled pool is the one water stamp
           for (let y = 1; y < WORLD.y; y++) expect(world.get(x, y, z)).not.toBe(BlockId.Water);
         }
       }

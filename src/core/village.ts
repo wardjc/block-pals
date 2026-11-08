@@ -7,6 +7,25 @@ export type { Rect };
 
 export const GROUND_Y = 5;
 
+/** The farm and the fenced pasture (Village step 2). */
+export interface FarmLayout {
+  /** Three 2-wide Farmland beds. */
+  beds: Rect[];
+  /** Six Water source blocks, flush with the ground, walled in on every side. */
+  pool: Rect;
+  /** Reserved empty aisle of plain Dirt from the pool west to the beds (the water step makes it a ditch). */
+  irrigation: Rect;
+  /** Fenced; the fence stands on its outer ring. */
+  pasture: Rect;
+  /** The 2-wide gap in the north fence (feet-level cells). */
+  gate: Cell[];
+  fence: Cell[];
+  /** Standable interior cells where animals start (at least 12). */
+  herdSpawns: Cell[];
+  /** 3-wide path from the plot to the gate. */
+  path: Rect;
+}
+
 export interface VillageLayout {
   houses: HouseInfo[];
   /** Ordered centre line, spawn -> village gate -> square; each step walkable. */
@@ -15,20 +34,34 @@ export interface VillageLayout {
   routeCells: Set<number>;
   gate: Cell;
   square: Rect;
-  /** Reserved, level, empty (step 2). */
+  /** The farm plot: beds, aisles and the small pool (step 2). */
   farmPlot: Rect;
+  farm: FarmLayout;
   quarry: Rect;
   stampedRects: Rect[];
 }
 
 export const VILLAGE_PLAN: {
   pad: Rect; square: Rect; farmPlot: Rect; quarry: Rect;
+  beds: Rect[]; pool: Rect; irrigation: Rect; pasture: Rect; gateX: [number, number]; path: Rect;
   waypoints: Array<[number, number]>; houses: HouseSpec[];
 } = {
   pad: { x0: 58, z0: 6, x1: 92, z1: 44 },
   square: { x0: 68, z0: 22, x1: 80, z1: 30 },
   farmPlot: { x0: 72, z0: 35, x1: 83, z1: 43 },
   quarry: { x0: 86, z0: 8, x1: 92, z1: 14 },
+  // Three 2-wide beds with 1-wide Dirt aisles between (z 37, 40, 43), so every bed cell is within reach of an aisle.
+  beds: [
+    { x0: 72, z0: 35, x1: 79, z1: 36 },
+    { x0: 72, z0: 38, x1: 79, z1: 39 },
+    { x0: 72, z0: 41, x1: 79, z1: 42 },
+  ],
+  pool: { x0: 81, z0: 35, x1: 83, z1: 36 },
+  irrigation: { x0: 72, z0: 37, x1: 80, z1: 37 },
+  // South of the plot, with its own level pad. The fence stands on its outer ring.
+  pasture: { x0: 62, z0: 46, x1: 84, z1: 55 },
+  gateX: [74, 75],
+  path: { x0: 73, z0: 44, x1: 75, z1: 45 },
   // Spawn, the hill's shoulder, then the village gate.
   waypoints: [[24, 24], [30, 22], [37, 17], [41, 14], [48, 16], [56, 22], [67, 26]],
   houses: [
@@ -229,6 +262,45 @@ export function carveRoute(world: World, waypoints: Array<[number, number]>): Ce
   return centre.map(([x, z]) => [x, groundTop(world, x, z) + 1, z]);
 }
 
+/**
+ * Farmland beds, the small walled pool, the pasture floor, its one-block fence with a 2-wide gate,
+ * and the path from the plot to the gate. Ground is already level (pad and pasture pins).
+ */
+function stampFarm(world: World, plan: typeof VILLAGE_PLAN): FarmLayout {
+  const cells = (r: Rect): Array<[number, number]> => {
+    const out: Array<[number, number]> = [];
+    for (let x = r.x0; x <= r.x1; x++) for (let z = r.z0; z <= r.z1; z++) out.push([x, z]);
+    return out;
+  };
+  for (const bed of plan.beds) for (const [x, z] of cells(bed)) world.set(x, GROUND_Y, z, BlockId.Farmland);
+  // The pool is flush with the ground; Dirt all round it (the plot is Dirt, and so is the pad edge) keeps it in.
+  for (const [x, z] of cells(plan.pool)) world.set(x, GROUND_Y, z, BlockId.Water);
+
+  const pa = plan.pasture;
+  for (const [x, z] of cells(pa)) {
+    world.set(x, GROUND_Y, z, BlockId.Grass);
+    for (let y = GROUND_Y + 1; y < world.sizeY; y++) world.set(x, y, z, BlockId.Air);
+  }
+  for (const [x, z] of cells(plan.path)) {
+    world.set(x, GROUND_Y, z, BlockId.PathStone);
+    for (let y = GROUND_Y + 1; y < world.sizeY; y++) world.set(x, y, z, BlockId.Air);
+  }
+  const gate: Cell[] = plan.gateX.map(x => [x, GROUND_Y + 1, pa.z0] as Cell);
+  const fence: Cell[] = [];
+  for (const [x, z] of cells(pa)) {
+    const ring = x === pa.x0 || x === pa.x1 || z === pa.z0 || z === pa.z1;
+    if (!ring || gate.some(g => g[0] === x && g[2] === z)) continue;
+    world.set(x, GROUND_Y + 1, z, BlockId.Fence);
+    fence.push([x, GROUND_Y + 1, z]);
+  }
+  // 14 start places spread over the interior, away from the gate.
+  const herdSpawns: Cell[] = [];
+  for (const z of [49, 52]) for (const x of [65, 68, 71, 74, 77, 80, 83]) herdSpawns.push([x, GROUND_Y + 1, z]);
+  return {
+    beds: plan.beds, pool: plan.pool, irrigation: plan.irrigation, pasture: pa, gate, fence, herdSpawns, path: plan.path,
+  };
+}
+
 export function buildVillage(world: World, spawn: { x: number; y: number; z: number }): VillageLayout {
   const plan = VILLAGE_PLAN;
   const spawnGround = Math.floor(spawn.y) - 1;
@@ -253,11 +325,13 @@ export function buildVillage(world: World, spawn: { x: number; y: number; z: num
   // Wide enough for the gentle skirt beside the path, narrow enough to stay clear of the pond.
   const legRects = [boundsOf(link, 1), ...centre.slice(1).map((_, i) => boundsOf([centre[i], centre[i + 1]], 1))]
     .map(r => grow(r, 3));
-  const region = [grow(plan.pad, 6), grow(cottagePad, 2), ...legRects];
+  const pasturePad = grow(plan.pasture, 1);
+  const region = [grow(plan.pad, 6), grow(cottagePad, 2), grow(pasturePad, 5), ...legRects];
 
   const pins: Pin[] = [
     { rect: plan.pad, height: GROUND_Y },
     { rect: cottagePad, height: spawnGround },
+    { rect: pasturePad, height: GROUND_Y },
   ];
   reshape(world, pins, region, new Set([...widen(world, centre, 2), ...widen(world, link, 2, -1)]));
 
@@ -298,6 +372,9 @@ export function buildVillage(world: World, spawn: { x: number; y: number; z: num
     }
   }
 
+  // Beds, pool and the reserved irrigation aisle (the plot is level Dirt with air above, from the loop above).
+  const farm = stampFarm(world, plan);
+
   // Quarry: a pit 3 deep with a 3-step staircase along its west edge, Stone floor.
   const q = plan.quarry;
   for (let x = q.x0; x <= q.x1; x++) {
@@ -318,7 +395,7 @@ export function buildVillage(world: World, spawn: { x: number; y: number; z: num
   }
 
   return {
-    houses, route, routeCells, gate, square: sq, farmPlot: fp, quarry: q,
+    houses, route, routeCells, gate, square: sq, farmPlot: fp, farm, quarry: q,
     stampedRects: region,
   };
 }
@@ -327,6 +404,10 @@ export function emptyVillage(): VillageLayout {
   return {
     houses: [], route: [], routeCells: new Set(), gate: [0, 0, 0],
     square: { x0: 0, z0: 0, x1: 0, z1: 0 }, farmPlot: { x0: 0, z0: 0, x1: 0, z1: 0 },
+    farm: {
+      beds: [], pool: { x0: 0, z0: 0, x1: 0, z1: 0 }, irrigation: { x0: 0, z0: 0, x1: 0, z1: 0 },
+      pasture: { x0: 0, z0: 0, x1: 0, z1: 0 }, gate: [], fence: [], herdSpawns: [], path: { x0: 0, z0: 0, x1: 0, z1: 0 },
+    },
     quarry: { x0: 0, z0: 0, x1: 0, z1: 0 }, stampedRects: [],
   };
 }
