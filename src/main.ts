@@ -19,6 +19,7 @@ import { LINES, LINE_ICONS, pickLine, type LineKey } from './content/lines';
 import { Pal } from './game/pal';
 import { LeadToVillage } from './game/lead';
 import { GreetTracker } from './game/villagers';
+import { allowLine, helperDt, leadPaused, mayGreet, mayPipSpeakQueued, type SpeechContext } from './game/speechPolicy';
 import { DOOR_EMBLEMS, VILLAGERS, VILLAGER_LINES, pickVillagerLine, type VillagerId } from './content/villagers';
 import { isStandable } from './core/pathfind';
 import { UsageTracker } from './core/usage';
@@ -83,6 +84,8 @@ const speakVariant = (key: LineKey): void => {
   voice.say(text);
 };
 const sayLine = (key: LineKey): void => {
+  // The break reminder has priority: while its bubble is up nothing else talks over it or cuts it.
+  if (!allowLine(hud.breakOpen, key)) return;
   speakVariant(key);
   if (key === 'breakTime') {
     hud.showBreak(() => usage.resetSessionTimer());
@@ -298,11 +301,13 @@ const cottage = village.houses.find(h => h.id === 'cottage');
 const saveNow = (): void => { storeSave(storage, serialise(game, seed, flags)); };
 
 function updateVillage(dt: number): void {
+  const breakOpen = hud.breakOpen;
   const paused = game.paused || hud.blockingOverlayOpen;
+  if (breakOpen) pal.hush(1000); // Pip's own chatter waits for the break bubble
   const pp = game.player.pos;
   feet[0] = Math.floor(pp.x); feet[1] = Math.floor(pp.y); feet[2] = Math.floor(pp.z);
   const cell = feet;
-  const ev = lead.update(dt, cell, acted, paused);
+  const ev = lead.update(dt, cell, acted, leadPaused(paused, breakOpen));
   acted = false;
   if (ev === 'start') { pal.setLead(village.route, () => lead.targetIndex()); pendingPip = 'letsMeetNeighbours'; }
   else if (ev === 'comeOn' || ev === 'thisWay') pendingPip = ev;
@@ -328,14 +333,16 @@ function updateVillage(dt: number): void {
   }
   // Audio still locked (before the first tap): hold hellos and Pip's queued line instead of spending them silently.
   if (isAudioLocked()) return;
-  const speaking = voice.speaking();
+  const speech: SpeechContext = {
+    breakOpen, speaking: voice.speaking(), locked: false, pipPending: pendingPip !== null, gestureBusy: gesture.busy,
+  };
   // Pip waits for a neighbour to finish (and the other way round): nobody talks over anybody.
-  if (pendingPip && !speaking) {
+  if (pendingPip && mayPipSpeakQueued(speech)) {
     sayLine(pendingPip);
     pendingPip = null;
     return;
   }
-  const hello = greet.update(cell, village.houses, speaking || pendingPip !== null || gesture.busy);
+  const hello = greet.update(cell, village.houses, !mayGreet(speech));
   if (hello) {
     const def = villagerById[hello];
     const text = pickVillagerLine(hello, lastHello[hello]);
@@ -455,7 +462,7 @@ function frame(now: number): void {
   playerModel.position.set(p.x, p.y, p.z);
   playerModel.rotation.y = game.player.heading;
   updateVillage(dt);
-  pal.update(world, game.player, dt);
+  pal.update(world, game.player, helperDt(game.paused || hud.blockingOverlayOpen, dt));
   for (const v of villagers) idleVillager(v.model, now / 1000);
   if (pal.takeHop()) pipHop = 0.0001;
   let hopY = 0;

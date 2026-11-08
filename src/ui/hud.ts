@@ -94,6 +94,11 @@ export class Hud {
     this.breakBubble.hidden = false;
   }
 
+  /** The break reminder is showing. It never pauses play, but nothing else may talk over it. */
+  get breakOpen(): boolean {
+    return !this.breakBubble.hidden;
+  }
+
   hideBreak(): void {
     this.breakBubble.hidden = true;
   }
