@@ -1,6 +1,6 @@
 # The Wizard's Tower Implementation Plan
 
-**Status: plan for the parent to review (2026-11-08). Built AFTER Grumps and Friendly Weapons (`2026-11-08-grumps-and-friendly-weapons.md`, gems come from there) has merged, and BEFORE Village step 3 (shops and coins), unless the parent says otherwise. Build in chunks, each reviewed (Claude builds, Codex reviews; Claude is the fallback builder and reviewer if Codex is out of allowance). Docs only: this PR contains no product code.**
+**Status: plan approved by the parent; built after Village step 2 and the grumps/weapons step, before Village step 3. Build in chunks, each reviewed (Claude builds, Codex reviews; Claude is the fallback builder and reviewer if Codex is out of allowance). Docs only: this PR contains no product code.**
 
 > **For agentic workers:** REQUIRED SUB-SKILL: Use superpowers:subagent-driven-development (recommended) or superpowers:executing-plans to implement this plan task-by-task. Steps use checkbox (`- [ ]`) syntax for tracking.
 
@@ -43,7 +43,7 @@
 
 ## Decisions made in this plan
 
-Marked **(my call)** where the spec or the parent left room. The parent can overrule any; the four most important are asked at the end.
+Marked **(my call)** where the spec or the parent left room. The parent has confirmed the main ones (see the end).
 
 | Topic | Decision |
 |---|---|
@@ -60,7 +60,7 @@ Marked **(my call)** where the spec or the parent left room. The parent can over
 | Trade | 8 cards in a 4×2 grid, each a big block picture (the atlas icon on a soft sparkle), its price as a 💎 picture, a digit and dots (1 or 2 gems), and "×4" as a digit with 4 dots. **One gem buys 4 blocks of that kind** (a bundle of four, so a gem is worth building with). **Prices:** 1 gem for Cloud, Rainbow, Sun, Moon; 2 gems for Starlight crystal, Star, Dragon-scale, Magic mirror. One table, tuned on the tablet. A card he can afford glows gently; one he cannot gives a soft nudge and the wizard says (kindly) that he needs a gem, with the puzzle tab pulsing: nothing red, no buzzer, nothing lost. A purchase that would take a stack past 99 is refused whole (nothing spent) with the bag-full line. (my call) |
 | Welcome gift | The first time the trade screen opens (`gift` flag false) every card shows a 🎁 instead of a price and the first one he picks is **free: one block** (literally the parent's "one free mythical block", of his choice). The flag is saved at once. After that the prices show. (my call) |
 | Puzzles: shape of the screen | One puzzle at a time in a big card; the wizard speaks the instruction as soon as it shows, and tapping the 🔊 repeats it. **A new puzzle every time the puzzle tab opens or one is solved.** Nothing is saved mid-puzzle (closing the screen just drops it; nothing is lost because nothing was at stake). Unlimited: blocks are decoration and the learning is the point. |
-| Puzzles: counting | The wizard asks for a basket: **"bring me 3 apples and 2 carrots"** shown as pictures with the digit and that many dots per kind. A row of big pictures (apple, carrot, potato, wheat, egg: the item emoji) are the "shelf"; each tap puts one into the basket on the screen, a tap on a basket picture takes one back out. When the basket matches, the puzzle is solved (no "check" button to find). **It is a game on the screen: nothing is taken from his bag**, so it works with an empty bag and can never cost him a thing (my call; the parent may prefer real hand-over, see the questions). Counts shown only as digits 1 to 20 with dots. |
+| Puzzles: counting | The wizard asks for a basket: **"bring me 3 apples and 2 carrots"** shown as pictures with the digit and that many dots per kind. A row of big pictures (apple, carrot, potato, wheat, egg: the item emoji) are the "shelf"; each tap puts one into the basket on the screen, a tap on a basket picture takes one back out. When the basket matches, the puzzle is solved (no "check" button to find). **It is a game on the screen: nothing is taken from his bag**, so it works with an empty bag and can never cost him a thing (confirmed by the parent). Counts shown only as digits 1 to 20 with dots. |
 | Puzzles: pattern | Five pictures in a row then a "?" (for example red, blue, red, blue, ?) and three or four big answer cards. Symbols are four colours (red, blue, yellow, green) times four shapes (circle, square, triangle, star), drawn in CSS so no emoji font is needed; colour is never the only clue where it matters (a shape differs too in the higher levels' distractors). |
 | Puzzles: matching | One big shape on top and three or four cards below: "find the one that is the same". Early levels differ in colour only, then shape only, then both with look-alike distractors, then **a grey outline matched to the coloured shape** (silhouettes). |
 | The ladder | Levels 0 to 9 (`MAX_LEVEL = 9`). The level is `min(9, floor(clean / 3))` where `clean` counts puzzles solved with at most two wrong answers and no help. So three clean solves per step; helped solves still give the block and count in `solved` but not in `clean`. The level **never goes down** (it comes from a counter that only rises). Per level: **counting** L0 one kind 1 to 3; L1 one kind 1 to 5; L2 one kind 1 to 8; L3 two kinds 1 to 3 each; L4 two kinds 1 to 5; L5 two kinds 1 to 8; L6 one kind 5 to 12; L7 two kinds each 3 to 10 with total at most 12; L8 one kind 8 to 20; L9 two kinds each 5 to 14 with total at most 20. **Patterns** L0 and L1 ABAB (colour, then shape) with 3 answers; L2 AAB; L3 ABC; L4 ABB; L5 AABB; L6 ABCABC; L7 growing (1, 2, 3 of a shape) ; L8 colour and shape cycling together; L9 ABCD. **Matching** L0 colour; L1 shape; L2 both with one look-alike; L3 both with two look-alikes (4 answers); L4 and up silhouette to coloured shape (3 then 4 answers). Kind mix: L0 and L1 count 50%, match 30%, pattern 20%; from L2 equal thirds; never the same kind three times in a row; never exactly the same puzzle twice in a row. (my call) |
@@ -612,25 +612,17 @@ Use `?debug` once for the fps counter, then play without it. The first question,
 13. **Voice.** All new lines are British, clear and not too long; listen for "Orlo", "Glim", "bundles of wheat" and the number words in the counting sentence.
 14. **Controller.** Open the screen, move between cards and choose with the pad.
 
-## Questions for the parent (most important first; the voice is decided, see below)
-
-1. **How many blocks for a gem, a puzzle and the gift?** I chose: **1 gem buys 4 blocks of his choice** (2 gems for the four rarer kinds), a **puzzle gives 1 block** (the wizard picks, so he collects all eight), the **welcome gift is 1 block of his choice**. *Recommendation: keep it, it is one table in `src/core/mythical.ts` and easy to retune after the tablet playtest; if he finds gems rare, make every price 1.*
-2. **Counting puzzles: a game on the screen, or real items from his bag?** I made them a game on the screen (tap pictures into a basket), so they work with an empty bag and nothing can ever be taken from him. Your example said "bring me 3 apples and 2 carrots", which could also mean handing over real apples and carrots he grew. *Recommendation: the screen game for now; real hand-over could be added later as a second kind, because it would use up food he may want for the animals.*
-3. **A star room upstairs?** The tower has a ground-floor room where Orlo lives and a stair up to a bright round star room with windows all round (more to see, a nice place to build). It costs one extra task of testing but no risk to the rest. *Recommendation: yes; it is what makes the tower feel tall from inside. If you would rather keep it simple, say so and the plan becomes one room with the same outside.*
-
 ## Decisions confirmed by the parent (2026-11-08)
 
-The parent confirmed the design below before this plan was written (recorded verbatim in Global Constraints). The answers to the three open questions above, once given, are recorded here and in the tasks.
+All binding; the tasks above already follow them.
 
 - A wizard, original, strong personality, his own voice, alone in a tall tower on a hilltop at the far edge of the 96×96 world, away from the village; a gently glowing light at the top visible from the meadow; a path from the village; Pip walks him there once (per save) after his first gem; never dark inside; comfortable camera (the houses' rules and tests).
 - Eight mythical blocks (Starlight crystal, Rainbow, Cloud, Moon, Sun, Dragon-scale, Star, Magic mirror), bright, original, decorations and light sources with no special powers, new block ids with atlas art, cheap shader-free shimmer, placeable and collectable, lights like lamps.
 - Both ways to get them: gems (from grumps; one free block as a welcome gift the first time) and picture puzzles (counting up to 20 with dots, patterns, matching; pictures and numbers only; never fail; gentle try-again and Pip's help after a short time; a new puzzle each visit, easier first, harder with progress, the difficulty saved; solving gives a block). Beat-copy puzzles later with the music step.
-- **Wizard voice = C**: speaker `wizard` in `tools/voice/voices.json` with the blend `bm_lewis*0.6+bf_emma*0.4`, tempo 0.93, lift 1.02 (chosen by listening to three samples).
-
-**Still open, with these DEFAULTS until the parent answers (the plan is built on them):**
-- Block quantities: 1 gem buys 4 blocks (2 gems for the four rarer kinds), a puzzle gives 1 block, the welcome gift is 1 block of his choice (one table, easy to retune).
-- Counting puzzles are a game on the screen (a basket), not real items from his bag.
-- The tower has a star room upstairs reached by a one-block-step stair.
+- **Wizard voice = C**: speaker `wizard` in `tools/voice/voices.json` with the blend `bm_lewis*0.6+bf_emma*0.4`, tempo 0.93, lift 1.02.
+- **Block quantities kept as planned:** 1 gem buys 4 blocks of his choice (2 gems for the four rarer kinds: Starlight crystal, Star, Dragon-scale, Magic mirror), a puzzle gives 1 block (the wizard picks), the welcome gift is 1 block of his choice.
+- **Counting puzzles are an on-screen basket game:** nothing is ever taken from his bag.
+- **The tower has the star room upstairs**, reached by the one-block-step stair.
 
 ## Build chunks and review gates
 
