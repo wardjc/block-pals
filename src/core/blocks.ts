@@ -11,6 +11,11 @@ export enum BlockId {
   Glass,
   Bricks,
   Bedrock,
+  // Appended for the village. Existing ids never change: saves store them as numbers.
+  PathStone,
+  RoofTile,
+  DoorFrame,
+  Lamp,
 }
 
 export interface BlockDef {
@@ -35,4 +40,8 @@ export const BLOCKS: Record<BlockId, BlockDef> = {
   [BlockId.Glass]: { id: BlockId.Glass, name: 'glass', solid: true, collectable: true, transparent: true, icon: 'glass' },
   [BlockId.Bricks]: { id: BlockId.Bricks, name: 'bricks', solid: true, collectable: true, transparent: false, icon: 'bricks' },
   [BlockId.Bedrock]: { id: BlockId.Bedrock, name: 'bedrock', solid: true, collectable: false, transparent: false, icon: 'bedrock' },
+  [BlockId.PathStone]: { id: BlockId.PathStone, name: 'path', solid: true, collectable: true, transparent: false, icon: 'path' },
+  [BlockId.RoofTile]: { id: BlockId.RoofTile, name: 'roof', solid: true, collectable: true, transparent: false, icon: 'roof' },
+  [BlockId.DoorFrame]: { id: BlockId.DoorFrame, name: 'frame', solid: true, collectable: true, transparent: false, icon: 'frame' },
+  [BlockId.Lamp]: { id: BlockId.Lamp, name: 'lamp', solid: true, collectable: true, transparent: false, icon: 'lamp' },
 };

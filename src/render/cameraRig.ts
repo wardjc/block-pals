@@ -25,6 +25,31 @@ export const PITCH_MIN = -0.15; // slightly above the horizon
 export const PITCH_MAX = (70 * Math.PI) / 180;
 export const CLOSE_DISTANCE = 1.2;
 export const CLOSE_EXIT_DISTANCE = 1.6;
+/**
+ * The player model is hidden while the camera is within this distance of his head (a back-view of a
+ * body 2 to 3 blocks in front fills the middle of the screen in a small room), and shown again beyond
+ * MODEL_SHOW_DISTANCE so it never flickers at the edge.
+ */
+export const MODEL_HIDE_DISTANCE = 3.4;
+export const MODEL_SHOW_DISTANCE = 3.9;
+/** Pip is hidden when the camera is this close to him, or when he is this close and near the view's middle. */
+export const PIP_HIDE_DISTANCE = 2.8;
+export const PIP_SHOW_DISTANCE = 3.2;
+export const PIP_CENTRE_DISTANCE = 4;
+export const PIP_CENTRE_COS = 0.85; // about 32° from the view's centre line
+export const PIP_CENTRE_COS_EXIT = 0.78;
+
+/** Whether Pip should be drawn: false while he would fill the corner or the middle of the view. */
+export function pipHiddenFor(cam: Vec3, forward: Vec3, pip: Vec3, wasHidden: boolean): boolean {
+  const dx = pip.x - cam.x, dy = pip.y + 0.4 - cam.y, dz = pip.z - cam.z;
+  const dist = Math.hypot(dx, dy, dz);
+  if (dist < (wasHidden ? PIP_SHOW_DISTANCE : PIP_HIDE_DISTANCE)) return true;
+  if (dist < (wasHidden ? PIP_CENTRE_DISTANCE + 0.5 : PIP_CENTRE_DISTANCE)) {
+    const cos = (dx * forward.x + dy * forward.y + dz * forward.z) / dist;
+    if (cos > (wasHidden ? PIP_CENTRE_COS_EXIT : PIP_CENTRE_COS)) return true;
+  }
+  return false;
+}
 /** Gap kept between the camera and the first block behind it. */
 export const CAMERA_MARGIN = 0.2;
 /** The camera point keeps at least this far from any block face, so the near plane never cuts one. */
@@ -105,10 +130,16 @@ export class CameraRig {
   readonly forward: Vec3 = lookDir(0, DEFAULT_PITCH, { x: 0, y: 0, z: 0 });
   private started = false;
   private closeMode = false;
+  private modelGone = false;
 
   /** Latched first-person state, including the glide away from the player's head. */
   get close(): boolean {
     return this.closeMode;
+  }
+
+  /** True while the player model should not be drawn (camera at or near his head). */
+  get modelHidden(): boolean {
+    return this.modelGone;
   }
 
   /** A finger drag of (dx, dy) CSS px on a screen widthPx wide. Right turns right, down looks down. */
@@ -147,6 +178,7 @@ export class CameraRig {
     // Keep the model hidden during the glide out, until the drawn camera is clear of it.
     if (this.distance > CLOSE_EXIT_DISTANCE) this.closeMode = false;
     const d = this.distance;
+    this.modelGone = this.closeMode || d < (this.modelGone ? MODEL_SHOW_DISTANCE : MODEL_HIDE_DISTANCE);
     this.position.x = eye.x - f.x * d;
     this.position.y = eye.y - f.y * d;
     this.position.z = eye.z - f.z * d;

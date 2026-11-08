@@ -22,6 +22,22 @@ describe('blocks', () => {
   });
 });
 
+describe('block ids', () => {
+  test('block ids are stable', () => {
+    expect(BlockId.Bedrock).toBe(11);
+    expect(BlockId.PathStone).toBe(12);
+    expect(BlockId.RoofTile).toBe(13);
+    expect(BlockId.DoorFrame).toBe(14);
+    expect(BlockId.Lamp).toBe(15);
+    const v1 = ['Air', 'Grass', 'Dirt', 'Stone', 'Wood', 'Leaves', 'Sand', 'Water', 'Planks', 'Glass', 'Bricks', 'Bedrock'];
+    v1.forEach((name, id) => expect((BlockId as unknown as Record<string, number>)[name]).toBe(id));
+    for (const id of [BlockId.PathStone, BlockId.RoofTile, BlockId.DoorFrame, BlockId.Lamp]) {
+      expect(BLOCKS[id]).toMatchObject({ id, solid: true, collectable: true, transparent: false });
+    }
+    expect([12, 13, 14, 15].map(id => BLOCKS[id as BlockId].name)).toEqual(['path', 'roof', 'frame', 'lamp']);
+  });
+});
+
 describe('World', () => {
   test('get returns Air for a new world', () => {
     const world = new World(2, 3, 4);

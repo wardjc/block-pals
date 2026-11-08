@@ -3,6 +3,7 @@ import type { World } from '../core/world';
 import { createAtlas } from './atlas';
 import { CameraRig } from './cameraRig';
 import { castVoxelRay, type VoxelHit } from './voxelRay';
+import { ChunkCuller, FOG_FAR } from './chunkCull';
 import { buildChunkGeometry, CHUNK_SIZE, type MeshArrays } from './mesher';
 
 const FOLLOW_K = 4; // exponential smoothing rate, per second
@@ -14,8 +15,9 @@ const MARKER_SECONDS = 0.9;
 const LIGHT_SCALE = Math.PI;
 
 interface ChunkMeshes {
-  solid: THREE.Mesh;
-  trans: THREE.Mesh;
+  /** null when the chunk has nothing of that kind (no empty draw calls). */
+  solid: THREE.Mesh | null;
+  trans: THREE.Mesh | null;
 }
 
 function toGeometry(a: MeshArrays): THREE.BufferGeometry {
@@ -45,25 +47,28 @@ export class GameScene {
   private readonly hit: VoxelHit = { x: 0, y: 0, z: 0, nx: 0, ny: 0, nz: 0, t: 0 };
   private readonly ndc = new THREE.Vector2();
   private followed = false;
+  private readonly culler: ChunkCuller;
+  private shown: Set<string> | null = null;
   private readonly raycaster = new THREE.Raycaster();
   private readonly marker: THREE.Mesh<THREE.RingGeometry, THREE.MeshBasicMaterial>;
   private markerAge = Infinity;
   private readonly outline = new THREE.Group();
 
   constructor(private readonly host: HTMLElement, private readonly world: World) {
+    this.culler = new ChunkCuller(world.sizeX, world.sizeY, world.sizeZ);
     this.renderer = new THREE.WebGLRenderer({ antialias: false, powerPreference: 'high-performance' });
     this.renderer.setPixelRatio(Math.min(window.devicePixelRatio || 1, 1.5));
     host.appendChild(this.renderer.domElement);
 
     this.scene.background = new THREE.Color(0x78c6ff);
-    this.scene.fog = new THREE.Fog(0x78c6ff, 20, 40);
+    this.scene.fog = new THREE.Fog(0x78c6ff, 20, FOG_FAR);
     this.scene.add(new THREE.HemisphereLight(0xffffff, 0x88aa66, 1.0 * LIGHT_SCALE));
     const sun = new THREE.DirectionalLight(0xffffff, 0.6 * LIGHT_SCALE);
     sun.position.set(0.5, 1, 0.3);
     this.scene.add(sun);
 
     // A close near plane: in a tunnel the camera can sit CAMERA_CLEARANCE from a wall.
-    this.camera = new THREE.PerspectiveCamera(60, 1, 0.05, 80);
+    this.camera = new THREE.PerspectiveCamera(60, 1, 0.05, 64);
 
     this.solidMat = new THREE.MeshLambertMaterial({ map: this.atlas.texture });
     this.transMat = new THREE.MeshLambertMaterial({
@@ -120,16 +125,41 @@ export class GameScene {
     const old = this.chunks.get(key);
     if (old) {
       for (const m of [old.solid, old.trans]) {
+        if (!m) continue;
         this.scene.remove(m);
         m.geometry.dispose();
       }
     }
     const geo = buildChunkGeometry(this.world, cx, cz, this.atlas.uvFor);
-    const solid = new THREE.Mesh(toGeometry(geo), this.solidMat);
-    const trans = new THREE.Mesh(toGeometry(geo.transparent), this.transMat);
-    trans.renderOrder = 1;
-    this.scene.add(solid, trans);
+    const solid = geo.indices.length > 0 ? new THREE.Mesh(toGeometry(geo), this.solidMat) : null;
+    const trans = geo.transparent.indices.length > 0 ? new THREE.Mesh(toGeometry(geo.transparent), this.transMat) : null;
+    if (trans) trans.renderOrder = 1;
+    const shown = this.shown === null || this.shown.has(key);
+    for (const m of [solid, trans]) {
+      if (!m) continue;
+      m.visible = shown;
+      this.scene.add(m);
+    }
     this.chunks.set(key, { solid, trans });
+  }
+
+  /** Hides chunks whose nearest corner is deeper than the fog along the view direction (nothing visible changes). */
+  private cullFar(c: { x: number; y: number; z: number }, f: { x: number; y: number; z: number }, px: number, pz: number): void {
+    const set = this.culler.update(c.x, c.y, c.z, f.x, f.y, f.z, px, pz);
+    if (set === this.shown) return;
+    this.shown = set;
+    for (const [k, c] of this.chunks) {
+      const v = set.has(k);
+      if (c.solid) c.solid.visible = v;
+      if (c.trans) c.trans.visible = v;
+    }
+  }
+
+  /** Chunk and draw numbers for the debug panel and the budget checks. */
+  stats(): { chunks: number; visible: number; triangles: number; drawCalls: number } {
+    let visible = 0;
+    for (const c of this.chunks.values()) if (c.solid?.visible || c.trans?.visible) visible++;
+    return { chunks: this.chunks.size, visible, triangles: this.renderer.info.render.triangles, drawCalls: this.renderer.info.render.calls };
   }
 
   /** Rebuilds the chunk containing the cell, plus the neighbour if the cell is on a chunk edge. */
@@ -150,7 +180,7 @@ export class GameScene {
   triangleCount(): number {
     let n = 0;
     for (const c of this.chunks.values()) {
-      n += (c.solid.geometry.index?.count ?? 0) / 3 + (c.trans.geometry.index?.count ?? 0) / 3;
+      n += (c.solid?.geometry.index?.count ?? 0) / 3 + (c.trans?.geometry.index?.count ?? 0) / 3;
     }
     return n;
   }
@@ -178,6 +208,7 @@ export class GameScene {
     const f = this.rig.forward;
     this.camera.position.set(c.x, c.y, c.z);
     this.camera.lookAt(this.lookPoint.set(c.x + f.x, c.y + f.y, c.z + f.z));
+    this.cullFar(c, f, pos.x, pos.z);
   }
 
   pick(clientX: number, clientY: number): { cell: [number, number, number]; normal: [number, number, number] } | null {

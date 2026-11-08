@@ -46,6 +46,16 @@ export class World {
     for (const listener of this.listeners) listener(x, y, z);
   }
 
+  /**
+   * Replays a saved edit. Unlike set(), an edit that already matches the generated world is still
+   * remembered, so it stays in every later save even if a newer generator stamps something there.
+   */
+  replayEdit(x: number, y: number, z: number, id: BlockId): void {
+    if (!this.inBounds(x, y, z)) return;
+    this.set(x, y, z, id);
+    this.changedCells.set(this.index(x, y, z), [x, y, z, id]);
+  }
+
   topSolidY(x: number, z: number): number {
     if (!this.inBounds(x, 0, z)) return -1;
     for (let y = this.sizeY - 1; y >= 0; y--) {

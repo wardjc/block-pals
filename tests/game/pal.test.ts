@@ -4,6 +4,8 @@ import { BlockId } from '../../src/core/blocks';
 import { World } from '../../src/core/world';
 import type { LineKey } from '../../src/content/lines';
 import { Pal } from '../../src/game/pal';
+import { generateWorld } from '../../src/core/worldgen';
+import { isStandable } from '../../src/core/pathfind';
 import { Player } from '../../src/game/player';
 
 function flatWorld(): World {
@@ -235,5 +237,103 @@ describe('blocked Pip', () => {
     } finally {
       search.mockRestore();
     }
+  });
+
+  it('stays inside the soft wall at all four edges of the 96x96 world', () => {
+    const spots: Array<[number, number]> = [[94.5, 40.5], [1.5, 40.5], [40.5, 94.5], [40.5, 1.5], [94.5, 94.5], [1.5, 1.5]];
+    for (const [px, pz] of spots) {
+      const world = new World(96, 20, 96);
+      for (let x = 0; x < 96; x++) for (let z = 0; z < 96; z++) world.set(x, 0, z, BlockId.Grass);
+      world.clearEdits();
+      const player = new Player({ x: px, y: 1, z: pz });
+      const pal = new Pal({ x: px, y: 1, z: pz }, () => undefined, () => 0);
+      for (let i = 0; i < 240; i++) {
+        pal.update(world, player, 1 / 30);
+        expect(pal.pos.x, `${px},${pz}`).toBeGreaterThanOrEqual(1);
+        expect(pal.pos.x).toBeLessThan(95);
+        expect(pal.pos.z).toBeGreaterThanOrEqual(1);
+        expect(pal.pos.z).toBeLessThan(95);
+      }
+      const [cx, , cz] = pal.feetCell();
+      expect(cx >= 1 && cx <= 94 && cz >= 1 && cz <= 94).toBe(true);
+    }
+  });
+
+  describe('lead mode', () => {
+    const real = generateWorld(2026);
+    const route = real.village.route;
+    const startOf = (i: number) => ({ x: route[i][0] + 0.5, y: route[i][1], z: route[i][2] + 0.5 });
+
+    it('never teleports and follows the real route over walkable ground, at a pace he can follow', () => {
+      const player = new Player({ ...real.spawn });
+      const t = 0;
+      const pal = new Pal(startOf(0), () => undefined, () => t);
+      let target = 0;
+      pal.setLead(route, () => Math.floor(target));
+      let previous = { ...pal.pos };
+      let maxStep = 0;
+      for (let i = 0; i < 30 * 200 && Math.floor(target) < route.length - 1; i++) {
+        target = Math.min(route.length - 1, target + 3 / 30);
+        pal.update(real.world, player, 1 / 30); // he stays 30+ blocks behind: following would teleport
+        maxStep = Math.max(maxStep, Math.hypot(pal.pos.x - previous.x, pal.pos.z - previous.z));
+        previous = { ...pal.pos };
+        expect(isStandable(real.world, pal.feetCell())).toBe(true);
+      }
+      expect(maxStep).toBeLessThanOrEqual(4.5 / 30 + 0.01); // never a jump
+      const end = route[route.length - 1];
+      for (let i = 0; i < 90; i++) pal.update(real.world, player, 1 / 30);
+      expect(Math.hypot(pal.pos.x - end[0] - 0.5, pal.pos.z - end[2] - 0.5)).toBeLessThan(1.5);
+    });
+
+    it('waits where it is when the controller says wait, and never enters his cell', () => {
+      const world = flatWorld();
+      const player = new Player({ x: 10.5, y: 1, z: 10.5 });
+      const flat = Array.from({ length: 20 }, (_, i) => [10 + i, 1, 10] as [number, number, number]);
+      const pal = new Pal({ x: 8.5, y: 1, z: 10.5 }, () => undefined, () => 0);
+      pal.setLead(flat, () => -1);
+      const start = { ...pal.pos };
+      for (let i = 0; i < 60; i++) pal.update(world, player, 1 / 30);
+      expect(pal.pos).toEqual(start);
+      pal.setLead(flat, () => 12); // goal beyond him: Pip walks around his cell
+      for (let i = 0; i < 300; i++) {
+        pal.update(world, player, 1 / 30);
+        expect(pal.feetCell()[0] === 10 && pal.feetCell()[2] === 10).toBe(false);
+      }
+      expect(dist(pal.pos, { x: 22.5, z: 10.5 })).toBeLessThan(1.5);
+    });
+
+    it('lead mode never teleports when he is 30 cells away', () => {
+      const world = flatWorld();
+      const player = new Player({ x: 2.5, y: 1, z: 2.5 });
+      const pal = new Pal({ x: 40.5, y: 1, z: 40.5 }, () => undefined, () => 0);
+      pal.setLead([[40, 1, 40], [41, 1, 40]], () => 1);
+      for (let i = 0; i < 30; i++) pal.update(world, player, 1 / 30);
+      expect(dist(pal.pos, { x: 41.5, z: 40.5 })).toBeLessThan(1.6);
+    });
+
+    it('following resumes after setLead(null), teleport included', () => {
+      const world = flatWorld();
+      const player = new Player({ x: 10.5, y: 1, z: 10.5 });
+      const pal = new Pal({ x: 40.5, y: 1, z: 40.5 }, () => undefined, () => 0);
+      pal.setLead([[40, 1, 40], [41, 1, 40]], () => 1);
+      pal.update(world, player, 1 / 30);
+      pal.setLead(null);
+      expect(pal.leading).toBe(false);
+      pal.update(world, player, 1 / 30);
+      expect(dist(pal.pos, player.pos)).toBeLessThanOrEqual(2.5);
+    });
+  });
+
+  it('hush(ms) delays chatter but not always-lines', () => {
+    const { pal, said, time } = setup();
+    time(1000);
+    pal.hush(5000);
+    pal.handle({ type: 'collected', id: BlockId.Wood });
+    expect(said).toEqual([]);
+    pal.handle({ type: 'crafted' } as never);
+    expect(said).toEqual(['crafted']);
+    time(7000);
+    pal.handle({ type: 'noPath' });
+    expect(said).toEqual(['crafted', 'noPath']);
   });
 });

@@ -333,7 +333,8 @@ describe('Game', () => {
     }
     world.get = get;
     // Work done, not wall-clock, so machine load cannot flake it.
-    expect(mostReads).toBeLessThan(60_000);
+    // The world is 4x bigger since the village step, so the flood has more ground to cover.
+    expect(mostReads).toBeLessThan(80_000);
   });
 
   it('noteActivity resets idle', () => {

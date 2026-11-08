@@ -1,8 +1,8 @@
 # Third-party notices
 
-## Pip's voice clips (public/voice)
+## Pip's and the villagers' voice clips (public/voice)
 
-The clips were synthesised, offline, with:
+The clips for Pip and for the villagers (Bramble, Captain Pebble, Fern and Granny Willow, each with their own blended voice) were synthesised, offline, with:
 
 - **Kokoro-82M** by hexgrad, licensed under the **Apache License 2.0**
   (<https://huggingface.co/hexgrad/Kokoro-82M>, licence text: <https://www.apache.org/licenses/LICENSE-2.0>).

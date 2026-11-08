@@ -1,4 +1,5 @@
 import { BlockId } from '../core/blocks';
+import { insideWall } from '../core/bounds';
 import { canCraft, craft } from '../core/crafting';
 import { Inventory } from '../core/inventory';
 import { findPath, isStandable, pathTowards, smoothPath, type Cell } from '../core/pathfind';
@@ -105,7 +106,7 @@ export class Game {
 
   /** Same bounds as the player's soft wall. */
   private insideWall = ([x, , z]: Cell): boolean =>
-    x >= 1 && x <= this.world.sizeX - 2 && z >= 1 && z <= this.world.sizeZ - 2;
+    insideWall(this.world, x, z);
 
   /**
    * One BFS from the player to the reachable standable cell nearest the goal

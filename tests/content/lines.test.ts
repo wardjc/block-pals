@@ -5,7 +5,7 @@ const keys = Object.keys(LINES) as LineKey[];
 
 describe('lines', () => {
   it('every LineKey has at least one line', () => {
-    expect(keys).toHaveLength(13);
+    expect(keys).toHaveLength(18);
     for (const k of keys) {
       expect(LINES[k].length).toBe(4);
       expect(new Set(LINES[k]).size).toBe(4);

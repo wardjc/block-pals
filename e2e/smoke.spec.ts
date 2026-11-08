@@ -5,6 +5,11 @@ const WOOD = 4;
 const PLANKS = 8;
 
 type Cell = [number, number, number];
+type Rect = { x0: number; z0: number; x1: number; z1: number };
+type VillageData = {
+  houses: Array<{ id: string; rect: Rect; interior: Rect; floor: Cell[]; doorCells: Cell[]; groundY: number; doorFront: Cell; doorInside: Cell; npcSpot: Cell; greetRect: Rect }>;
+  route: Cell[]; square: Rect; gate: Cell;
+};
 type Dbg = {
   playerPos(): { x: number; y: number; z: number };
   pipPos(): { x: number; y: number; z: number };
@@ -12,10 +17,23 @@ type Dbg = {
   screenOf(x: number, y: number, z: number): { x: number; y: number };
   pick(x: number, y: number): { cell: Cell; normal: Cell } | null;
   outlineVisible(): boolean;
+  voiceSpeaking(): boolean;
+  audioState(): { ctx: string | null; tapped: boolean; locked: boolean; pending: string | null; busy: boolean };
+  resumeAudio(): void;
   voiceLast(): { source: 'clip' | 'tts' | 'none'; key: string };
   digSound(): { starts: number; stops: number; active: boolean };
   camera(): { position: { x: number; y: number; z: number }; yaw: number; pitch: number; distance: number; close: boolean };
+  village(): VillageData;
+  flags(): { ledToVillage: boolean };
+  leadState(): string;
+  saveNow(): void;
+  teleport(x: number, y: number, z: number): boolean;
+  setCamera(yaw: number, pitch: number): void;
+  stats(): { chunks: number; visible: number; triangles: number; drawCalls: number; fps: number; worldTriangles: number };
+  worldSize(): { x: number; y: number; z: number };
   game: {
+    applyIntent(i: { kind: 'walk'; to: Cell } | { kind: 'place'; cell: Cell } | { kind: 'dig'; cell: Cell }): void;
+    selected: number | 'hand';
     tryCraft(id: string): boolean;
     inventory: { count(id: number): number; hotbar(): number[] };
     world: { get(x: number, y: number, z: number): number; topSolidY(x: number, z: number): number };
@@ -230,4 +248,281 @@ test('Pip speaks from a pre-generated clip, also offline', async ({ page, contex
   expect(fromSw.length).toBeGreaterThan(0);
   expect(fromSw.every(Boolean)).toBe(true);
   expect(errors).toEqual([]);
+});
+
+// ---------------------------------------------------------------------------------------------
+// Village step 1: the browser story.
+
+const SPAWN_KEYS = ['blockpals.save.v2', 'blockpals.save.v1', 'blockpals.save.v1.backup'];
+
+/** Walks with a tap-style intent and waits until he is within `tol` of the cell (cap in ms). */
+async function walkTo(page: Page, cell: Cell, tol = 1.3, capMs = 40_000): Promise<void> {
+  await page.evaluate(c => window.__debug.game.applyIntent({ kind: 'walk', to: c }), cell);
+  await expect.poll(() => page.evaluate(c => {
+    const p = window.__debug.playerPos();
+    return Math.hypot(p.x - (c[0] + 0.5), p.z - (c[2] + 0.5));
+  }, cell), { timeout: capMs, intervals: [100] }).toBeLessThan(tol);
+}
+
+const insideRect = (p: { x: number; z: number }, r: Rect): boolean => p.x >= r.x0 && p.x < r.x1 + 1 && p.z >= r.z0 && p.z < r.z1 + 1;
+
+async function freshVillage(page: Page): Promise<VillageData> {
+  await ready(page);
+  return page.evaluate(() => window.__debug.village());
+}
+
+test.describe('the village', () => {
+  test('new world is 96 wide and loads fast', async ({ page }) => {
+    const errors: string[] = [];
+    page.on('console', m => { if (m.type() === 'error') errors.push(m.text()); });
+    page.on('pageerror', e => errors.push(String(e)));
+    const t0 = Date.now();
+    await page.goto(URL);
+    await page.waitForFunction(() => !!window.__debug);
+    expect(Date.now() - t0).toBeLessThan(8000);
+    expect(await page.evaluate(() => window.__debug.worldSize())).toEqual({ x: 96, y: 20, z: 96 });
+    await frames(page, 30);
+    const st = await page.evaluate(() => window.__debug.stats());
+    expect(st.worldTriangles).toBeLessThan(110_000);
+    expect(st.chunks).toBe(36);
+    expect(errors).toEqual([]);
+  });
+
+  test('walk the path to the village and home', async ({ page }) => {
+    test.setTimeout(240_000);
+    const v = await freshVillage(page);
+    const start = await page.evaluate(() => window.__debug.playerPos());
+    // Sample his height every frame inside the page (no timers on this side to outlive the test).
+    await page.evaluate(() => {
+      const w = window as unknown as { __maxJump: number };
+      w.__maxJump = 0;
+      let last = window.__debug.playerPos().y;
+      const tick = (): void => {
+        const y = window.__debug.playerPos().y;
+        w.__maxJump = Math.max(w.__maxJump, Math.abs(y - last));
+        last = y;
+        requestAnimationFrame(tick);
+      };
+      requestAnimationFrame(tick);
+    });
+    // Every ~8th route cell is a waypoint; the last is the square.
+    const wps = v.route.filter((_, i) => i % 8 === 0 || i === v.route.length - 1);
+    for (const c of wps) await walkTo(page, c);
+    const at = await page.evaluate(() => window.__debug.playerPos());
+    const end = v.route[v.route.length - 1];
+    expect(insideRect(at, v.square) || Math.hypot(at.x - (end[0] + 0.5), at.z - (end[2] + 0.5)) < 2).toBe(true);
+    for (const c of [...wps].reverse()) await walkTo(page, c);
+    await walkTo(page, [Math.floor(start.x), Math.floor(start.y), Math.floor(start.z)], 1.5);
+    const maxJump = await page.evaluate(() => (window as unknown as { __maxJump: number }).__maxJump);
+    expect(maxJump).toBeLessThan(1.5);
+  });
+
+  test('enter each house, turn the view, come out', async ({ page }) => {
+    test.setTimeout(240_000);
+    const v = await freshVillage(page);
+    expect(v.houses).toHaveLength(5);
+    for (const h of v.houses) {
+      await page.evaluate(([x, y, z]) => window.__debug.teleport(x + 0.5, y, z + 0.5), h.doorFront);
+      await walkTo(page, h.doorFront, 1.2, 15_000);
+      await walkTo(page, h.doorInside, 1.2, 15_000);
+      const mid = h.floor[Math.floor(h.floor.length / 2)];
+      await walkTo(page, mid, 1.2, 15_000);
+      const p = await page.evaluate(() => window.__debug.playerPos());
+      expect(insideRect(p, h.interior)).toBe(true);
+      await page.evaluate(() => window.__debug.setCamera(0.3, 0.5));
+      await frames(page, 20);
+
+      const before = await page.evaluate(() => ({ cam: window.__debug.camera(), pos: window.__debug.playerPos(), bag: window.__debug.game.inventory.hotbar().length }));
+      // Start the slide in the upper part of the screen; the slide is long enough that a hold cannot start.
+      await drag(page, 440, 200, 400, 0);
+      await frames(page, 20);
+      const after = await page.evaluate(() => ({ cam: window.__debug.camera(), pos: window.__debug.playerPos(), bag: window.__debug.game.inventory.hotbar().length }));
+      const turned = Math.abs(Math.atan2(Math.sin(after.cam.yaw - before.cam.yaw), Math.cos(after.cam.yaw - before.cam.yaw)));
+      expect(turned, h.id).toBeGreaterThan(0.8);
+      expect(Math.hypot(after.pos.x - before.pos.x, after.pos.z - before.pos.z)).toBeLessThan(0.01);
+      expect(after.bag).toBe(before.bag);
+      const camBlock = await page.evaluate(() => {
+        const c = window.__debug.camera().position;
+        return window.__debug.game.world.get(Math.floor(c.x), Math.floor(c.y), Math.floor(c.z));
+      });
+      expect([0, 7]).toContain(camBlock); // air or water
+      await drag(page, 640, 300, 0, 160);
+      await frames(page, 10);
+      const pitch = await page.evaluate(() => window.__debug.camera().pitch);
+      expect(pitch).not.toBeCloseTo(before.cam.pitch, 2);
+      expect(pitch).toBeGreaterThanOrEqual(-0.15 - 1e-6);
+      expect(pitch).toBeLessThanOrEqual((70 * Math.PI) / 180 + 1e-6);
+
+      await walkTo(page, h.doorFront, 1.2, 15_000);
+    }
+  });
+
+  test('a villager says hello', async ({ page }) => {
+    test.setTimeout(120_000);
+    const v = await freshVillage(page);
+    await page.touchscreen.tap(640, 120); // unlocks audio (the first tap)
+    const bakery = v.houses.find(h => h.id === 'bakery')!;
+    await page.evaluate(([x, y, z]) => window.__debug.teleport(x + 0.5, y, z + 0.5), bakery.doorFront);
+    await walkTo(page, bakery.doorInside, 1.2, 15_000);
+    const state = () => page.evaluate(() => window.__debug.audioState());
+    const picture = () => page.locator('.bubble-picture').textContent();
+    // While the audio context is suspended the hello is HELD (never spoken by the tablet voice, never spent).
+    let sawHeld = false;
+    for (let i = 0; i < 12 && (await state()).ctx !== 'running'; i++) {
+      sawHeld = true;
+      expect(await picture()).not.toBe('🍞');
+      expect(await page.evaluate(() => window.__debug.voiceLast().key)).not.toMatch(/^bramble\//);
+      await page.waitForTimeout(500);
+    }
+    // A tap resumes audio (here via the debug hook, which does what a tap does); retry while headless audio is slow.
+    for (let i = 0; i < 15 && (await state()).ctx !== 'running'; i++) {
+      await page.evaluate(() => window.__debug.resumeAudio());
+      await page.waitForTimeout(2000);
+    }
+    if ((await state()).ctx !== 'running') {
+      // Headless audio never woke: all that can be asserted is that the hello stayed held, quietly.
+      test.info().annotations.push({ type: 'note', description: 'AudioContext stayed suspended in this browser; checked the hello was held' });
+      expect(sawHeld).toBe(true);
+      expect(await picture()).not.toBe('🍞');
+      return;
+    }
+    // Running: the neighbour (who waits for Pip's welcome to finish) now greets, as a clip.
+    await expect.poll(picture, { timeout: 40_000 }).toBe('🍞');
+    await expect(page.locator('.bubble')).toContainText('Hi!');
+    await expect.poll(() => page.evaluate(() => window.__debug.voiceLast()), { timeout: 15_000 }).toMatchObject({ source: 'clip', key: expect.stringMatching(/^bramble\//) });
+    await expect(page.locator('.bubble')).toBeHidden({ timeout: 6000 });
+  });
+
+  test('Pip leads once, and does not fight taps or drags', async ({ page }) => {
+    test.setTimeout(180_000);
+    const v = await freshVillage(page);
+    // His first action starts the 8 s timer.
+    await page.touchscreen.tap(640, 300);
+    await expect.poll(() => page.evaluate(() => window.__debug.leadState()), { timeout: 40_000 }).toBe('leading');
+    expect((await page.evaluate(() => window.__debug.flags())).ledToVillage).toBe(false);
+
+    // A tap still walks him, a drag still turns the view, a hold still digs; Pip never moves him.
+    const here = await page.evaluate(() => window.__debug.playerPos());
+    await page.waitForTimeout(1500);
+    expect(await moved(page, here)).toBeLessThan(0.01);
+    await page.touchscreen.tap(700, 330);
+    await expect.poll(() => moved(page, here)).toBeGreaterThan(0.5);
+    const yaw0 = await page.evaluate(() => window.__debug.camera().yaw);
+    const ground = await nearbyGround(page);
+    await drag(page, ground.x - 200, ground.y, 400, 0);
+    const yaw1 = await page.evaluate(() => window.__debug.camera().yaw);
+    expect(Math.abs(Math.atan2(Math.sin(yaw1 - yaw0), Math.cos(yaw1 - yaw0)))).toBeGreaterThan(0.8);
+    await page.waitForTimeout(800);
+    const g2 = await nearbyGround(page);
+    await press(page, g2.x, g2.y, 700);
+    const [x, y, z] = g2.cell;
+    await expect.poll(() => page.evaluate(([x, y, z]) => window.__debug.game.world.get(x, y, z), [x, y, z])).toBe(0);
+
+    // Follow the route to the village.
+    for (const c of v.route.filter((_, i) => i % 8 === 0 || i === v.route.length - 1)) await walkTo(page, c);
+    await expect.poll(() => page.evaluate(() => window.__debug.flags().ledToVillage), { timeout: 10_000 }).toBe(true);
+    await page.evaluate(() => window.__debug.saveNow());
+
+    // He has arrived: after a reload Pip does not lead again.
+    await page.reload();
+    await page.waitForFunction(() => !!window.__debug);
+    expect((await page.evaluate(() => window.__debug.flags())).ledToVillage).toBe(true);
+    await page.touchscreen.tap(640, 300);
+    await page.waitForTimeout(12_000);
+    expect(await page.evaluate(() => window.__debug.leadState())).toBe('done');
+  });
+
+  test('save and reload keeps position and edits', async ({ page }) => {
+    const v = await freshVillage(page);
+    const cottage = v.houses.find(h => h.id === 'cottage')!;
+    // A saved spot inside a house footprint deliberately loads at the spawn (never under a roof), so stand at the door.
+    await page.evaluate(([x, y, z]) => window.__debug.teleport(x + 0.5, y, z + 0.5), cottage.doorFront);
+    await frames(page, 10);
+    await page.evaluate(id => { window.__debug.giveItem(id, 5); }, PLANKS);
+    // Choose planks, then a quick tap on a floor block in front of him places one.
+    await page.evaluate(id => { window.__debug.game.selected = id; }, PLANKS);
+    const target = await page.evaluate(() => {
+      const d = window.__debug;
+      const p = d.playerPos();
+      for (const [dx, dz] of [[1, 0], [0, 1], [-1, 0], [0, -1], [1, 1], [-1, -1], [1, -1], [-1, 1], [2, 0], [0, 2]]) {
+        const cell: Cell = [Math.floor(p.x) + dx, Math.floor(p.y) - 1, Math.floor(p.z) + dz];
+        const s = d.screenOf(cell[0] + 0.5, cell[1] + 1, cell[2] + 0.5);
+        const hit = d.pick(s.x, s.y);
+        if (hit && hit.cell[0] === cell[0] && hit.cell[1] === cell[1] && hit.cell[2] === cell[2] && hit.normal[1] === 1) return { cell, ...s };
+      }
+      return null;
+    });
+    expect(target).not.toBeNull();
+    await page.touchscreen.tap(target!.x, target!.y);
+    const placed: Cell = [target!.cell[0], target!.cell[1] + 1, target!.cell[2]];
+    await expect.poll(() => page.evaluate(c => window.__debug.game.world.get(c[0], c[1], c[2]), placed)).toBe(PLANKS);
+    expect(await page.evaluate(id => window.__debug.game.inventory.count(id), PLANKS)).toBe(4);
+    const pos = await page.evaluate(() => window.__debug.playerPos());
+    await page.evaluate(() => window.__debug.saveNow());
+    await page.reload();
+    await page.waitForFunction(() => !!window.__debug);
+    const pos2 = await page.evaluate(() => window.__debug.playerPos());
+    expect(Math.hypot(pos2.x - pos.x, pos2.y - pos.y, pos2.z - pos.z)).toBeLessThan(0.01);
+    expect(await page.evaluate(c => window.__debug.game.world.get(c[0], c[1], c[2]), placed)).toBe(PLANKS);
+    expect(await page.evaluate(id => window.__debug.game.inventory.count(id), PLANKS)).toBe(4);
+  });
+
+  test('an old v1 save loads with his edits and leaves the v1 key untouched', async ({ page: first }) => {
+    let page = first;
+    // Learn the spawn spot of a fresh world, then forget everything.
+    await ready(page);
+    const spawn = await page.evaluate(() => window.__debug.playerPos());
+    const v1 = JSON.stringify({
+      version: 1, seed: 2026,
+      edits: [[47, 6, 47, 3], [30, 6, 30, 8], [10, 12, 10, 9]],
+      inventory: { 4: 7, 3: 2 }, order: [4, 3],
+      player: { x: spawn.x, y: spawn.y, z: spawn.z },
+    });
+    const old = page;
+    page = await old.context().newPage();
+    await old.close();
+    // Seed once per tab (sessionStorage survives reloads), after the old tab's own save on the way out.
+    await page.addInitScript(raw => {
+      if (sessionStorage.getItem('seeded')) return;
+      sessionStorage.setItem('seeded', '1');
+      localStorage.clear();
+      localStorage.setItem('blockpals.save.v1', raw);
+    }, v1);
+    await page.goto(URL);
+    await page.waitForFunction(() => !!window.__debug);
+    expect(await page.evaluate(() => window.__debug.worldSize())).toEqual({ x: 96, y: 20, z: 96 });
+    for (const [x, y, z, id] of [[47, 6, 47, 3], [30, 6, 30, 8], [10, 12, 10, 9]]) {
+      expect(await page.evaluate(c => window.__debug.game.world.get(c[0], c[1], c[2]), [x, y, z])).toBe(id);
+    }
+    const p = await page.evaluate(() => window.__debug.playerPos());
+    expect(Math.hypot(p.x - spawn.x, p.z - spawn.z)).toBeLessThan(0.5);
+    expect(await page.evaluate(() => window.__debug.game.inventory.count(4))).toBe(7);
+    await page.evaluate(() => window.__debug.saveNow());
+    const keys = await page.evaluate(ks => Object.fromEntries(ks.map(k => [k, localStorage.getItem(k)])), SPAWN_KEYS);
+    expect(keys['blockpals.save.v1']).toBe(v1); // byte-identical, never written
+    expect(keys['blockpals.save.v1.backup']).toBe(v1);
+    const v2 = JSON.parse(keys['blockpals.save.v2']!);
+    expect(v2.version).toBe(2);
+    expect(v2.edits).toEqual(expect.arrayContaining([[47, 6, 47, 3], [30, 6, 30, 8]]));
+  });
+
+  test('walled-in player can dig out', async ({ page }) => {
+    const v = await freshVillage(page);
+    const h = v.houses.find(x => x.id === 'cottage')!;
+    await page.evaluate(([x, y, z]) => window.__debug.teleport(x + 0.5, y, z + 0.5), h.doorInside);
+    await frames(page, 5);
+    // Fill the whole doorway (2 wide, 2 high is the walkable part) with planks from inside.
+    const wall: Cell[] = h.doorCells.flatMap(([x, y, z]) => [[x, y, z], [x, y + 1, z]] as Cell[]);
+    await page.evaluate(([id, cells]) => {
+      window.__debug.giveItem(id as number, 8);
+      window.__debug.game.selected = id as number;
+      for (const c of cells as Cell[]) window.__debug.game.applyIntent({ kind: 'place', cell: c });
+    }, [PLANKS, wall] as const);
+    for (const c of wall) expect(await page.evaluate(c2 => window.__debug.game.world.get(c2[0], c2[1], c2[2]), c)).toBe(PLANKS);
+    // Digging is always allowed: take out one column (two blocks), then walk out.
+    const column = wall.filter(c => c[0] === h.doorCells[0][0] && c[2] === h.doorCells[0][2]);
+    for (const c of column) await page.evaluate(c2 => window.__debug.game.applyIntent({ kind: 'dig', cell: c2 }), c);
+    for (const c of column) await expect.poll(() => page.evaluate(c2 => window.__debug.game.world.get(c2[0], c2[1], c2[2]), c)).toBe(0);
+    await walkTo(page, h.doorFront, 1.3, 15_000);
+  });
 });

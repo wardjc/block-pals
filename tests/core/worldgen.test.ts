@@ -3,7 +3,9 @@ import { BLOCKS, BlockId } from '../../src/core/blocks';
 import { canStep, findPath, isStandable, type Cell } from '../../src/core/pathfind';
 import { mulberry32, valueNoise2D } from '../../src/core/rng';
 import { World } from '../../src/core/world';
-import { generateWorld } from '../../src/core/worldgen';
+import fixture from '../fixtures/legacy-meadow-2026.json';
+import { insideWall } from '../../src/core/bounds';
+import { generateMeadowStage, generateWorld, GEN_VERSION, heightAt } from '../../src/core/worldgen';
 
 function cells(world: World): BlockId[] {
   const result: BlockId[] = [];
@@ -71,9 +73,9 @@ describe('generateWorld', () => {
     expect(cells(generateWorld(2026).world)).not.toEqual(cells(generateWorld(2027).world));
   });
 
-  it('defaults to seed 2026 and creates a 48×16×48 world', () => {
+  it('defaults to seed 2026 and creates a 96×20×96 world', () => {
     const { world, spawn } = generateWorld();
-    expect([world.sizeX, world.sizeY, world.sizeZ]).toEqual([48, 16, 48]);
+    expect([world.sizeX, world.sizeY, world.sizeZ]).toEqual([96, 20, 96]);
     expect(cells(world)).toEqual(cells(generateWorld(2026).world));
     expect(spawn).toEqual(generateWorld(2026).spawn);
   });
@@ -214,5 +216,117 @@ describe('generateWorld', () => {
         }
       }
     }
+  });
+});
+
+describe('worldgen stages', () => {
+  it('v1 meadow is unchanged', () => {
+    const { world, spawn } = generateMeadowStage(2026);
+    let hash = 0x811c9dc5;
+    const counts: Record<string, number> = {};
+    for (let y = 0; y < 16; y++) for (let z = 0; z < 48; z++) for (let x = 0; x < 48; x++) {
+      const id = world.get(x, y, z);
+      hash = Math.imul(hash ^ id, 0x01000193) >>> 0;
+      counts[id] = (counts[id] ?? 0) + 1;
+    }
+    expect(hash).toBe(fixture.hash);
+    expect(counts).toEqual(fixture.counts);
+    expect(spawn).toEqual(fixture.spawn);
+    // Named landmarks of the v1 meadow, asserted explicitly (not only through the hash).
+    const topOf = (x: number, z: number): { y: number; id: BlockId } => {
+      for (let y = 15; y >= 0; y--) if (world.get(x, y, z) !== BlockId.Air && world.get(x, y, z) !== BlockId.Water) return { y, id: world.get(x, y, z) as BlockId };
+      return { y: 0, id: BlockId.Air };
+    };
+    expect(topOf(34, 12).y).toBe(11); // hill peak
+    expect(topOf(14, 32).id).toBe(BlockId.Sand); // pond bed
+    expect(world.get(14, topOf(14, 32).y + 1, 32)).toBe(BlockId.Water); // water over it
+    expect(topOf(14, 32).y).toBeLessThan(topOf(14, 38).y); // pond is a dip
+    expect(topOf(24, 24).y).toBe(Math.floor(spawn.y) - 1); // spawn plateau
+    expect(topOf(24, 24).id).toBe(BlockId.Grass);
+    for (const [dx, dz] of [[1, 0], [0, 1], [-1, 0], [0, -1]]) expect(topOf(24 + dx, 24 + dz).y).toBe(topOf(24, 24).y);
+    for (let y = 16; y < world.sizeY; y++) for (let z = 0; z < 48; z++) for (let x = 0; x < 48; x++) {
+      expect(world.get(x, y, z)).toBe(BlockId.Air);
+    }
+  });
+
+  it('heightAt matches the generated surface and GEN_VERSION is 1', () => {
+    const { world } = generateMeadowStage(2026);
+    expect(GEN_VERSION).toBe(1);
+    for (const [x, z] of [[0, 0], [24, 24], [34, 12], [14, 32], [70, 70], [95, 95]]) {
+      const h = heightAt(2026, x, z);
+      expect(BLOCKS[world.get(x, h, z)].solid).toBe(true);
+      expect(world.get(x, h + 1, z)).not.toBe(BlockId.Dirt);
+    }
+  });
+
+  it('size, bedrock and surface heights', () => {
+    const { world } = generateWorld(2026);
+    expect([world.sizeX, world.sizeY, world.sizeZ]).toEqual([96, 20, 96]);
+    for (let x = 0; x < 96; x++) for (let z = 0; z < 96; z++) {
+      expect(world.get(x, 0, z)).toBe(BlockId.Bedrock);
+      const ground = heightAt(2026, x, z);
+      expect(ground).toBeGreaterThanOrEqual(3);
+      expect(ground).toBeLessThanOrEqual(12);
+    }
+  });
+
+  it('trees stay inside the soft wall and keep the spawn clear', () => {
+    const { world, spawn } = generateWorld(2026);
+    for (let x = 0; x < 96; x++) for (let z = 0; z < 96; z++) {
+      for (let y = 0; y < 20; y++) {
+        const id = world.get(x, y, z);
+        if (id === BlockId.Wood) expect(insideWall(world, x, z)).toBe(true);
+        if ((id === BlockId.Wood || id === BlockId.Leaves) && Math.abs(x - spawn.x) <= 4 && Math.abs(z - spawn.z) <= 4) {
+          throw new Error(`tree near spawn at ${x},${y},${z}`);
+        }
+      }
+    }
+  });
+
+  it('edge ring: at least 3 trees within 4 cells of each edge', () => {
+    const { world } = generateWorld(2026);
+    const near = [0, 0, 0, 0];
+    for (let x = 0; x < 96; x++) for (let z = 0; z < 96; z++) {
+      if (world.get(x, heightAt(2026, x, z) + 1, z) !== BlockId.Wood) continue;
+      if (z <= 4) near[0]++;
+      if (95 - x <= 4) near[1]++;
+      if (95 - z <= 4) near[2]++;
+      if (x <= 4) near[3]++;
+    }
+    for (const n of near) expect(n).toBeGreaterThanOrEqual(3);
+  });
+
+  it('no tree stands on water or sand, and every tree has grass under it', () => {
+    const { world } = generateWorld(2026);
+    for (let x = 0; x < 96; x++) for (let z = 0; z < 96; z++) {
+      const g = heightAt(2026, x, z);
+      if (world.get(x, g + 1, z) === BlockId.Wood) expect(world.get(x, g, z)).toBe(BlockId.Grass);
+    }
+  });
+
+  it('new ground has extra trees beyond the v1 area', () => {
+    const { world } = generateWorld(2026);
+    let trunks = 0;
+    for (let x = 48; x < 96; x++) for (let z = 0; z < 96; z++) {
+      if (world.get(x, heightAt(2026, x, z) + 1, z) === BlockId.Wood) trunks++;
+    }
+    expect(trunks).toBeGreaterThan(5);
+  });
+
+  it('final world differs from the meadow only at stamps', () => {
+    const meadow = generateMeadowStage(2026).world;
+    const { world, village } = generateWorld(2026);
+    let differing = 0;
+    for (let x = 0; x < 48; x++) {
+      for (let z = 0; z < 48; z++) {
+        for (let y = 0; y < world.sizeY; y++) {
+          if (world.get(x, y, z) === meadow.get(x, y, z)) continue;
+          differing++;
+          expect(village.stampedRects.some(r => x >= r.x0 && x <= r.x1 && z >= r.z0 && z <= r.z1), `${x},${y},${z}`).toBe(true);
+        }
+      }
+    }
+    expect(differing).toBeGreaterThan(0);
+    expect(differing).toBeLessThanOrEqual(900);
   });
 });

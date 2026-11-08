@@ -1,8 +1,98 @@
 {
+ "bramble/542c322fbed8": {
+  "file": "bramble/542c322fbed8.ogg",
+  "text": "Hello, friend. You can come in.",
+  "duration": 2.9
+ },
+ "bramble/a25c54fd91ff": {
+  "file": "bramble/a25c54fd91ff.ogg",
+  "text": "Hello! I am Bramble, the baker.",
+  "duration": 2.93
+ },
+ "bramble/a8f9f14e1145": {
+  "file": "bramble/a8f9f14e1145.ogg",
+  "text": "Hello, neighbour! Welcome to my bakery.",
+  "duration": 3.0
+ },
+ "bramble/fca2e606075b": {
+  "file": "bramble/fca2e606075b.ogg",
+  "text": "My floury hat wobbles when I laugh!",
+  "duration": 2.43
+ },
+ "fern/aaa6834fa1a5": {
+  "file": "fern/aaa6834fa1a5.ogg",
+  "text": "Hello, neighbour. Come in if you like.",
+  "duration": 3.05
+ },
+ "fern/c2280817d4c5": {
+  "file": "fern/c2280817d4c5.ogg",
+  "text": "Hello! I'm Fern, the farmer.",
+  "duration": 2.73
+ },
+ "fern/cab648085eba": {
+  "file": "fern/cab648085eba.ogg",
+  "text": "Welcome to my farmhouse, neighbour.",
+  "duration": 2.09
+ },
+ "fern/d51f2e7e777e": {
+  "file": "fern/d51f2e7e777e.ogg",
+  "text": "I'm going to grow lots of food.",
+  "duration": 1.99
+ },
+ "granny/2be6078b4bc4": {
+  "file": "granny/2be6078b4bc4.ogg",
+  "text": "Hello, dear. I like to knit.",
+  "duration": 3.5
+ },
+ "granny/7c0ced57d577": {
+  "file": "granny/7c0ced57d577.ogg",
+  "text": "Hello, dear. I am Granny Willow.",
+  "duration": 3.93
+ },
+ "granny/9c422d2ca282": {
+  "file": "granny/9c422d2ca282.ogg",
+  "text": "I knit all my own scarves, dear.",
+  "duration": 2.54
+ },
+ "granny/ecb160beb0e8": {
+  "file": "granny/ecb160beb0e8.ogg",
+  "text": "Hello, dear. Come in and sit down.",
+  "duration": 3.95
+ },
+ "pebble/1d250cb420f1": {
+  "file": "pebble/1d250cb420f1.ogg",
+  "text": "Welcome to my shop, friend.",
+  "duration": 1.96
+ },
+ "pebble/802e90ad85f3": {
+  "file": "pebble/802e90ad85f3.ogg",
+  "text": "Shiny stones are my favourite thing in the world.",
+  "duration": 2.9
+ },
+ "pebble/bf123ce8dd30": {
+  "file": "pebble/bf123ce8dd30.ogg",
+  "text": "Hello there, friend. My moustache says hello too.",
+  "duration": 4.2
+ },
+ "pebble/fc574ac93258": {
+  "file": "pebble/fc574ac93258.ogg",
+  "text": "Hello, neighbour! I am Captain Pebble.",
+  "duration": 3.4
+ },
+ "pip/0b6fe595eeb3": {
+  "file": "pip/0b6fe595eeb3.ogg",
+  "text": "I'll wait for you. Come along!",
+  "duration": 2.52
+ },
  "pip/0d16a4cb94a9": {
   "file": "pip/0d16a4cb94a9.ogg",
   "text": "Brilliant! You made it!",
   "duration": 1.96
+ },
+ "pip/0f36d1ee8da1": {
+  "file": "pip/0f36d1ee8da1.ogg",
+  "text": "Come along, no rush!",
+  "duration": 1.31
  },
  "pip/10ce30e80197": {
   "file": "pip/10ce30e80197.ogg",
@@ -23,6 +113,11 @@
   "file": "pip/128a2de9e6c6.ogg",
   "text": "Let's use some of those to make room!",
   "duration": 1.97
+ },
+ "pip/1e0ea467a208": {
+  "file": "pip/1e0ea467a208.ogg",
+  "text": "Let's go and meet the neighbours!",
+  "duration": 1.61
  },
  "pip/1f0cb0da1912": {
   "file": "pip/1f0cb0da1912.ogg",
@@ -54,6 +149,16 @@
   "text": "What shall we build today?",
   "duration": 1.53
  },
+ "pip/2c4282cb1b05": {
+  "file": "pip/2c4282cb1b05.ogg",
+  "text": "Let's visit the neighbours. Follow me!",
+  "duration": 2.78
+ },
+ "pip/2e8fb1609440": {
+  "file": "pip/2e8fb1609440.ogg",
+  "text": "There are neighbours to meet. Come with me!",
+  "duration": 2.99
+ },
  "pip/3d3f19e02046": {
   "file": "pip/3d3f19e02046.ogg",
   "text": "You're back! I missed you!",
@@ -74,6 +179,11 @@
   "text": "Time for a wiggle! Jump up and down!",
   "duration": 2.77
  },
+ "pip/45976ee5d280": {
+  "file": "pip/45976ee5d280.ogg",
+  "text": "Come along. Slowly does it!",
+  "duration": 2.56
+ },
  "pip/4beca10df73e": {
   "file": "pip/4beca10df73e.ogg",
   "text": "Hello! I'm Pip. Shall we play?",
@@ -84,6 +194,11 @@
   "text": "Hiya! Ready for an adventure?",
   "duration": 2.62
  },
+ "pip/4d37d0772da5": {
+  "file": "pip/4d37d0772da5.ogg",
+  "text": "The path goes this way!",
+  "duration": 1.41
+ },
  "pip/5065b983fd04": {
   "file": "pip/5065b983fd04.ogg",
   "text": "Up you come! There we go!",
@@ -93,6 +208,11 @@
   "file": "pip/5b06065e2651.ogg",
   "text": "Time for a little rest! Wiggle your toes!",
   "duration": 2.99
+ },
+ "pip/5ec8d8303a5b": {
+  "file": "pip/5ec8d8303a5b.ogg",
+  "text": "Your own cottage. How lovely!",
+  "duration": 2.72
  },
  "pip/645542d66ff3": {
   "file": "pip/645542d66ff3.ogg",
@@ -113,6 +233,11 @@
   "file": "pip/744ce6e3148a.ogg",
   "text": "Lovely! You got one!",
   "duration": 2.0
+ },
+ "pip/790510d0b04e": {
+  "file": "pip/790510d0b04e.ogg",
+  "text": "Shall we go and meet our neighbours?",
+  "duration": 1.95
  },
  "pip/808948b8ae82": {
   "file": "pip/808948b8ae82.ogg",
@@ -144,6 +269,11 @@
   "text": "Lovely building!",
   "duration": 1.11
  },
+ "pip/9685ff3c3ba5": {
+  "file": "pip/9685ff3c3ba5.ogg",
+  "text": "Follow me along the path!",
+  "duration": 1.39
+ },
  "pip/97333189aad7": {
   "file": "pip/97333189aad7.ogg",
   "text": "Lots of those! Let's make something with them.",
@@ -153,6 +283,21 @@
   "file": "pip/991cd42b1163.ogg",
   "text": "Wow, look what you made!",
   "duration": 1.37
+ },
+ "pip/9f71574de402": {
+  "file": "pip/9f71574de402.ogg",
+  "text": "Here we are! This is the village!",
+  "duration": 2.54
+ },
+ "pip/a0ee23f2104e": {
+  "file": "pip/a0ee23f2104e.ogg",
+  "text": "What a cosy little home!",
+  "duration": 1.57
+ },
+ "pip/a13e857dc98d": {
+  "file": "pip/a13e857dc98d.ogg",
+  "text": "This is your very own cottage!",
+  "duration": 1.75
  },
  "pip/a257527de2b9": {
   "file": "pip/a257527de2b9.ogg",
@@ -169,6 +314,21 @@
   "text": "Shall we look for a tree?",
   "duration": 1.43
  },
+ "pip/b00485805376": {
+  "file": "pip/b00485805376.ogg",
+  "text": "This is the village. Lots of neighbours live here!",
+  "duration": 3.49
+ },
+ "pip/b0a101eba162": {
+  "file": "pip/b0a101eba162.ogg",
+  "text": "Here we are, at the village!",
+  "duration": 1.45
+ },
+ "pip/b1128ce18e59": {
+  "file": "pip/b1128ce18e59.ogg",
+  "text": "I'm waiting right here for you!",
+  "duration": 1.71
+ },
  "pip/b1422b6d7967": {
   "file": "pip/b1422b6d7967.ogg",
   "text": "Let's get some more blocks, then try!",
@@ -178,6 +338,11 @@
   "file": "pip/b31efa2c357f.ogg",
   "text": "Whoops! Let me help you up!",
   "duration": 2.18
+ },
+ "pip/b7e505e1f223": {
+  "file": "pip/b7e505e1f223.ogg",
+  "text": "This way, follow me!",
+  "duration": 1.33
  },
  "pip/be05c367eeb3": {
   "file": "pip/be05c367eeb3.ogg",
@@ -214,6 +379,11 @@
   "text": "Hello again! I'm so happy you're here!",
   "duration": 2.91
  },
+ "pip/dd1df1de9a74": {
+  "file": "pip/dd1df1de9a74.ogg",
+  "text": "Home sweet home!",
+  "duration": 1.25
+ },
  "pip/dd41b5bebe2d": {
   "file": "pip/dd41b5bebe2d.ogg",
   "text": "Fantastic! Well done!",
@@ -233,6 +403,16 @@
   "file": "pip/e4709aafee3f.ogg",
   "text": "Super! You got another!",
   "duration": 2.12
+ },
+ "pip/e54c5b7b2971": {
+  "file": "pip/e54c5b7b2971.ogg",
+  "text": "We're in the village! Let's say hello!",
+  "duration": 2.64
+ },
+ "pip/ed29850853f5": {
+  "file": "pip/ed29850853f5.ogg",
+  "text": "I'll show you the way!",
+  "duration": 1.23
  },
  "pip/ee6ca3a5421b": {
   "file": "pip/ee6ca3a5421b.ogg",

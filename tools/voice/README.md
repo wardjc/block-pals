@@ -17,7 +17,9 @@ Then, after changing any line in `src/content/lines.ts`:
 
 ```
 npm run voice:lines          # writes tools/voice/lines.json (committed, so review shows which lines changed)
-tools/voice/.venv/bin/python tools/voice/generate.py --speaker pip --lines tools/voice/lines.json --out public/voice --prune
+for s in pip bramble pebble fern granny; do
+  tools/voice/.venv/bin/python tools/voice/generate.py --speaker $s --lines tools/voice/lines.json --out public/voice --prune
+done
 ```
 
 The model files (`kokoro-v1.0.int8.onnx`, `voices-v1.0.bin`, about 100 MB) are downloaded on the first run into the
@@ -28,7 +30,7 @@ A unit test fails if any line has no clip in `public/voice/manifest.json`, so yo
 
 ## How it hangs together
 
-- `voices.json`: one entry per speaker (voice blend, tempo, pitch lift). Only `pip` has lines today.
+- `voices.json`: one entry per speaker (voice blend, tempo, pitch lift). `pip` speaks Pip's lines (`src/content/lines.ts`); `bramble`, `pebble`, `fern` and `granny` (Granny Willow) speak the villagers' hellos (`src/content/villagers.ts`). Each speaker only generates its own lines.
 - `pronunciations.json`: word to respelling, used only when making audio; the text on screen is unchanged.
   An empty respelling means "say it as written". **Please listen for these names** on the tablet:
   Pip, Bramble, Pebble, Fern, Willow, Cog, and the phrase "Whoops-a-daisy". If one sounds odd,

@@ -5,11 +5,11 @@ walks around a small friendly world by tapping the ground, digs and collects
 blocks, builds with them, and crafts new ones. A little pal called Pip follows along and
 talks, preferring a British voice. There is no way to lose, no scary bits, no
 adverts, no accounts and no tracking, and the game itself makes no network
-calls once it has loaded. Progress is saved on the tablet. Pip's voice is pre-recorded with a free,
-open-source voice (Kokoro), so it sounds the same on every tablet and works
+calls once it has loaded. Progress is saved on the tablet. Pip's voice and the villagers' voices are pre-recorded with a free,
+open-source voice (Kokoro), so they sound the same on every tablet and work
 offline. If a recording is ever missing, the game falls back to the tablet's own
 speech (it prefers a British voice), and with no voice at all it still works in
-silence, with pictures. To change what Pip says and re-record it, see
+silence, with pictures. To change what Pip or the villagers say and re-record it, see
 `tools/voice/README.md`. Credits are in `THIRD_PARTY_NOTICES.md`.
 
 It is made to be played on a Galaxy Tab A8 in Chrome, installed to the home
@@ -54,6 +54,34 @@ game does not seem to notice it.
   press the button you want for Collect, then Place, then Next slot, and saves
   them on the tablet. Only those three can be changed; the d-pad and the
   second stick cannot be remapped, so some generic pads may lack some controls.
+
+## The village (step 1)
+
+The world is now four times bigger (96 by 96 blocks). Over the hill to the east is a village.
+
+- **The path.** A wide stone path runs from where he starts to the village square. It is gentle all the way, so tapping along it always works.
+- **His own cottage.** A tiny empty cottage stands next to where he starts. It is bright inside, with a lamp and windows, and he can build in it.
+- **Four neighbours.** Bramble the Baker (bread sign), Captain Pebble at the block shop (pickaxe sign), Fern the Farmer (carrot sign) and Granny Willow (wool sign). Each lives in a real house made of blocks with a wide doorway. When he walks in, the neighbour says a short hello out loud, and a picture bubble shows the same. They stand still, never chase, and have nothing to buy or learn yet. He can dig or build on any house.
+- **Pip leads the way.** On a new game, a few seconds after he starts playing, Pip says "Let's go and meet the neighbours!" and walks ahead along the path. He can follow, wander off, tap, dig or turn the view and nothing breaks. If he ignores Pip, Pip gives up quietly and asks again next time he plays, until he has reached the village once.
+- **Inside houses.** The camera pulls in and his model fades out when it is close to him, so a small room is never blocked. Dragging to turn the view works inside houses too. Pip steps out of the picture when he would cover the middle of the view.
+- **Saving.** The new version saves under a new name (`blockpals.save.v2`). If the tablet already holds his old world, it is carried over with every block and his position, and the old save (`blockpals.save.v1`) is left byte-for-byte untouched, plus a one-time backup (`blockpals.save.v1.backup`). Going back to an older version of the app still finds his old world. Only the grown-ups' reset deletes saves.
+- **Speed.** Parts of the world beyond the fog are not drawn. This is checked by hand on the tablet (see below).
+
+### Village checks on the Tab A8
+
+Use `?debug` once for the frame-rate counter, then play without it.
+
+1. Speed: a fresh page shows the world in under 3 seconds. Frame rate stays at 30 or above in the meadow, on the path, in the village square (turn the view around there, it is the worst case) and inside a house. Write down the lowest you see.
+2. Old save: open the new version first on the tablet that has his world. All his blocks and his position are there.
+3. Starter cottage: he can walk in and turn the view, and it is bright.
+4. Pip leads on a fresh game, does not nag, and gives up politely.
+5. The path: he can tap his way along it to the village and back.
+6. Each house: he walks in (also with the pad), the neighbour says hello in their own voice with a picture, and turning the view never goes through a wall or roof.
+7. Voices: all four hellos and Pip's lines are British, clear and short.
+8. Looks: nothing dark, odd or scary; he can say which house is which from the signs.
+9. Build in the cottage, reload the page, the blocks are still there.
+10. Controller: walk the path and enter a house with the stick.
+11. After 10 minutes the tablet is not hot and the frame rate is the same.
 
 ## Running it on your computer
 
@@ -116,7 +144,8 @@ sum (the sum screen closes itself after 20 seconds of nobody touching it; once y
 - **Break reminder:** choose how often Pip suggests a break. He pops up with a
   tick button (✔) that your child taps to dismiss. It is only a suggestion; the
   game is never locked.
-- **Reset progress:** wipes the saved world (it asks you to confirm).
+- **Reset progress:** wipes the saved world (it asks you to confirm). It clears all three save entries: the current save, the old version 1 save and its backup.
+- **Saves and rolling back:** the bigger-world version saves under its own name (`blockpals.save.v2`). The earlier version's save (`blockpals.save.v1`) is left exactly as it was and a one-time backup copy is kept, so going back to an older build of the app never loses his world.
 - **Set up controller:** see above.
 
 ## Tablet playtest checklist
@@ -145,8 +174,7 @@ become new tasks.
 
 ## What's coming
 
-Next is the **Village**, in four steps: a bigger world with a village over the
-hill and houses he can walk into; then eating and a little farm; then shops and
+The **Village** is being built in four steps. Step 1 (the bigger world, the village and houses he can walk into) is in; next come eating and a little farm; then shops and
 coins; then friends, hearts and picture quests. After that come underground
 bases, friendly bad guys, music, science quests and two-player on one screen.
 The details are in the

@@ -1,21 +1,27 @@
 import './ui/styles.css';
 import { BlockId } from './core/blocks';
 import type { Cell } from './core/pathfind';
-import { applySave, readSave, startAutosave } from './core/save';
+import { applySave, readSave, serialise, startAutosave, storeSave } from './core/save';
 import { generateWorld } from './core/worldgen';
 import { Game } from './game/game';
 import { GamepadInput } from './input/gamepad';
 import { loadMapping } from './input/mapping';
 import { GestureClassifier, type GestureEvent } from './input/gesture';
 import { createDebouncer, resolveHold, resolveTap } from './input/tap';
-import { makePalModel, makePlayerModel } from './render/characters';
+import { idleVillager, makeEmblem, makePalModel, makePlayerModel, makeVillagerModel } from './render/characters';
+import { pipHiddenFor } from './render/cameraRig';
 import { GameScene } from './render/scene';
 import { sfx } from './audio/sfx';
 import { CraftScreen } from './ui/craft';
 import { Hud } from './ui/hud';
-import { Voice } from './audio/voice';
+import { Voice, audioLocked } from './audio/voice';
 import { LINES, LINE_ICONS, pickLine, type LineKey } from './content/lines';
 import { Pal } from './game/pal';
+import { LeadToVillage } from './game/lead';
+import { GreetTracker } from './game/villagers';
+import { DeferredOnce, LockedHold, allowLine, craftSpeech, helperDt, leadPaused, mayGreet, mayPipSpeakQueued, type SpeechContext } from './game/speechPolicy';
+import { DOOR_EMBLEMS, VILLAGERS, VILLAGER_LINES, pickVillagerLine, type VillagerId } from './content/villagers';
+import { isStandable } from './core/pathfind';
 import { UsageTracker } from './core/usage';
 import { GrownUps } from './ui/grownups';
 
@@ -24,11 +30,13 @@ try { storage = window.localStorage; } catch { /* Storage may be blocked. */ }
 const saved = readSave(storage);
 export const hadSave: boolean = saved !== null; // for Pip's welcome-back line (Task 10)
 const seed = saved?.seed ?? 2026;
-const initial = saved ? applySave(saved) : generateWorld(seed);
-const { world, spawn } = initial;
+const loaded = saved ? applySave(saved) : null;
+const initial = loaded ?? generateWorld(seed);
+const { world, spawn, village } = initial;
 const scene = new GameScene(document.getElementById('game')!, world);
 const game = new Game(initial);
-const stopAutosave = startAutosave(game, seed, storage);
+const flags = loaded?.flags ?? { ledToVillage: false };
+const stopAutosave = startAutosave(game, seed, storage, flags);
 const usage = new UsageTracker(storage);
 world.onChange((x, _y, z) => scene.rebuildChunkAt(x, z));
 
@@ -38,6 +46,28 @@ scene.add(playerModel);
 // Pip follows the player; Pal holds the logic, main.ts only voices and draws it.
 const pip = makePalModel();
 scene.add(pip);
+
+// Neighbours stand in their houses facing the door, off the door line. They are not solid (like Pip).
+const villagers: Array<{ id: VillagerId; model: ReturnType<typeof makeVillagerModel>; cell: Cell }> = [];
+for (const def of VILLAGERS) {
+  const house = village.houses.find(h => h.id === def.house);
+  if (!house) continue;
+  const [nx, ny, nz] = house.npcSpot;
+  const model = makeVillagerModel(def.id);
+  model.position.set(nx + 0.5, ny, nz + 0.5);
+  model.rotation.y = Math.atan2(house.doorInside[0] - nx, house.doorInside[2] - nz);
+  scene.add(model);
+  villagers.push({ id: def.id, model, cell: house.npcSpot });
+}
+// A picture sign over every door (house -> emoji), floating just in front of the wall.
+for (const house of village.houses) {
+  const emblem = makeEmblem(DOOR_EMBLEMS[house.id]);
+  const out = [house.doorFront[0] - house.doorCells[0][0], house.doorFront[2] - house.doorCells[0][2]];
+  const cx = house.doorCells.reduce((a, c) => a + c[0] + 0.5, 0) / house.doorCells.length;
+  const cz = house.doorCells.reduce((a, c) => a + c[2] + 0.5, 0) / house.doorCells.length;
+  emblem.position.set(cx + out[0] * 0.8, house.groundY + 4.9, cz + out[1] * 0.8);
+  scene.add(emblem);
+}
 let pipHop = 0; // seconds into the happy hop; 0 = not hopping
 const BUBBLE_WORDS: Partial<Record<LineKey, string>> = { hello: 'Hi!', welcomeBack: 'Hi!', crafted: 'Yay!', collectedFirst: 'Yay!', upYouCome: 'Up!' };
 let bubbleTimer = 0;
@@ -47,13 +77,21 @@ const voice = new Voice(undefined, {
   audio: () => sfx.audioOut(),
 });
 const lastSpoken: Partial<Record<LineKey, string>> = {};
+/** Pip's lead and idle lines: held until the audio context runs, never spoken by the tablet voice while it is locked. */
+const HELD_KEYS: ReadonlySet<LineKey> = new Set<LineKey>([
+  'letsMeetNeighbours', 'comeOn', 'thisWay', 'weAreHere', 'cosyHome', 'idleHint', 'letsFindWood',
+]);
 const speakVariant = (key: LineKey): void => {
+  if (!allowLine(hud.breakOpen, key)) return; // the break reminder is never cut by another line
   const text = pickLine(key, lastSpoken[key]);
   if (!text) return; // never speak '' - it would cancel current speech
   lastSpoken[key] = text;
-  voice.say(text);
+  voice.say(text, 'pip', { holdForAudio: HELD_KEYS.has(key) });
 };
 const sayLine = (key: LineKey): void => {
+  // The break reminder has priority: while its bubble is up nothing else talks over it or cuts it.
+  if (!allowLine(hud.breakOpen, key)) return;
+  if (HELD_KEYS.has(key) && isAudioLocked()) return; // an idle hint or lead line while audio is locked: dropped quietly
   speakVariant(key);
   if (key === 'breakTime') {
     hud.showBreak(() => usage.resetSessionTimer());
@@ -69,17 +107,22 @@ const pal = new Pal(
 );
 pal.setHasWood(() => game.inventory.count(BlockId.Wood) > 0);
 game.on(e => pal.handle(e));
-let greeted = false;
+// The welcome is marked delivered only when it is admitted; an open break bubble holds it until it closes.
+const welcome = new DeferredOnce();
+const tryWelcome = (): void => {
+  if (welcome.take(hud.breakOpen)) pal.greet(hadSave);
+};
 const greetOnce = (): void => {
-  if (greeted) return;
-  greeted = true;
-  pal.greet(hadSave);
+  welcome.want();
+  tryWelcome();
 };
 
 const occupied = (): Cell[] => {
   const [x, y, z] = game.player.feetCell();
   const [px, py, pz] = pal.feetCell();
-  return [[x, y, z], [x, y + 1, z], [px, py, pz], [px, py + 1, pz]];
+  const cells: Cell[] = [[x, y, z], [x, y + 1, z], [px, py, pz], [px, py + 1, pz]];
+  for (const v of villagers) cells.push(v.cell, [v.cell[0], v.cell[1] + 1, v.cell[2]]);
+  return cells;
 };
 game.setOccupied(occupied);
 
@@ -124,11 +167,13 @@ const craftScreen = new CraftScreen(document.getElementById('ui')!, {
   inventory: game.inventory,
   tryCraft: id => game.tryCraft(id),
   iconFor: scene.atlas.iconDataUrl,
-  say: text => voice.say(text),
-  sayNeedMore: () => speakVariant('craftNeedMore'),
+  ...craftSpeech(() => hud.breakOpen, {
+    say: text => voice.say(text),
+    needMore: () => speakVariant('craftNeedMore'),
+    full: () => speakVariant('full'),
+  }),
   sfxTap: () => sfx.tap(),
   sfxCraft: () => sfx.craft(),
-  sayFull: () => speakVariant('full'),
   onOpenChange: syncOverlays,
 });
 game.onCraftRequest = openCraft;
@@ -225,7 +270,7 @@ window.addEventListener('blur', () => cancelPress());
 // A long press must not open a menu or select anything.
 canvas.addEventListener('contextmenu', e => e.preventDefault());
 // Capture phase: HUD buttons stop propagation, but a first tap on them must still unlock audio and greet.
-window.addEventListener('pointerdown', () => { sfx.unlock(); greetOnce(); }, { once: true, capture: true });
+window.addEventListener('pointerdown', () => { sfx.unlock(); greetOnce(); tapped = true; }, { once: true, capture: true });
 // Clips are fetched on first use; only the greetings are warmed once the first tap has unlocked audio.
 window.addEventListener('pointerdown', () => voice.prefetch([...LINES.hello, ...LINES.welcomeBack]), { once: true, capture: true });
 
@@ -242,6 +287,100 @@ function padStick(stick: [number, number]): [number, number] {
   const m = Math.hypot(x, z);
   if (m > 1) { x /= m; z /= m; }
   return [x, z];
+}
+
+// Neighbours greet on their own when he walks near; Pip leads him there once (until he has arrived).
+const greet = new GreetTracker();
+const villagerById = Object.fromEntries(VILLAGERS.map(v => [v.id, v])) as Record<VillagerId, (typeof VILLAGERS)[number]>;
+const lastHello: Partial<Record<VillagerId, string>> = {};
+const warmed = new Set<VillagerId>();
+// Neighbour lookups done once, not per frame.
+const warmZones = VILLAGERS.flatMap(def => {
+  const house = village.houses.find(h => h.id === def.house);
+  return house ? [{ def, rect: house.greetRect }] : [];
+});
+let currentHello: { text: string; speaker: string } | null = null;
+let tapped = false; // the first tap / button unlocks audio
+const feet: Cell = [0, 0, 0]; // reused every frame
+const isAudioLocked = (): boolean => audioLocked(tapped, sfx.audioOut()?.ctx.state);
+const lockedHold = new LockedHold();
+const lead = new LeadToVillage(village.route, village.square, flags.ledToVillage);
+let acted = false;
+game.on(e => { if (e.type !== 'idle') acted = true; });
+let pendingPip: LineKey | null = null;
+let cosySaid = false;
+const cottage = village.houses.find(h => h.id === 'cottage');
+const saveNow = (): void => { storeSave(storage, serialise(game, seed, flags)); };
+
+function updateVillage(dt: number): void {
+  const breakOpen = hud.breakOpen;
+  tryWelcome(); // replays a welcome the break bubble held back, once the bubble has closed
+  const paused = game.paused || hud.blockingOverlayOpen;
+  if (breakOpen) pal.hush(1000); // Pip's own chatter waits for the break bubble
+  const pp = game.player.pos;
+  feet[0] = Math.floor(pp.x); feet[1] = Math.floor(pp.y); feet[2] = Math.floor(pp.z);
+  const cell = feet;
+  const ev = lead.update(dt, cell, acted, leadPaused(paused, breakOpen));
+  acted = false;
+  if (ev === 'start') { pal.setLead(village.route, () => lead.targetIndex()); pendingPip = 'letsMeetNeighbours'; }
+  else if (ev === 'comeOn' || ev === 'thisWay') pendingPip = ev;
+  else if (ev === 'arrive') { pal.setLead(null); pendingPip = 'weAreHere'; }
+  else if (ev === 'giveUp') pal.setLead(null);
+  if (lead.takeFlagSet()) {
+    flags.ledToVillage = true;
+    saveNow();
+  }
+  if (paused) return;
+  // Warm the clips of a neighbour he is walking towards.
+  for (const { def, rect: r } of warmZones) {
+    if (warmed.has(def.id)) continue;
+    if (cell[0] >= r.x0 - 12 && cell[0] <= r.x1 + 12 && cell[2] >= r.z0 - 12 && cell[2] <= r.z1 + 12) {
+      warmed.add(def.id);
+      voice.prefetch(VILLAGER_LINES[def.id], def.speaker);
+    }
+  }
+  // Walking away stops the hello itself, never a Pip line or break reminder that has replaced it.
+  if (greet.takeCancel() && currentHello) {
+    if (voice.stopIfCurrent(currentHello.text, currentHello.speaker)) hud.hideBubble();
+    currentHello = null;
+  }
+  // Audio locked or suspended: hold hellos and Pip's queued line (the first tap resumes it, then they play
+  // as clips). Held more than 30 s, they are dropped quietly and no cooldown is used up.
+  const locked = isAudioLocked();
+  if (lockedHold.update(dt, locked)) {
+    pendingPip = null;
+    greet.skipCurrent(cell, village.houses);
+  }
+  if (locked) return;
+  const speech: SpeechContext = {
+    breakOpen, speaking: voice.speaking(), locked: false, pipPending: pendingPip !== null, gestureBusy: gesture.busy,
+  };
+  // Pip waits for a neighbour to finish (and the other way round): nobody talks over anybody.
+  if (pendingPip && mayPipSpeakQueued(speech)) {
+    sayLine(pendingPip);
+    pendingPip = null;
+    return;
+  }
+  const hello = greet.update(cell, village.houses, !mayGreet(speech));
+  if (hello) {
+    const def = villagerById[hello];
+    const text = pickVillagerLine(hello, lastHello[hello]);
+    lastHello[hello] = text;
+    currentHello = { text, speaker: def.speaker };
+    voice.say(text, def.speaker, { holdForAudio: true });
+    hud.showBubble(def.icon, 'Hi!');
+    clearTimeout(bubbleTimer);
+    bubbleTimer = window.setTimeout(() => hud.hideBubble(), 3000);
+    pal.hush(5000);
+    return;
+  }
+  if (!cosySaid && cottage) {
+    const r = cottage.rect;
+    if (cell[0] >= r.x0 && cell[0] <= r.x1 && cell[2] >= r.z0 && cell[2] <= r.z1) {
+      cosySaid = true;
+      pendingPip = 'cosyHome';
+    }
+  }
 }
 
 let fpsValue = 0;
@@ -270,6 +409,27 @@ if (debugOn) {
     dragging: () => gesture.dragging,
     digSound: () => sfx.digState(),
     voiceLast: () => ({ ...voice.last }),
+    voiceSpeaking: () => voice.speaking(),
+    resumeAudio: () => { sfx.unlock(); void sfx.audioOut()?.ctx.resume(); },
+    audioState: () => ({ ctx: sfx.audioOut()?.ctx.state ?? null, tapped, locked: isAudioLocked(), pending: pendingPip, busy: gesture.busy }),
+    village: () => ({
+      houses: village.houses.map(h => ({ id: h.id, rect: h.rect, interior: h.interior, floor: h.floor, doorCells: h.doorCells, groundY: h.groundY, doorFront: h.doorFront, doorInside: h.doorInside, npcSpot: h.npcSpot, greetRect: h.greetRect })),
+      route: village.route, square: village.square, gate: village.gate,
+    }),
+    flags: () => ({ ...flags }),
+    leadState: () => lead.state,
+    drawCalls: () => scene.renderer.info.render.calls,
+    stats: () => ({ ...scene.stats(), fps: fpsValue, worldTriangles: scene.triangleCount() }),
+    worldSize: () => ({ x: world.sizeX, y: world.sizeY, z: world.sizeZ }),
+    saveNow,
+    hidePlayer: (hide: boolean) => { debugHidePlayer = hide; },
+    setCamera: (yaw: number, pitch: number) => { scene.rig.yaw = yaw; scene.rig.pitch = pitch; },
+    teleport: (x: number, y: number, z: number) => {
+      if (!isStandable(world, [Math.floor(x), Math.floor(y), Math.floor(z)])) return false;
+      game.player.pos = { x, y, z };
+      game.player.setPath(null);
+      return true;
+    },
     game,
     usage,
     pal,
@@ -278,6 +438,8 @@ if (debugOn) {
 }
 
 let usageMs = 0;
+let pipGone = false;
+let debugHidePlayer = false; // ?debug screenshots only
 let last = performance.now();
 function frame(now: number): void {
   const rawMs = now - last;
@@ -297,9 +459,11 @@ function frame(now: number): void {
       const [sx, sz] = padStick(stick);
       game.player.setStick(sx, sz);
       game.noteActivity();
+      acted = true;
     } else {
       game.player.setStick(0, 0);
     }
+    if (pressed.length > 0) { sfx.unlock(); tapped = true; }
     for (const action of pressed) game.padAction(action);
     if (look[0] !== 0 || look[1] !== 0) {
       scene.rig.turn(look[0], look[1], dt);
@@ -319,7 +483,9 @@ function frame(now: number): void {
   const p = game.player.pos;
   playerModel.position.set(p.x, p.y, p.z);
   playerModel.rotation.y = game.player.heading;
-  pal.update(world, game.player, dt);
+  updateVillage(dt);
+  pal.update(world, game.player, helperDt(game.paused || hud.blockingOverlayOpen, dt));
+  for (const v of villagers) idleVillager(v.model, now / 1000);
   if (pal.takeHop()) pipHop = 0.0001;
   let hopY = 0;
   if (pipHop > 0) {
@@ -330,8 +496,11 @@ function frame(now: number): void {
   pip.position.set(pal.pos.x, pal.pos.y + hopY, pal.pos.z);
   pip.rotation.y = pal.heading;
   scene.followTarget(playerModel.position, dt);
-  // The hysteresis flag keeps the model hidden through close-mode glides (Pip still shows).
-  playerModel.visible = !scene.rig.close;
+  // Hidden with hysteresis while the camera is near his head, so a back-view never fills a small room.
+  playerModel.visible = !scene.rig.modelHidden && !debugHidePlayer;
+  // Pip steps out of the picture when the camera is close to him or he would cover the middle of the view.
+  pipGone = pipHiddenFor(scene.rig.position, scene.rig.forward, pip.position, pipGone);
+  pip.visible = !pipGone;
   scene.updateMarker(dt);
   scene.render();
 
