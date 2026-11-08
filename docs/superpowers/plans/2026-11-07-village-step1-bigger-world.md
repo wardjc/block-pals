@@ -1,5 +1,7 @@
 # Village Step 1: The Bigger World Implementation Plan
 
+**Status: Village step 1 built; awaiting tablet playtest.**
+
 > **For agentic workers:** REQUIRED SUB-SKILL: Use superpowers:subagent-driven-development (recommended) or superpowers:executing-plans to implement this plan task-by-task. Steps use checkbox (`- [ ]`) syntax for tracking.
 
 **Goal:** The meadow grows into a bigger connected world. Over the hill sits a village with four neighbours' houses (bakery, block shop by a quarry, farmhouse with a reserved empty field, cosy cottage), joined to the meadow by a clear, always-connected path. Our player also has his own tiny empty starter cottage next to the meadow spawn. Every house is built from real blocks with a wide door gap, is bright inside, and is big enough to walk about in and turn the view. The four villagers stand at their houses as simple original blocky characters and say one spoken, pictured hello when he comes near (no trading, quests or hearts yet). The first time, Pip leads him to the village ("Let's go and meet the neighbours!"), once, and never gets in the way of his taps or drags. Old saves load into the bigger world with every edit and his position kept. Nothing in this step adds a rule he has to learn.
