@@ -55,6 +55,17 @@ function timedFetch(d: ClipDeps, url: string): Promise<Response> {
   });
 }
 
+/** Bounds any promise (a response body, a decode): a stalled one must fall back to speech, not wait forever. */
+function bounded<T>(p: Promise<T>, ms: number): Promise<T> {
+  return new Promise<T>((resolve, reject) => {
+    const t = setTimeout(() => reject(new Error('timeout')), ms);
+    p.then((v) => { clearTimeout(t); resolve(v); }, (e) => { clearTimeout(t); reject(e); });
+  });
+}
+
+/** A suspended context may hold a playing clip this much longer past its expected end before it is given up on. */
+const CLIP_GRACE_MS = 30_000;
+
 export class Voice {
   readonly available: boolean;
   /** What the last say() used, for ?debug checks. */
@@ -72,6 +83,7 @@ export class Voice {
   private clipUntil = 0; // a clip is playing; cleared by onended or stop
   private ttsUntil = 0; // an utterance is speaking; cleared by onend / onerror or stop
   private utterance: object | null = null;
+  private clipGraceUntil = 0;
 
   constructor(synth?: SpeechSynthesis | null, private deps?: ClipDeps) {
     this.synth = synth === undefined ? (typeof speechSynthesis !== 'undefined' ? speechSynthesis : null) : synth;
@@ -102,7 +114,24 @@ export class Voice {
    */
   speaking(): boolean {
     const now = performance.now();
-    return now < this.loadingUntil || now < this.clipUntil || now < this.ttsUntil;
+    // A watchdog that runs out INVALIDATES the line (token bump, clip stopped, speech cancelled) before
+    // reporting silence, so a late completion can never start over whatever is said next.
+    if (this.loadingUntil > 0 && now >= this.loadingUntil) { this.stop(); return false; }
+    if (this.clipUntil > 0 && now >= this.clipUntil) {
+      // Past its expected end: a suspended context holds a clip still (it plays on when it resumes).
+      const ctxState = this.deps?.audio()?.ctx.state;
+      if (ctxState != null && ctxState !== 'running' && now < this.clipGraceUntil) return true;
+      this.stop();
+      return false;
+    }
+    if (this.ttsUntil > 0 && now >= this.ttsUntil) {
+      let talking = false;
+      try { talking = !!this.synth?.speaking; } catch { /* no signal */ }
+      if (talking) { this.ttsUntil = now + 2000; return true; } // the voice itself says it is still going
+      this.stop();
+      return false;
+    }
+    return this.loadingUntil > 0 || this.clipUntil > 0 || this.ttsUntil > 0;
   }
 
   /** Stops whatever is being spoken now (clip or speech). */
@@ -112,6 +141,7 @@ export class Voice {
     this.loadingUntil = 0;
     this.clipUntil = 0;
     this.ttsUntil = 0;
+    this.clipGraceUntil = 0;
     this.utterance = null;
     this.stopClip();
     try { this.synth?.cancel(); } catch { /* speech is optional */ }
@@ -137,7 +167,7 @@ export class Voice {
     // Preparing: fetch (each with its timeout), decode, and the context resuming. Ends when the clip
     // starts or the fallback speech takes over, whichever really happens.
     const d = this.deps;
-    this.loadingUntil = performance.now() + 2 * (d.timeoutMs ?? FETCH_TIMEOUT_MS) + (d.resumeWaitMs ?? 300) + 1500;
+    this.loadingUntil = performance.now() + 5 * (d.timeoutMs ?? FETCH_TIMEOUT_MS) + (d.resumeWaitMs ?? 300) + 1500; // five bounded stages
     this.clipUntil = 0;
     this.ttsUntil = 0;
     this.utterance = null;
@@ -185,7 +215,7 @@ export class Voice {
       this.manifest = (async () => {
         const res = await timedFetch(d, `${d.base}voice/manifest.json`);
         if (!res.ok) throw new Error('manifest');
-        return (await res.json()) as Manifest;
+        return (await bounded(res.json(), d.timeoutMs ?? FETCH_TIMEOUT_MS)) as Manifest;
       })();
       // A failed load may be retried on the next say (e.g. back online).
       this.manifest.catch(() => { this.manifest = null; });
@@ -204,7 +234,8 @@ export class Voice {
         if (!out) throw new Error('no audio');
         const res = await timedFetch(d, `${d.base}voice/${entry.file}`);
         if (!res.ok) throw new Error('clip');
-        return await out.ctx.decodeAudioData(await res.arrayBuffer());
+        const ms = d.timeoutMs ?? FETCH_TIMEOUT_MS;
+        return await bounded(Promise.resolve(out.ctx.decodeAudioData(await bounded(res.arrayBuffer(), ms))), ms);
       })();
       this.buffers.set(key, p);
       p.catch(() => { if (this.buffers.get(key) === p) this.buffers.delete(key); });
@@ -236,11 +267,12 @@ export class Voice {
     gain.connect(out.out);
     src.onended = () => {
       try { src.disconnect(); gain.disconnect(); } catch { /* already gone */ }
-      if (this.current?.src === src) { this.current = null; this.clipUntil = 0; }
+      if (this.current?.src === src) { this.current = null; this.clipUntil = 0; this.clipGraceUntil = 0; }
     };
     src.start();
     this.loadingUntil = 0;
     this.clipUntil = performance.now() + buf.duration * 1000 + 3000; // cap only: onended ends it
+    this.clipGraceUntil = this.clipUntil + CLIP_GRACE_MS;
     this.current = { src, gain };
     this.last = { source: 'clip', key };
     return true;
@@ -258,7 +290,7 @@ export class Voice {
       if (this.voice) u.voice = this.voice;
       const mine = {};
       this.utterance = mine;
-      this.ttsUntil = performance.now() + Math.max(6000, text.length * 150); // cap only: onend / onerror end it
+      this.ttsUntil = performance.now() + Math.max(10_000, text.length * 200); // cap only: onend / onerror end it, and synth.speaking extends it
       const done = (): void => {
         if (this.utterance !== mine) return; // a newer line (or stop) replaced this one
         this.utterance = null;

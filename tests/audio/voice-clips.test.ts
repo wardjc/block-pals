@@ -14,13 +14,14 @@ const manifest = {
 interface Src { start: ReturnType<typeof vi.fn>; stop: ReturnType<typeof vi.fn>; onended: (() => void) | null }
 interface Rig {
   voice: Voice;
-  synth: { cancel: ReturnType<typeof vi.fn>; speak: ReturnType<typeof vi.fn> };
+  synth: { cancel: ReturnType<typeof vi.fn>; speak: ReturnType<typeof vi.fn>; speaking: boolean };
   sources: Src[];
+  ctx: { state: string };
   fetch: ReturnType<typeof vi.fn>;
   deps: ClipDeps;
 }
 
-function rig(opts: { manifest?: unknown; manifestFails?: boolean; clip?: 'ok' | 'missing'; decodeFails?: boolean; state?: string; noAudio?: boolean; gate?: (url: string) => Promise<void> | undefined; hang?: boolean; timeoutMs?: number } = {}): Rig {
+function rig(opts: { manifest?: unknown; manifestFails?: boolean; clip?: 'ok' | 'missing'; decodeFails?: boolean; state?: string; noAudio?: boolean; gate?: (url: string) => Promise<void> | undefined; hang?: boolean; timeoutMs?: number; bodyHang?: 'json' | 'clip'; synthSpeaking?: boolean } = {}): Rig {
   const sources: Src[] = [];
   const ctx = {
     state: opts.state ?? 'running',
@@ -43,12 +44,12 @@ function rig(opts: { manifest?: unknown; manifestFails?: boolean; clip?: 'ok' | 
     if (url.endsWith('manifest.json')) {
       manifestCalls++;
       if (opts.manifestFails && manifestCalls === 1) throw new Error('offline');
-      return { ok: true, json: async () => opts.manifest ?? manifest } as Response;
+      return { ok: true, json: () => (opts.bodyHang === 'json' ? new Promise(() => {}) : Promise.resolve(opts.manifest ?? manifest)) } as unknown as Response;
     }
     if (opts.clip === 'missing') return { ok: false, status: 404 } as Response;
-    return { ok: true, arrayBuffer: async () => new ArrayBuffer(8) } as Response;
+    return { ok: true, arrayBuffer: () => (opts.bodyHang === 'clip' ? new Promise(() => {}) : Promise.resolve(new ArrayBuffer(8))) } as unknown as Response;
   });
-  const synth = { getVoices: () => [], cancel: vi.fn(), speak: vi.fn() };
+  const synth = { getVoices: () => [], cancel: vi.fn(), speak: vi.fn(), speaking: !!opts.synthSpeaking };
   const deps: ClipDeps = {
     fetch: fetchFn as unknown as typeof fetch,
     base: '/block-pals/',
@@ -57,7 +58,7 @@ function rig(opts: { manifest?: unknown; manifestFails?: boolean; clip?: 'ok' | 
     timeoutMs: opts.timeoutMs ?? 50,
   };
   vi.stubGlobal('SpeechSynthesisUtterance', class { constructor(public text: string) {} });
-  return { voice: new Voice(synth as unknown as SpeechSynthesis, deps), synth, sources, fetch: fetchFn, deps };
+  return { voice: new Voice(synth as unknown as SpeechSynthesis, deps), synth, sources, ctx, fetch: fetchFn, deps };
 }
 
 const settle = () => new Promise((r) => setTimeout(r, 25));
@@ -309,5 +310,99 @@ describe('Voice.speaking() follows the real state', () => {
     await settle();
     r.sources.forEach((s) => s.onended?.());
     expect(r.voice.speaking()).toBe(false);
+  });
+});
+
+describe('Voice.speaking() cases from the review', () => {
+  it('a response body that never arrives stays speaking, then times out into the fallback speech (still speaking)', async () => {
+    for (const bodyHang of ['json', 'clip'] as const) {
+      const r = rig({ bodyHang, timeoutMs: 40 });
+      r.voice.say(TEXT);
+      await new Promise((res) => setTimeout(res, 20));
+      expect(r.voice.speaking(), `${bodyHang} pending`).toBe(true);
+      await new Promise((res) => setTimeout(res, 120));
+      expect(r.synth.speak, `${bodyHang} fell back`).toHaveBeenCalledTimes(1);
+      expect(r.voice.speaking(), `${bodyHang} tts`).toBe(true);
+      (r.synth.speak.mock.calls[0][0] as { onend: () => void }).onend();
+      expect(r.voice.speaking()).toBe(false);
+    }
+  });
+
+  it('TTS stays speaking past the length estimate while the voice itself says it is going, and ends at onend', async () => {
+    vi.useFakeTimers();
+    try {
+      const r = rig({ manifest: {}, synthSpeaking: true });
+      r.voice.say('A long line that the tablet voice reads slowly.');
+      await vi.advanceTimersByTimeAsync(30);
+      expect(r.synth.speak).toHaveBeenCalledTimes(1);
+      await vi.advanceTimersByTimeAsync(40_000);
+      expect(r.voice.speaking()).toBe(true);
+      r.synth.speaking = false;
+      await vi.advanceTimersByTimeAsync(3000);
+      expect(r.voice.speaking()).toBe(false); // the watchdog gave up and cancelled it
+      expect(r.synth.cancel).toHaveBeenCalled();
+    } finally {
+      vi.useRealTimers();
+    }
+  });
+
+  it('a clip held by a suspended context still counts while it waits, and ends when it finishes after resuming', async () => {
+    vi.useFakeTimers();
+    try {
+      const r = rig();
+      r.voice.say(TEXT);
+      await vi.advanceTimersByTimeAsync(30);
+      expect(r.sources).toHaveLength(1);
+      r.ctx.state = 'suspended'; // e.g. the tablet paused audio mid clip
+      await vi.advanceTimersByTimeAsync(10_000); // far past its 2 s length
+      expect(r.voice.speaking()).toBe(true);
+      r.ctx.state = 'running';
+      r.sources[0].onended!();
+      expect(r.voice.speaking()).toBe(false);
+    } finally {
+      vi.useRealTimers();
+    }
+  });
+
+  it('a suspended context that never comes back is given up on and the clip is stopped', async () => {
+    vi.useFakeTimers();
+    try {
+      const r = rig();
+      r.voice.say(TEXT);
+      await vi.advanceTimersByTimeAsync(30);
+      r.ctx.state = 'suspended';
+      await vi.advanceTimersByTimeAsync(60_000);
+      expect(r.voice.speaking()).toBe(false);
+      expect(r.sources[0].stop).toHaveBeenCalled();
+    } finally {
+      vi.useRealTimers();
+    }
+  });
+
+  it('a watchdog expiry invalidates the line: a late fallback cannot speak over silence', async () => {
+    let release!: () => void;
+    const gate = new Promise<void>((res) => { release = res; });
+    const r = rig({ gate: () => gate, timeoutMs: 600_000, manifest: {} });
+    const realNow = performance.now.bind(performance);
+    let jump = 0;
+    vi.spyOn(performance, 'now').mockImplementation(() => realNow() + jump);
+    try {
+      r.voice.say(TEXT);
+      expect(r.voice.speaking()).toBe(true);
+      jump = 4_000_000; // far past every stage bound
+      expect(r.voice.speaking()).toBe(false); // expired: invalidated first
+      expect(r.synth.cancel).toHaveBeenCalled();
+      release(); // the load now "completes": the manifest has no entry, which would trigger the fallback
+      await settle();
+      expect(r.synth.speak).not.toHaveBeenCalled();
+      expect(r.sources).toHaveLength(0);
+      // and a newer line is not disturbed by the stale one
+      jump = 0;
+      r.voice.say(TEXT2);
+      await settle();
+      expect(r.synth.speak).toHaveBeenCalledTimes(1);
+    } finally {
+      vi.restoreAllMocks();
+    }
   });
 });
