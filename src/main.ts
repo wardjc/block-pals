@@ -19,7 +19,7 @@ import { LINES, LINE_ICONS, pickLine, type LineKey } from './content/lines';
 import { Pal } from './game/pal';
 import { LeadToVillage } from './game/lead';
 import { GreetTracker } from './game/villagers';
-import { DeferredOnce, allowLine, craftSpeech, helperDt, leadPaused, mayGreet, mayPipSpeakQueued, type SpeechContext } from './game/speechPolicy';
+import { DeferredOnce, LockedHold, allowLine, craftSpeech, helperDt, leadPaused, mayGreet, mayPipSpeakQueued, type SpeechContext } from './game/speechPolicy';
 import { DOOR_EMBLEMS, VILLAGERS, VILLAGER_LINES, pickVillagerLine, type VillagerId } from './content/villagers';
 import { isStandable } from './core/pathfind';
 import { UsageTracker } from './core/usage';
@@ -77,16 +77,21 @@ const voice = new Voice(undefined, {
   audio: () => sfx.audioOut(),
 });
 const lastSpoken: Partial<Record<LineKey, string>> = {};
+/** Pip's lead and idle lines: held until the audio context runs, never spoken by the tablet voice while it is locked. */
+const HELD_KEYS: ReadonlySet<LineKey> = new Set<LineKey>([
+  'letsMeetNeighbours', 'comeOn', 'thisWay', 'weAreHere', 'cosyHome', 'idleHint', 'letsFindWood',
+]);
 const speakVariant = (key: LineKey): void => {
   if (!allowLine(hud.breakOpen, key)) return; // the break reminder is never cut by another line
   const text = pickLine(key, lastSpoken[key]);
   if (!text) return; // never speak '' - it would cancel current speech
   lastSpoken[key] = text;
-  voice.say(text);
+  voice.say(text, 'pip', { holdForAudio: HELD_KEYS.has(key) });
 };
 const sayLine = (key: LineKey): void => {
   // The break reminder has priority: while its bubble is up nothing else talks over it or cuts it.
   if (!allowLine(hud.breakOpen, key)) return;
+  if (HELD_KEYS.has(key) && isAudioLocked()) return; // an idle hint or lead line while audio is locked: dropped quietly
   speakVariant(key);
   if (key === 'breakTime') {
     hud.showBreak(() => usage.resetSessionTimer());
@@ -297,9 +302,8 @@ const warmZones = VILLAGERS.flatMap(def => {
 let currentHello: { text: string; speaker: string } | null = null;
 let tapped = false; // the first tap / button unlocks audio
 const feet: Cell = [0, 0, 0]; // reused every frame
-let lastGestureAt = 0; // every tap or press retries the unlock, so the grace restarts
-window.addEventListener('pointerdown', () => { lastGestureAt = performance.now(); }, true);
-const isAudioLocked = (): boolean => audioLocked(tapped, sfx.audioOut()?.ctx.state, performance.now() - lastGestureAt);
+const isAudioLocked = (): boolean => audioLocked(tapped, sfx.audioOut()?.ctx.state);
+const lockedHold = new LockedHold();
 const lead = new LeadToVillage(village.route, village.square, flags.ledToVillage);
 let acted = false;
 game.on(e => { if (e.type !== 'idle') acted = true; });
@@ -340,8 +344,14 @@ function updateVillage(dt: number): void {
     if (voice.stopIfCurrent(currentHello.text, currentHello.speaker)) hud.hideBubble();
     currentHello = null;
   }
-  // Audio still locked (before the first tap): hold hellos and Pip's queued line instead of spending them silently.
-  if (isAudioLocked()) return;
+  // Audio locked or suspended: hold hellos and Pip's queued line (the first tap resumes it, then they play
+  // as clips). Held more than 30 s, they are dropped quietly and no cooldown is used up.
+  const locked = isAudioLocked();
+  if (lockedHold.update(dt, locked)) {
+    pendingPip = null;
+    greet.skipCurrent(cell, village.houses);
+  }
+  if (locked) return;
   const speech: SpeechContext = {
     breakOpen, speaking: voice.speaking(), locked: false, pipPending: pendingPip !== null, gestureBusy: gesture.busy,
   };
@@ -357,7 +367,7 @@ function updateVillage(dt: number): void {
     const text = pickVillagerLine(hello, lastHello[hello]);
     lastHello[hello] = text;
     currentHello = { text, speaker: def.speaker };
-    voice.say(text, def.speaker);
+    voice.say(text, def.speaker, { holdForAudio: true });
     hud.showBubble(def.icon, 'Hi!');
     clearTimeout(bubbleTimer);
     bubbleTimer = window.setTimeout(() => hud.hideBubble(), 3000);
@@ -400,6 +410,7 @@ if (debugOn) {
     digSound: () => sfx.digState(),
     voiceLast: () => ({ ...voice.last }),
     voiceSpeaking: () => voice.speaking(),
+    resumeAudio: () => { sfx.unlock(); void sfx.audioOut()?.ctx.resume(); },
     audioState: () => ({ ctx: sfx.audioOut()?.ctx.state ?? null, tapped, locked: isAudioLocked(), pending: pendingPip, busy: gesture.busy }),
     village: () => ({
       houses: village.houses.map(h => ({ id: h.id, rect: h.rect, interior: h.interior, floor: h.floor, doorCells: h.doorCells, groundY: h.groundY, doorFront: h.doorFront, doorInside: h.doorInside, npcSpot: h.npcSpot, greetRect: h.greetRect })),
@@ -452,7 +463,7 @@ function frame(now: number): void {
     } else {
       game.player.setStick(0, 0);
     }
-    if (pressed.length > 0) { sfx.unlock(); tapped = true; lastGestureAt = performance.now(); }
+    if (pressed.length > 0) { sfx.unlock(); tapped = true; }
     for (const action of pressed) game.padAction(action);
     if (look[0] !== 0 || look[1] !== 0) {
       scene.rig.turn(look[0], look[1], dt);

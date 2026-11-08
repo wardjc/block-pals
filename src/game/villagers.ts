@@ -75,6 +75,17 @@ export class GreetTracker {
     return chosen;
   }
 
+  /**
+   * Gives up on the hellos he is standing in the zone of right now (they were held too long): no
+   * hello until he leaves and comes back, and the once-a-minute cooldown is NOT used up.
+   */
+  skipCurrent(playerCell: Cell, houses: HouseInfo[]): void {
+    for (const v of VILLAGERS) {
+      const house = houses.find(h => h.id === v.house);
+      if (house && GreetTracker.inZone(house, playerCell)) this.visited.add(v.id);
+    }
+  }
+
   /** True once after he walked away from a hello that was still being spoken. */
   takeCancel(): boolean {
     const c = this.cancel;

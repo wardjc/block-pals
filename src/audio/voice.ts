@@ -2,15 +2,11 @@ import { clipKey } from './voiceKey';
 
 /**
  * True while speech cannot be heard yet: before the first tap, or while a created context is still
- * suspended and recently woken by a tap (a short grace). Callers hold their one-shot lines (hellos, Pip's
+ * suspended. Callers hold their one-shot lines (hellos, Pip's
  * lead) until it is false instead of spending them silently. Without Web Audio at all (state null after a tap) speech still works.
  */
-export function audioLocked(
-  tapped: boolean, ctxState: string | null | undefined, msSinceGesture = 0, graceMs = 2500,
-): boolean {
-  // A context still suspended well after his last tap is not "waking up": it is not coming (no output
-  // device, say). Then speech falls back to the tablet's voice, so a held line must go ahead.
-  return !tapped || (ctxState != null && ctxState !== 'running' && msSinceGesture < graceMs);
+export function audioLocked(tapped: boolean, ctxState: string | null | undefined): boolean {
+  return !tapped || (ctxState != null && ctxState !== 'running');
 }
 
 export function pickVoice(voices: SpeechSynthesisVoice[]): SpeechSynthesisVoice | null {
@@ -67,8 +63,12 @@ function bounded<T>(p: Promise<T>, ms: number): Promise<T> {
   });
 }
 
-/** A suspended context may hold a playing clip this much longer past its expected end before it is given up on. */
-const CLIP_GRACE_MS = 30_000;
+/**
+ * A started clip or utterance counts as speaking until its real end (onended / onend / onerror) or
+ * until stop(), stopIfCurrent() or a newer say() invalidates it. This cap exists only for a context
+ * that was closed, where no end event can ever come; a clip suspended and resumed mid-way is never cut off.
+ */
+const SPEECH_HARD_CAP_MS = 60_000;
 /** How long a started utterance gets before `synth.speaking === false` is believed. */
 const TTS_SETTLE_MS = 1500;
 
@@ -86,10 +86,9 @@ export class Voice {
   // Real state (not a timer from the request): a line is "speaking" from say() until it has really finished.
   // Each has a generous hard cap so a lost event (no onend from the tablet's voice, say) can never wedge it on.
   private loadingUntil = 0; // a say() is waiting for its clip to load or for the fallback to start
-  private clipUntil = 0; // a clip is playing; cleared by onended or stop
-  private ttsUntil = 0; // an utterance is speaking; cleared by onend / onerror or stop
+  private clipUntil = 0; // hard cap for a playing clip; it is cleared by onended or stop
+  private ttsUntil = 0; // hard cap for an utterance; it is cleared by onend / onerror or stop
   private utterance: object | null = null;
-  private clipGraceUntil = 0;
   private ttsStartedAt = 0;
 
   constructor(synth?: SpeechSynthesis | null, private deps?: ClipDeps) {
@@ -124,13 +123,7 @@ export class Voice {
     // A watchdog that runs out INVALIDATES the line (token bump, clip stopped, speech cancelled) before
     // reporting silence, so a late completion can never start over whatever is said next.
     if (this.loadingUntil > 0 && now >= this.loadingUntil) { this.stop(); return false; }
-    if (this.clipUntil > 0 && now >= this.clipUntil) {
-      // Past its expected end: a suspended context holds a clip still (it plays on when it resumes).
-      const ctxState = this.deps?.audio()?.ctx.state;
-      if (ctxState != null && ctxState !== 'running' && now < this.clipGraceUntil) return true;
-      this.stop();
-      return false;
-    }
+    if (this.clipUntil > 0 && now >= this.clipUntil) { this.stop(); return false; } // closed context: no onended will come
     // The tablet's voice reports it is no longer speaking (and nothing is queued) shortly after it was
     // started: it has finished (or never started, e.g. no voices) even though no end event arrived.
     if (this.ttsUntil > 0 && this.utterance && now - this.ttsStartedAt > TTS_SETTLE_MS && this.synth) {
@@ -138,13 +131,7 @@ export class Voice {
       try { talking = !!this.synth.speaking || !!this.synth.pending; } catch { /* no signal */ }
       if (!talking) { this.utterance = null; this.ttsUntil = 0; }
     }
-    if (this.ttsUntil > 0 && now >= this.ttsUntil) {
-      let talking = false;
-      try { talking = !!this.synth?.speaking; } catch { /* no signal */ }
-      if (talking) { this.ttsUntil = now + 2000; return true; } // the voice itself says it is still going
-      this.stop();
-      return false;
-    }
+    if (this.ttsUntil > 0 && now >= this.ttsUntil) { this.stop(); return false; }
     return this.loadingUntil > 0 || this.clipUntil > 0 || this.ttsUntil > 0;
   }
 
@@ -155,7 +142,6 @@ export class Voice {
     this.loadingUntil = 0;
     this.clipUntil = 0;
     this.ttsUntil = 0;
-    this.clipGraceUntil = 0;
     this.utterance = null;
     this.stopClip();
     try { this.synth?.cancel(); } catch { /* speech is optional */ }
@@ -170,7 +156,12 @@ export class Voice {
     return true;
   }
 
-  say(text: string, speaker = 'pip'): void {
+  /**
+   * Speaks a line. With `holdForAudio` the tablet-voice fallback is never used while the audio
+   * context is locked or suspended: the line is simply dropped (its caller holds lines until audio
+   * runs, so this only covers a context that suspends in between).
+   */
+  say(text: string, speaker = 'pip', opts: { holdForAudio?: boolean } = {}): void {
     if (!text) return; // never an empty utterance: it would cancel the line that is playing
     try { this.requested = clipKey(speaker, text); } catch { this.requested = ''; }
     if (!this.deps) {
@@ -189,12 +180,19 @@ export class Voice {
     try { this.synth?.cancel(); } catch { /* speech is optional */ }
     let key = '';
     try { key = clipKey(speaker, text); } catch { /* fall through to speech */ }
+    const fallback = (): void => {
+      if (opts.holdForAudio) {
+        const ctxState = this.deps?.audio()?.ctx.state;
+        if (ctxState != null && ctxState !== 'running') { this.loadingUntil = 0; return; } // dropped quietly, never spoken by the tablet voice
+      }
+      this.fallback(text, key);
+    };
     this.playClip(key, token).then(
       (played) => {
         if (token !== this.token) return;
-        if (!played) this.fallback(text, key);
+        if (!played) fallback();
       },
-      () => { if (token === this.token) this.fallback(text, key); },
+      () => { if (token === this.token) fallback(); },
     );
   }
 
@@ -281,12 +279,11 @@ export class Voice {
     gain.connect(out.out);
     src.onended = () => {
       try { src.disconnect(); gain.disconnect(); } catch { /* already gone */ }
-      if (this.current?.src === src) { this.current = null; this.clipUntil = 0; this.clipGraceUntil = 0; }
+      if (this.current?.src === src) { this.current = null; this.clipUntil = 0; }
     };
     src.start();
     this.loadingUntil = 0;
-    this.clipUntil = performance.now() + buf.duration * 1000 + 3000; // cap only: onended ends it
-    this.clipGraceUntil = this.clipUntil + CLIP_GRACE_MS;
+    this.clipUntil = performance.now() + SPEECH_HARD_CAP_MS; // cap only: onended ends it
     this.current = { src, gain };
     this.last = { source: 'clip', key };
     return true;
@@ -305,7 +302,7 @@ export class Voice {
       const mine = {};
       this.utterance = mine;
       this.ttsStartedAt = performance.now();
-      this.ttsUntil = performance.now() + Math.max(10_000, text.length * 200); // cap only: onend / onerror end it, and synth.speaking extends it
+      this.ttsUntil = performance.now() + SPEECH_HARD_CAP_MS; // cap only: onend / onerror end it
       const done = (): void => {
         if (this.utterance !== mine) return; // a newer line (or stop) replaced this one
         this.utterance = null;

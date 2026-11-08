@@ -75,3 +75,23 @@ export class DeferredOnce {
     return true;
   }
 }
+
+/** How long held lines wait for audio to start running before they are dropped quietly. */
+export const HOLD_LIMIT_SECONDS = 30;
+
+/**
+ * Held lines (neighbours' hellos, Pip's queued lead lines) wait while audio is locked or suspended.
+ * `update` returns true exactly once per locked stretch, when it has lasted HOLD_LIMIT_SECONDS: the
+ * caller then drops what it was holding (without using up any cooldown). Unlocking resets it.
+ */
+export class LockedHold {
+  private locked = 0;
+  private fired = false;
+
+  update(dt: number, lockedNow: boolean): boolean {
+    if (!lockedNow) { this.locked = 0; this.fired = false; return false; }
+    this.locked += Math.max(0, dt);
+    if (!this.fired && this.locked >= HOLD_LIMIT_SECONDS) { this.fired = true; return true; }
+    return false;
+  }
+}

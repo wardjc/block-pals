@@ -70,3 +70,31 @@ describe('DeferredOnce (the welcome waits for the break bubble)', () => {
     expect(w.take(false)).toBe(false);
   });
 });
+
+describe('held lines wait for audio, then are dropped after 30 s', () => {
+  it('LockedHold fires once after 30 s locked and resets when audio runs', async () => {
+    const { LockedHold, HOLD_LIMIT_SECONDS } = await import('../../src/game/speechPolicy');
+    const h = new LockedHold();
+    expect(HOLD_LIMIT_SECONDS).toBe(30);
+    for (let i = 0; i < 29; i++) expect(h.update(1, true)).toBe(false);
+    expect(h.update(1, true)).toBe(true);
+    expect(h.update(1, true)).toBe(false); // once per stretch
+    expect(h.update(1, false)).toBe(false);
+    for (let i = 0; i < 29; i++) h.update(1, true);
+    expect(h.update(1, true)).toBe(true); // a new stretch counts afresh
+  });
+
+  it('skipCurrent drops a held hello without using up its cooldown', async () => {
+    const { GreetTracker } = await import('../../src/game/villagers');
+    let t = 0;
+    const g = new GreetTracker(() => t);
+    const bakery = generateWorld(2026).village.houses.find(h => h.id === 'bakery')!;
+    const houses = generateWorld(2026).village.houses;
+    const inside: [number, number, number] = [bakery.interior.x0 + 2, bakery.groundY + 1, bakery.interior.z0 + 2];
+    g.skipCurrent(inside, houses);
+    expect(g.update(inside, houses, false)).toBeNull(); // dropped while he stays
+    g.update([30, 6, 30], houses, false); // he leaves...
+    t += 20_000;
+    expect(g.update(inside, houses, false)).toBe('bramble'); // ...and on coming back it greets: no cooldown was spent
+  });
+});

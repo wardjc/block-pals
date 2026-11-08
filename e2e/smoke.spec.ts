@@ -17,6 +17,9 @@ type Dbg = {
   screenOf(x: number, y: number, z: number): { x: number; y: number };
   pick(x: number, y: number): { cell: Cell; normal: Cell } | null;
   outlineVisible(): boolean;
+  voiceSpeaking(): boolean;
+  audioState(): { ctx: string | null; tapped: boolean; locked: boolean; pending: string | null; busy: boolean };
+  resumeAudio(): void;
   voiceLast(): { source: 'clip' | 'tts' | 'none'; key: string };
   digSound(): { starts: number; stops: number; active: boolean };
   camera(): { position: { x: number; y: number; z: number }; yaw: number; pitch: number; distance: number; close: boolean };
@@ -361,11 +364,32 @@ test.describe('the village', () => {
     const bakery = v.houses.find(h => h.id === 'bakery')!;
     await page.evaluate(([x, y, z]) => window.__debug.teleport(x + 0.5, y, z + 0.5), bakery.doorFront);
     await walkTo(page, bakery.doorInside, 1.2, 15_000);
-    // The neighbour waits for Pip's own welcome to finish (nobody talks over anybody), and a few seconds
-    // for audio to wake; headless audio may never wake, in which case the tablet's voice is used.
-    await expect(page.locator('.bubble-picture')).toHaveText('🍞', { timeout: 45_000 });
+    const state = () => page.evaluate(() => window.__debug.audioState());
+    const picture = () => page.locator('.bubble-picture').textContent();
+    // While the audio context is suspended the hello is HELD (never spoken by the tablet voice, never spent).
+    let sawHeld = false;
+    for (let i = 0; i < 12 && (await state()).ctx !== 'running'; i++) {
+      sawHeld = true;
+      expect(await picture()).not.toBe('🍞');
+      expect(await page.evaluate(() => window.__debug.voiceLast().key)).not.toMatch(/^bramble\//);
+      await page.waitForTimeout(500);
+    }
+    // A tap resumes audio (here via the debug hook, which does what a tap does); retry while headless audio is slow.
+    for (let i = 0; i < 15 && (await state()).ctx !== 'running'; i++) {
+      await page.evaluate(() => window.__debug.resumeAudio());
+      await page.waitForTimeout(2000);
+    }
+    if ((await state()).ctx !== 'running') {
+      // Headless audio never woke: all that can be asserted is that the hello stayed held, quietly.
+      test.info().annotations.push({ type: 'note', description: 'AudioContext stayed suspended in this browser; checked the hello was held' });
+      expect(sawHeld).toBe(true);
+      expect(await picture()).not.toBe('🍞');
+      return;
+    }
+    // Running: the neighbour (who waits for Pip's welcome to finish) now greets, as a clip.
+    await expect.poll(picture, { timeout: 40_000 }).toBe('🍞');
     await expect(page.locator('.bubble')).toContainText('Hi!');
-    await expect.poll(() => page.evaluate(() => window.__debug.voiceLast().key), { timeout: 15_000 }).toMatch(/^bramble\//);
+    await expect.poll(() => page.evaluate(() => window.__debug.voiceLast()), { timeout: 15_000 }).toMatchObject({ source: 'clip', key: expect.stringMatching(/^bramble\//) });
     await expect(page.locator('.bubble')).toBeHidden({ timeout: 6000 });
   });
 

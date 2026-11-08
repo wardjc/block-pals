@@ -379,7 +379,7 @@ describe('Voice.speaking() cases from the review', () => {
     }
   });
 
-  it('a suspended context that never comes back is given up on and the clip is stopped', async () => {
+  it('a context that is closed for good (no onended ever) is given up on after the long hard cap', async () => {
     vi.useFakeTimers();
     try {
       const r = rig();
@@ -419,5 +419,60 @@ describe('Voice.speaking() cases from the review', () => {
     } finally {
       vi.restoreAllMocks();
     }
+  });
+});
+
+describe('suspend and resume mid-clip, and held lines', () => {
+  it('a clip that is suspended mid-way and resumed is not cut off and counts until it really ends', async () => {
+    vi.useFakeTimers();
+    try {
+      const r = rig();
+      r.voice.say(TEXT);
+      await vi.advanceTimersByTimeAsync(30);
+      expect(r.sources).toHaveLength(1);
+      await vi.advanceTimersByTimeAsync(500); // 0.5 s of a 2 s clip
+      r.ctx.state = 'suspended';
+      await vi.advanceTimersByTimeAsync(10_000);
+      expect(r.voice.speaking()).toBe(true);
+      r.ctx.state = 'running'; // resumes with 1.5 s left
+      expect(r.voice.speaking()).toBe(true);
+      expect(r.sources[0].stop).not.toHaveBeenCalled();
+      await vi.advanceTimersByTimeAsync(1400);
+      expect(r.voice.speaking()).toBe(true); // still playing its last moments
+      expect(r.sources[0].stop).not.toHaveBeenCalled();
+      r.sources[0].onended!();
+      expect(r.voice.speaking()).toBe(false);
+    } finally {
+      vi.useRealTimers();
+    }
+  });
+
+  it('a held line never falls back to the tablet voice while the context is suspended; it is dropped quietly', async () => {
+    const r = rig({ state: 'suspended' });
+    r.voice.say(TEXT, 'pip', { holdForAudio: true });
+    await settle();
+    expect(r.synth.speak).not.toHaveBeenCalled();
+    expect(r.sources).toHaveLength(0);
+    expect(r.voice.speaking()).toBe(false);
+    // the same line without the hold keeps the old behaviour (essential speech: welcome, break)
+    const r2 = rig({ state: 'suspended' });
+    r2.voice.say(TEXT);
+    await settle();
+    expect(r2.synth.speak).toHaveBeenCalledTimes(1);
+  });
+
+  it('a held line plays as a clip once the context is running', async () => {
+    const r = rig();
+    r.voice.say(TEXT, 'pip', { holdForAudio: true });
+    await settle();
+    expect(r.sources).toHaveLength(1);
+    expect(r.synth.speak).not.toHaveBeenCalled();
+  });
+
+  it('a held line whose clip is simply missing still falls back to speech while audio runs', async () => {
+    const r = rig({ clip: 'missing' });
+    r.voice.say(TEXT, 'pip', { holdForAudio: true });
+    await settle();
+    expect(r.synth.speak).toHaveBeenCalledTimes(1);
   });
 });
