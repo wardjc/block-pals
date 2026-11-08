@@ -194,6 +194,12 @@ export const farmSfx = {
   pick: once('pick', () => { blip(600, 0, 0.08, 'sine', 0.28, 880); blip(880, 0.08, 0.12, 'sine', 0.22, 1100); }),
   /** A gift from an animal: three rising notes. */
   gift: once('gift', () => [659, 784, 1047].forEach((f, i) => blip(f, i * 0.09, 0.2, 'triangle', 0.26))),
+  /** Three soft crunchy bites, 0.2 s apart. */
+  munch: once('munch', () => [0, 0.2, 0.4].forEach(t => { blip(300, t, 0.1, 'triangle', 0.3, 170); blip(900, t, 0.03, 'sine', 0.12, 600); })),
+  /** Three gentle gulps. */
+  drink: once('drink', () => [0, 0.2, 0.4].forEach((t, i) => blip(420 - i * 40, t, 0.14, 'sine', 0.26, 300 - i * 30))),
+  /** A tiny two-note chime when a plant is ripe. */
+  chime: once('chime', () => { blip(1047, 0, 0.18, 'sine', 0.16); blip(1319, 0.1, 0.24, 'sine', 0.16); }),
   /** A pat. */
   pet: once('pet', () => { blip(520, 0, 0.1, 'sine', 0.2, 700); blip(700, 0.1, 0.12, 'sine', 0.2, 880); }),
   cluck: once('cluck', () => { blip(700, 0, 0.06, 'triangle', 0.2, 920); blip(820, 0.1, 0.07, 'triangle', 0.2, 640); }),

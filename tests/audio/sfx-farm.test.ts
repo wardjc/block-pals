@@ -35,7 +35,7 @@ class StubContext {
   createBufferSource(): unknown { return node({ start(t: number) { log.starts.push(t); }, stop(t: number) { log.stops.push(t); } }); }
 }
 
-const NAMES = ['water', 'sun', 'plant', 'pick', 'gift', 'pet', 'cluck', 'moo', 'baa', 'oink'] as const;
+const NAMES = ['water', 'sun', 'plant', 'pick', 'gift', 'munch', 'drink', 'chime', 'pet', 'cluck', 'moo', 'baa', 'oink'] as const;
 type Sfx = typeof import('../../src/audio/sfx')['sfx'];
 let sfx: Sfx;
 let SAME: number;
@@ -78,6 +78,22 @@ describe('farm sfx with a stub AudioContext', () => {
       expect(Math.max(...r.peaks)).toBeLessThanOrEqual(0.4);
     });
   }
+
+  it('munch is three bites 0.15 to 0.25 s apart, and drink three gulps', () => {
+    for (const n of ['munch', 'drink'] as const) {
+      vi.useFakeTimers();
+      vi.setSystemTime(9_000_000);
+      vi.advanceTimersByTime(60_000 + (n === 'drink' ? 60_000 : 0)); // well past the same-sound gap
+      clock = 100;
+      log.starts = [];
+      sfx[n]();
+      const r = { starts: [...log.starts] };
+      const starts = [...new Set(r.starts.map(t => Math.round((t - 100) * 1000) / 1000))].sort((a, b) => a - b);
+      expect(starts).toHaveLength(3);
+      for (let i = 1; i < starts.length; i++) expect(starts[i] - starts[i - 1]).toBeGreaterThanOrEqual(0.15);
+      for (let i = 1; i < starts.length; i++) expect(starts[i] - starts[i - 1]).toBeLessThanOrEqual(0.25);
+    }
+  });
 
   it('animal sounds are blips: no speech synthesis is ever used', () => {
     const speak = vi.fn();
