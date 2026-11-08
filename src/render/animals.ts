@@ -1,5 +1,6 @@
 import * as THREE from 'three';
 import type { Animal, AnimalKind } from '../game/animals';
+import type { AnimalBox } from '../input/entityPick';
 
 // Every animal is ONE mesh: a handful of boxes merged into a single geometry with vertex colours,
 // feet at y = 0, facing +z (heading 0), exactly like the people. One material is shared by all of them.
@@ -223,6 +224,22 @@ export class AnimalView {
       });
     }
     return this.out;
+  }
+
+  /**
+   * World-space boxes of the shown animals, for picking by ray. Turned animals are covered by
+   * their widest reach (a square round the middle), so a box never misses a visible part.
+   */
+  boxes(): AnimalBox[] {
+    const out: AnimalBox[] = [];
+    for (const [id, g] of this.groups) {
+      if (!g.visible) continue;
+      const bb = (g.children[0] as THREE.Mesh).geometry.boundingBox ?? ((g.children[0] as THREE.Mesh).geometry.computeBoundingBox(), (g.children[0] as THREE.Mesh).geometry.boundingBox!);
+      const r = Math.hypot(Math.max(Math.abs(bb.min.x), Math.abs(bb.max.x)), Math.max(Math.abs(bb.min.z), Math.abs(bb.max.z)));
+      const x = g.position.x, z = g.position.z, y = g.position.y;
+      out.push({ id, min: [x - r, y + bb.min.y, z - r], max: [x + r, y + bb.max.y, z + r] });
+    }
+    return out;
   }
 
   private heightOf(g: THREE.Group): number {

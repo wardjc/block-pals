@@ -10,7 +10,7 @@ import { Herd } from './game/animals';
 import { mulberry32 } from './core/rng';
 import { AnimalView, ANIMAL_VIEW_RANGE } from './render/animals';
 import { Sparkles } from './render/effects';
-import { pickAnimal } from './input/entityPick';
+import { pickAnimalAlongRay } from './input/entityPick';
 import { GamepadInput } from './input/gamepad';
 import { loadMapping } from './input/mapping';
 import { GestureClassifier, type GestureEvent } from './input/gesture';
@@ -276,9 +276,14 @@ type Hit = ReturnType<typeof scene.pick>;
 let pressHit: Hit = null;
 /** The animal under the finger when it went down: a hold on it does nothing and never digs behind it. */
 let pressAnimal: number | null = null;
-/** An animal is picked on screen first (a 56 px disc round it), before the block ray. */
-const animalAt = (clientX: number, clientY: number): number | null =>
-  pickAnimal({ x: clientX, y: clientY }, animalView.screenPositions(scene.camera, canvas.getBoundingClientRect()));
+/**
+ * The animal the finger is on: the ray through the point against the animals' padded boxes, the
+ * nearest of animal and block along it wins, and an animal behind a block is never picked.
+ */
+const animalAt = (clientX: number, clientY: number): number | null => {
+  const r = scene.pickRay(clientX, clientY);
+  return pickAnimalAlongRay(r.origin, r.dir, animalView.boxes(), r.t);
+};
 
 const holdNow = (hit: Hit) => resolveHold(hit, game.player.feetCell(), world, occupied(), pressAnimal !== null);
 function endHoldVisuals(): void {

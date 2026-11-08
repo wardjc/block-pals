@@ -211,7 +211,14 @@ export class GameScene {
     this.cullFar(c, f, pos.x, pos.z);
   }
 
-  pick(clientX: number, clientY: number): { cell: [number, number, number]; normal: [number, number, number] } | null {
+  /**
+   * The camera ray through a screen point, and the first block it enters (null when none) with the
+   * distance to it, so animals can be compared with blocks along the same ray.
+   */
+  pickRay(clientX: number, clientY: number): {
+    origin: { x: number; y: number; z: number }; dir: { x: number; y: number; z: number };
+    block: { cell: [number, number, number]; normal: [number, number, number] } | null; t: number | null;
+  } {
     const rect = this.renderer.domElement.getBoundingClientRect();
     this.ndc.set(
       ((clientX - rect.left) / rect.width) * 2 - 1,
@@ -222,9 +229,15 @@ export class GameScene {
     const o = this.raycaster.ray.origin;
     const d = this.raycaster.ray.direction;
     const h = this.hit;
+    const origin = { x: o.x, y: o.y, z: o.z };
+    const dir = { x: d.x, y: d.y, z: d.z };
     // The start cell is skipped: only a block entered through a face can be picked.
-    if (!castVoxelRay(this.world, o.x, o.y, o.z, d.x, d.y, d.z, PICK_RANGE, true, h)) return null;
-    return { cell: [h.x, h.y, h.z], normal: [h.nx, h.ny, h.nz] };
+    if (!castVoxelRay(this.world, o.x, o.y, o.z, d.x, d.y, d.z, PICK_RANGE, true, h)) return { origin, dir, block: null, t: null };
+    return { origin, dir, block: { cell: [h.x, h.y, h.z], normal: [h.nx, h.ny, h.nz] }, t: h.t };
+  }
+
+  pick(clientX: number, clientY: number): { cell: [number, number, number]; normal: [number, number, number] } | null {
+    return this.pickRay(clientX, clientY).block;
   }
 
   /** Shows the walk marker on the floor of a feet cell; it fades out by itself. */
