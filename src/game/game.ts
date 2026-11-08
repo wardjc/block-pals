@@ -2,8 +2,8 @@ import { BlockId, dropFor, isCarriable, isPlantBlock } from '../core/blocks';
 import { insideWall } from '../core/bounds';
 import { canCraft, craft } from '../core/crafting';
 import { cropOf, yields } from '../core/crops';
-import { Inventory } from '../core/inventory';
-import { isItemId, ITEMS, type StackId } from '../core/items';
+import { Inventory, MAX_STACK } from '../core/inventory';
+import { GIFT, isItemId, ITEMS, type ItemId, type StackId } from '../core/items';
 import { findPath, isStandable, pathTowards, smoothPath, type Cell } from '../core/pathfind';
 
 import { canCollect, canPlace, withinPickReach, withinReach } from '../core/placement';
@@ -11,6 +11,7 @@ import { RECIPES } from '../core/recipes';
 import type { World } from '../core/world';
 import type { Action } from '../input/mapping';
 import type { HoldIntent, TapIntent } from '../input/tap';
+import type { AnimalKind, Herd } from './animals';
 import { Farm } from './farm';
 import { Player } from './player';
 
@@ -22,6 +23,11 @@ export type GameEvent =
   | { type: 'noPath' }
   | { type: 'walking'; to: Cell }
   | { type: 'lifted' }
+  /** A food went to an animal and its gift is in the bag. */
+  | { type: 'fed'; animal: number; kind: AnimalKind; gift: ItemId; food: ItemId }
+  /** The animal is resting after a gift: it was only happy, nothing was used. */
+  | { type: 'resting'; animal: number; kind: AnimalKind }
+  | { type: 'petted'; animal: number; kind: AnimalKind }
   | { type: 'idle' };
 
 /** Seconds of quiet before each idle hint; after the last one Pip waits for the next action. */
@@ -39,6 +45,10 @@ export class Game {
   readonly player: Player;
   /** Growth timers for the plants (the plants themselves are blocks in the world). */
   readonly farm: Farm;
+  /** The friendly herd in the pasture (set by main). Animals are not blocks: no dig path reaches them. */
+  herd: Herd | null = null;
+  /** Bumps when an animal gives a gift, so the autosave notices. */
+  herdRevision = 0;
   selected: StackId | 'hand' = 'hand';
   /** Hook for the HUD craft screen (Task 11). */
   /** While true (overlay open) the player does not move. */
@@ -114,7 +124,48 @@ export class Game {
         this.active();
         if (withinReach(this.player.feetCell(), intent.cell)) this.farm.help(intent.cell);
         return;
+      case 'feed':
+        this.active();
+        this.feedAnimal(intent.animal);
+        return;
+      case 'pet': {
+        this.active();
+        const a = this.herd?.animals.find(o => o.id === intent.animal);
+        if (a) { this.herd!.pet(a.id); this.emit({ type: 'petted', animal: a.id, kind: a.kind }); }
+        return;
+      }
       default:
+    }
+  }
+
+  /**
+   * Any food feeds any animal: one food is used and its gift goes in the bag, all or nothing. A
+   * resting animal is only happy (no food used). A gift that would not fit is refused whole.
+   */
+  private feedAnimal(id: number): void {
+    const herd = this.herd;
+    const animal = herd?.animals.find(o => o.id === id);
+    if (!herd || !animal) return;
+    const held = this.effectiveSelected();
+    const result = herd.feed(id, held, gift => this.inventory.count(gift) - (gift === held ? 1 : 0) + 1 <= MAX_STACK);
+    switch (result.result) {
+      case 'gift':
+        this.inventory.remove(result.usedFood, 1);
+        this.inventory.add(result.gift, 1);
+        this.herdRevision++;
+        this.normaliseSelection();
+        this.emit({ type: 'fed', animal: id, kind: animal.kind, gift: result.gift, food: result.usedFood });
+        return;
+      case 'resting':
+        this.emit({ type: 'resting', animal: id, kind: animal.kind });
+        return;
+      case 'full': {
+        this.emit({ type: 'full', id: GIFT[animal.kind] });
+        return;
+      }
+      default: // notFood: a quick tap with something else is a pet (the tap resolver already chose)
+        herd.pet(id);
+        this.emit({ type: 'petted', animal: id, kind: animal.kind });
     }
   }
 
