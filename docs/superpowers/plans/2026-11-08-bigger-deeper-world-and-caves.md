@@ -10,7 +10,7 @@
 
 **Tech Stack:** TypeScript 5 (strict), Vite 8, Three.js 0.187, Vitest 5, vite-plugin-pwa 2, Playwright 1.65, Web Audio API. No new dependencies.
 
-**Spec:** `docs/superpowers/specs/2026-11-05-block-pals-design.md` (section 4 anti-goals, 5 constraints, 7a gestures, 7b item 4 underground bases, 7c camera, 7d Village, 7g wizard, and the new 7h this plan builds).
+**Spec:** `docs/superpowers/specs/2026-11-05-block-pals-design.md` (section 4 anti-goals, 5 constraints, 7a gestures, 7b item 4 underground bases, 7c camera, 7d Village, 7g wizard, and the new 7h this plan builds, including its longer, self-adjusting view distance, Task 10b).
 
 **Dependencies:**
 - **Village step 2 is merged and live** (PR #18). This plan was re-checked against the merged code: `src/core/bounds.ts` (`WORLD` 96 x 20 x 96, `LEGACY_WORLD`), `src/core/save.ts` (`SAVE_KEY` v2, `LEGACY_SAVE_KEY`, `BACKUP_KEY`, `BAD_V2_KEY` slots, `storeSave`, `readSave`, `inspectSave`, `cleanFarm`), `src/core/worldgen.ts` (`GEN_VERSION = 2`, `generateMeadowStage`, `heightAt`), `src/core/blocks.ts` (ids 0 to 39, last is `Potato3`), `src/core/items.ts` (`ItemId` 100 to 110, `StackId`), `src/render/scene.ts` (chunk meshes plus the `DirtyChunks` queue from `src/render/chunkDirty.ts`: edits mark chunks and a few are rebuilt per frame), `src/render/chunkCull.ts` (`FOG_FAR` 40, `CULL_MARGIN` 1.5) and `src/render/depthPolicy.ts` (`CAMERA_FAR = FOG_FAR + CULL_MARGIN + 2.5`, `NEAR_MIN`, `NEAR_MAX`, `cameraNear`, from PR #19). If any of these has drifted by the time a task starts, re-read the file first and adjust the task text.
@@ -24,6 +24,8 @@
 - CAVES: always LIT (glowing crystals and mushrooms; NEVER dark: a dark cave is a failure), NO creatures, easy way back up at all times (a clear route and marker, and Pip can lead him back; never trapped: a "go home" rescue rule like the pit lift), reached by digging down (and some natural cave mouths and entrances on hillsides), nothing scary (sizes, sounds quiet, no sudden drops with damage; falling never hurts).
 - DISCOVERIES (the "mix"): glowing crystals and mushrooms light the way; shiny GEMS in the walls that he digs out (these are the gems the wizard accepts, item 123 in the grumps plan: define how cave gems and grump gems share the item and any sell price notes only); a few HIDDEN TREASURE ROOMS each with a chest holding something nice (seeds, gems, or one mythical block from the wizard's list: decide and justify; chests are opened by a tap, contents delivered to the bag, never lost, one-time per chest, persisted); and ONE OLD RUINED BASE deep down (bricks and planks, lit by lamps, a few furnishings) for him to explore and fix up. This answers his wish to "find and build underground bases".
 - His old saved games must be shifted: adding depth changes y coordinates and the larger map may change x and z; his existing builds must keep their relative places and survive (the original v1 and v2 save keys are untouched; backups; a NEW save version and key as in step 1; migration idempotent; legacy fixtures plus a hand-built save with edits at the extremes; rollback safe).
+
+**Decision confirmed by the parent (2026-11-08, later the same day), binding, recorded verbatim:** "extend the world and line of sight, similar to real Minecraft, so the player doesn't feel so boxed in and can see further". Chosen: a longer view of UP TO ABOUT 96 BLOCKS, ADJUSTED AUTOMATICALLY to the tablet's speed (fog, cull and far plane scale between about 40 and 96; the game measures frame time and shortens or lengthens the view with hysteresis to hold 30 fps or better; never below the current 40; starts at the safe value and grows), plus a grown-up setting "View distance: Auto / Near / Medium / Far" (default Auto; Near about 40, Medium about 64, Far about 96). The distant horizon (a cheap far-hills silhouette beyond the fog and the map edge) and simplified far chunks (tops-only LOD) are a LATER improvement (see "Future" below). Built as **Task 10b**.
 
 **Standing rules (spec and earlier steps; unchanged):**
 - British English in every string and voice line. Lines: at most 12 words, four variants per key, no cheer or sound words (`yum|mmm|aww|ooh|hmm|ta-?da|hup|whee|yay|hooray`), no "tap/click/touch" in Pip's lines, none containing `scary|scared|dark|afraid|hurt|lost|wrong|fail`, each line true wherever it can fire, no promises of later steps. Every spoken line also has a picture. Digits only up to 20.
@@ -145,6 +147,9 @@ src/content/lines.ts        CHG  7 new Pip keys
 src/render/atlas.ts         CHG  ROWS up to 12, 9 new tiles
 src/render/mesher.ts        CHG  buildSectionGeometry, fast path, no outside-wall faces
 src/render/chunkCull.ts     CHG  visibleSections(), zones, mouths
+src/render/viewDistance.ts  NEW  pure ViewDistance controller (40..96), viewFog()
+src/render/viewSetting.ts   NEW  Auto/Near/Medium/Far in key blockpals.view.v1
+src/render/depthPolicy.ts   CHG  cameraFar(fogEnd), nearMaxFor(fogEnd), CAMERA_FAR_MIN/MAX
 src/render/scene.ts         CHG  section meshes, lazy queue, caveLook(), stats
 src/render/caveLook.ts      NEW  pure caveLook(depthFactor) fog/ground values
 src/render/genWorker.ts     NEW  module worker wrapper around generateWorld
@@ -155,9 +160,10 @@ src/main.ts                 CHG  async boot, worker, layout wiring, debug hooks
 tests/core/{bounds,shifted,worldBulk,legacyIdentical,outer,caves,caveDress,caveLights,treasure,ruin,home,pathScale,drops,saveV3,saveMigrateV2}.test.ts
 tests/fixtures/village-world-gen2-2026.json (+ saves)
 tests/game/{drops,openChest,goHome,leadHome,underground}.test.ts
-tests/render/{sections,mesherFast,sectionCull,caveLook,caveBrightness,cameraCaves,budgetDeep}.test.ts
+tests/render/{sections,mesherFast,sectionCull,viewDistance,viewCull,depthPolicy,caveLook,caveBrightness,cameraCaves,budgetDeep}.test.ts
+tests/ui/viewSetting.test.ts
 tests/content/lines.test.ts (extended)
-e2e/caves.spec.ts, e2e/migrate.spec.ts
+e2e/caves.spec.ts, e2e/migrate.spec.ts, e2e/viewDistance.spec.ts
 ```
 
 ## Chunk A: Foundations (geometry, generation of the old region, saves). No visible change except a taller world of stone below the same meadow.
@@ -379,10 +385,90 @@ export function visibleSections(
 ): Set<string>;                              // keys "cx,sy,cz"
 class SectionQueue { constructor(max = 2); enqueue(key, priority); next(): string | null }   // lazy builds, nearest first
 ```
-`cameraZone`: underground when `camY < topSolidY(camX, camZ) - 1` (camera inside the ground mass) or within `MOUTH_NEAR` blocks of a mouth horizontally **and** below y = 60. Outdoors: sections with `y0 >= 48` only. Underground: sections whose y-range overlaps `camY +/- 20`. Both keep the existing view-depth rule and the "keep the column he stands in" rule, and fail open on non-finite numbers.
+`cameraZone`: underground when `camY < topSolidY(camX, camZ) - 1` (camera inside the ground mass) or within `MOUTH_NEAR` blocks of a mouth horizontally **and** below y = 60. Outdoors: sections with `y0 >= 48` only. Underground: sections whose y-range overlaps `camY +/- 20`. Both keep the existing view-depth rule and the "keep the column he stands in" rule, and fail open on non-finite numbers. The fog end is a parameter (`fogEnd`, default `FOG_FAR` = 40): Task 10b makes it variable up to 96, and this task's tests must therefore pass a `fogEnd` argument; the section-count budget is also measured on frustum-visible sections (Task 10b).
 
-- [ ] **Step 1:** Tests: `outdoors at spawn: no section below y 48 is visible`; `in a deep cave: surface sections (y >= 48) are hidden and the layer around the camera is shown`; `at a cave mouth (within 24): the shallow layer sections are visible, so looking into the tunnel never shows a hole`; `walking down the mouth ramp: the visible set never loses a section containing the ramp cell 6 blocks ahead` (replay the real ramp cells from the generated world, every camera step); `fail open on NaN`; `SectionQueue builds nearest first, at most 2 per call, never builds a section twice, requeues a dirty one`; `visible count stays under 70 sections in every sampled camera position (outdoors and underground)`.
+- [ ] **Step 1:** Tests: `outdoors at spawn: no section below y 48 is visible`; `in a deep cave: surface sections (y >= 48) are hidden and the layer around the camera is shown`; `at a cave mouth (within 24): the shallow layer sections are visible, so looking into the tunnel never shows a hole`; `walking down the mouth ramp: the visible set never loses a section containing the ramp cell 6 blocks ahead` (replay the real ramp cells from the generated world, every camera step); `fail open on NaN`; `SectionQueue builds nearest first, at most 2 per call, never builds a section twice, requeues a dirty one`; `visible count stays under 70 sections in every sampled camera position (outdoors and underground) at the start view of 40` (the 64 and 96 views are tested in Task 10b).
 - [ ] **Step 2:** Run, implement, wire into `scene.followTarget`. Lazy build: at load only the sections visible from spawn are built before the first frame; the rest through `SectionQueue` at 2 per frame. Commit `perf(render): draw only the sections that can be seen`.
+
+### Task 10b: A longer, self-adjusting view distance (40 to 96 blocks)
+
+**Files:** Create `src/render/viewDistance.ts` (pure), `src/render/viewSetting.ts` (storage). Modify `src/render/chunkCull.ts`, `src/render/depthPolicy.ts`, `src/render/scene.ts`, `src/ui/grownups.ts`, `src/main.ts` (wiring, debug hook), the stylesheet (the four buttons). Tests `tests/render/viewDistance.test.ts`, `tests/render/viewCull.test.ts`, `tests/render/depthPolicy.test.ts` (extended), `tests/ui/viewSetting.test.ts`, `e2e/viewDistance.spec.ts`. Build it **right after Task 10** (it extends Task 10's cull and queue) and before Task 11 (whose `caveLook` reads the far plane). Belongs to Chunk B.
+
+**Why.** `FOG_FAR = 40` shows him a fifth of the new 192-block map at best: the boxed-in feeling the parent wants gone. The cost is real on a Unisoc T618, so the view length is a **measured, adjustable quantity**, not a constant.
+
+**Interfaces:**
+```ts
+// viewDistance.ts (pure: no DOM, no three.js; the clock is injected)
+export const VIEW_MIN = 40, VIEW_MAX = 96, VIEW_START = 40, VIEW_STEP = 8;
+export type ViewSetting = 'auto' | 'near' | 'medium' | 'far';
+export const SETTING_VIEW = { near: 40, medium: 64, far: 96 } as const;
+export interface ViewTuning { shrinkMs: number; growMs: number; shrinkAfterS: number; growAfterS: number; coolOffS: number; ceilingS: number; sampleCapMs: number; stallMs: number }
+export const DEFAULT_TUNING: ViewTuning;    // 34, 26, 1.5, 5, 30, 120, 60, 250
+export class ViewDistance {
+  constructor(now: () => number, tuning?: ViewTuning, start?: number);
+  setSetting(s: ViewSetting): void;         // near/medium/far pin at once; auto resumes from the current value
+  frame(frameMs: number, ctx?: { backlog?: number; drawCalls?: number; sections?: number }): void;  // once per rendered frame
+  pause(seconds: number): void;             // ignore samples (loading, Home lift, tab hidden)
+  readonly distance: number;                // the fog END in blocks, always within VIEW_MIN..VIEW_MAX
+  readonly emaMs: number; readonly pinned: boolean;
+}
+export function viewFog(distance: number): { near: number; far: number };  // far = distance, near = round(distance / 2)  (today: 20 and 40)
+// chunkCull.ts: FOG_FAR and CULL_MARGIN stay as the MINIMUMS (40, 1.5); visibleChunks/visibleSections take `fogEnd` (default FOG_FAR)
+// depthPolicy.ts
+export const cameraFar = (fogEnd: number): number;      // fogEnd + CULL_MARGIN + 2.5  (44 at 40, 100 at 96)
+export const nearMaxFor = (fogEnd: number): number;     // 0.2 up to 64, rising linearly to 0.25 at 96
+export const CAMERA_FAR_MIN = 44, CAMERA_FAR_MAX = 100; export function currentCameraFar(): number;
+```
+Anything that must never be cut by the far plane reads `CAMERA_FAR_MIN` (a guarantee at any distance) or `currentCameraFar()` (follows the view): the wizard's beacon, `caveLook`'s fog far.
+
+**The controller (all numbers in one `DEFAULT_TUNING`, so the tablet check can retune them without touching the logic).**
+- `frameMs` is the real time between two rendered frames. Each sample is **capped at 60 ms** before it enters an exponential moving average with a **1 s time constant** (`alpha = 1 - exp(-dt / 1 s)`). A sample over **250 ms** (tab hidden, garbage collection, loading, the Home fade) is **dropped** and starts a 2 s settle in which no decision is made. That is why one stall frame cannot move the view or cause oscillation.
+- **Shrink:** EMA above **34 ms** (under about 29.4 fps) for **1.5 s** in a row: distance falls by 8 (never below 40) at once; the EMA is reset to 30 ms so the new value is judged on fresh frames; no decision for 2 s.
+- **Grow:** EMA below **26 ms** (above about 38 fps) for **5 s** in a row, **and** the section build queue is empty, **and** the last frame had `drawCalls <= 100` and `sections <= 64` (10 percent under the budgets), **and** no shrink in the last **30 s**: distance rises by 8 (never above 96 or the ceiling). At most one growth per 5 s, so 40 to 96 takes at least 35 s and the tablet is never surprised.
+- **Hysteresis band:** between 26 and 34 ms nothing changes. **Ceiling memory:** after a shrink from `d`, growth above `d - 8` is forbidden for **120 s**, so it cannot ping-pong around the one distance the tablet cannot hold; after 120 s it may try once more. **Start:** 40 (today's view, known safe), then it grows. A shrink also fires when `sections > 70` or `drawCalls > 110` for 1.5 s even if the frames are fast (protects heat and slow GPUs).
+- **Setting override:** Near, Medium and Far pin 40, 64 and 96 at once; the controller only watches (the debug line says "pinned"). Auto resumes from the current distance with a fresh EMA. A pinned Far on a slow tablet may miss 30 fps: that is the grown-up's informed choice, **but no frame is ever frozen by it**, because the section build stays at 2 per frame.
+- `distance` moves in steps of 8 (or by the setting) and `scene` **eases the fog and the cull radius to the new value over 1.5 s** (about 5 blocks a second), so the haze edge slides rather than jumps.
+
+**Everything derived from `distance`** (one source of truth in `scene.ts`, set once per frame from `main.ts`):
+- **Fog:** `fog.far = fog end`, `fog.near = round(fog end / 2)` (20..40 today stays exactly so at 40; 48..96 at the longest); the colour is unchanged, so **far land fades into the sky colour, never to dark**.
+- **Draw radius:** `visibleChunks`/`visibleSections` use `limit = fogEnd + CULL_MARGIN`: the existing view-depth rule, unchanged. A section is hidden only when even its nearest corner is deeper than the fog end plus 1.5 along the view direction, which means it is wholly inside solid fog colour. **No hole can open inside the fog end, and nothing pops at the haze edge**, because a section appears while still 100 percent fog.
+- **Far plane:** `camera.far = cameraFar(fogEnd)`, `updateProjectionMatrix` only when it changes (once per easing step, not per frame).
+- **Underground:** the cave haze keeps its own `14..36` (Task 11; an enclosed space has nothing to look at, and it is cheap), so the setting changes nothing in caves.
+- **Water:** the underwater fog overrides the view fog and lerps from and back to the current values (see Knock-on edits).
+
+**Section build budget (no hitches when the radius grows or shrinks).**
+- The Task 10 `SectionQueue` keeps **2 sections per frame and 6 ms** as its only throttle, but its priority becomes **distance-aware**: priority = horizontal distance from the camera to the section centre, **plus 20 blocks for a section more than 70 degrees off the view direction**, so what he looks at builds first. Growing the view enqueues only the newly in-range sections (an 8-block ring, about 8 to 16 surface columns in the view wedge, built over 4 to 8 frames); built meshes stay, only their `visible` flag follows the cull. A dig rebuild always outranks a lazy build.
+- **The controller waits for the queue:** it cannot grow while the backlog is non-zero.
+- **Shrinking frees memory:** sections farther than `distance + 32` from the camera are disposed (`geometry.dispose()`, the entry removed) after a **20 s grace** (a quick regrow does not rebuild), at most **4 per frame**, farthest first; they rebuild lazily if the view returns. A hard cap of **160 built sections** also disposes the farthest first, so memory stays inside the plan's 40 MB guard at any setting.
+- At load only the sections visible **at the start distance (40)** from spawn are built (60 at most): the first frame is no slower than the plan says; the longer view fills in afterwards.
+
+**Depth resolution (16-bit buffer, the mobile worst case):** `depthResolution(z, near, far, 16) = z^2 (1/n - 1/f) / 2^16`, the gap between two surfaces the buffer can still tell apart.
+
+| near | far | z = 40 | z = 60 | z = 96 | depth where the gap reaches 1 block |
+|---|---|---|---|---|---|
+| 0.2 | 44 (today, 40 view) | 0.123 | 0.276 | past the far plane | 114 |
+| 0.2 | 100 (96 view) | 0.122 | 0.274 | 0.702 | 114 |
+| 0.25 | 100 (96 view) | 0.097 | 0.219 | 0.561 | 128 |
+
+The far plane barely matters (1/f is 0.0227 against 0.0100, and the term is dominated by 1/n = 5): raising far from 44 to 100 changes the resolution at a given depth by under 0.3 percent. What matters is how deep the surface is. Terrain faces are whole blocks and the mesher emits only exposed faces, so no two opaque faces share a plane, and a one-block gap is resolved out to depth 114, past the 96 end. Only thin decorations (plant crosses, carpet, fences, signs) can z-fight in the far half of the view. At near 0.2 the gap at 60 percent of 96 (z = 58) is 0.25 block with fog only about 65 percent there, which is slightly too coarse for a thin part, so **`nearMaxFor(fogEnd)` raises `NEAR_MAX` from 0.2 to 0.25 as the view grows from 64 to 96** (0.2 at 64 and below: today's look at Near and Medium is unchanged; at 0.25 the gap at z = 58 is 0.21). Near logic is otherwise unchanged: `cameraNear(clearance)` still falls to 0.05 in a one-block tunnel (the cap matters only in the open), and `easeNear` still tightens at once and loosens over 0.3 s. If the tablet shows flicker on thin parts at Far, 0.3 at 96 is a one-number change (gap 0.47 at z = 96).
+
+**Budgets at 96 blocks (the plan's per-view limits stay; the controller must stay inside them).** At 1.6 aspect and 60 degrees vertical the horizontal field is about 85 degrees, so a view to depth 96 covers 0.92 x 96^2, about 8,500 cells of ground, about 33 whole 16 x 16 columns and **about 45 columns once the partial ones at the edges are counted**. Outdoors each column has one surface section (y 48..63) and sometimes a second (y 64..67: trees, houses, the tower) plus a transparent mesh for plants and leaves: about 1.2 sections per column, so **55 to 60 sections and 60 to 90 draw calls** in a typical view (the village and forests are the worst). The budget is **at most 70 visible sections and 110 draw calls** (the +26 for animals, villagers and the HUD inside the 110). So **96 fits, with only about 15 percent headroom**, which is why the controller uses the budgets as a growth gate (`sections <= 64`, `drawCalls <= 100`) and a shrink reason (`sections > 70` or `drawCalls > 110`). Triangles: about 2 per top face plus hill sides, village, trees and plants: **about 17,000 on flat ground at 96, 45,000 to 60,000 in a hilly view with the village and trees**, inside the 90,000 budget. **Count what the frustum shows:** the cull set deliberately keeps chunks beside and behind the camera (three.js skips them off screen), so "visible sections" in every budget is measured on sections that pass a `THREE.Frustum` test as well as the cull set. Memory: all surface sections of the whole world (about 144 columns x 1.2) are about 6 to 9 MB, and the 160-section cap bounds it.
+
+**The grown-up setting.**
+- `src/ui/grownups.ts` gets a **"View distance"** block under the break reminder: a line "How far he can see (Auto adjusts to the tablet)" and **a row of four big buttons: Auto, Near, Medium, Far**, each **at least 88 CSS px wide and tall**, the same `.gu-opt` look as the break reminder, `on` class and `aria-pressed` on the current one, `aria-label` "View distance: Auto" and so on. The row uses `flex-wrap: wrap; gap: 12px` with each button `flex: 1 1 88px; min-height: 88px`, so on a small or narrow window it **wraps to two rows of two** and the panel (already scrollable) never cuts a button. A choice applies at once, with no Close needed.
+- **Storage:** a small key `blockpals.view.v1` holding `{"v":1,"setting":"auto"}` (a missing, damaged or unknown value reads as `auto`), written by `saveViewSetting(storage, s)` and read by `loadViewSetting(storage)` in `viewSetting.ts`, **exactly like the usage and mapping keys** (`blockpals.usage.v1`, `blockpals.pad.v1`). **It is not a save, and "Reset progress" does not clear it** (my call: it is a grown-up's tablet setting like the break reminder and the controller mapping, which reset also leaves; `ALL_SAVE_KEYS` does not include it and a test pins that). The live distance is never stored: Auto always starts at 40 and grows, so a hotter session is never started too far out.
+- `main.ts` creates the `ViewDistance` from the stored setting and hands the panel `getViewSetting()` / `onViewSettingSaved(s)`, like `getMapping`/`onMappingSaved`.
+
+**Tests (pure ones run in Vitest with a fake clock and fake frame times; no real timers).**
+- [ ] **Step 1 (controller):** `starts at 40 and never goes below it`; `frames of 45 ms for a minute hold at 40`; `grows 8 at a time after 5 s of 20 ms frames: 40, 48 ... 96 by t = 40 s (one step per 5 s) then stays at 96`; `never above 96 or the ceiling, nor below 40, over a seeded random walk of 10,000 frame times (property test)`; `a shrink fires after 1.5 s of 40 ms frames; no second shrink inside 2 s`; `frames between 26 and 34 ms change nothing for ten minutes`; `after a shrink from 72 it does not grow above 64 for 120 s on perfect frames, then tries 72 once`; `ping-pong: frames of 24 ms at 64 and 40 ms at 72 settle at 64 and change at most once per 120 s over an hour of fake time`; `one 400 ms stall frame, or three in a row, changes nothing and starts a 2 s settle; one 60 ms spike between good frames does not shrink; a 5 s run of 60 ms frames does`; `growth is blocked while backlog > 0, drawCalls > 100 or sections > 64; a shrink fires on sections > 70 for 1.5 s even with fast frames`; `pause(3) ignores samples for 3 s`; `setSetting('far') pins 96 at once, 'near' 40, 'medium' 64, frames do not move a pinned value; 'auto' resumes from the current value with a fresh EMA`; `viewFog(40) is { near: 20, far: 40 } and viewFog(96) is { near: 48, far: 96 }`; `in auto the distance is always 40, 48 ... 96`.
+- [ ] **Step 2 (cull):** `viewCull.test.ts` reuses the Task 10 view-depth rule. For fog ends 40, 64 and 96, on the generated world and 200 seeded camera positions and directions (along a world edge, in a corner, at the village, at spawn): `every section whose nearest corner is within fogEnd + 1.5 of view depth is in the set, so no hole opens inside the fog end`; `the set at a smaller fog end is a subset of the set at a larger one`; `fails open on NaN`; `growing from 40 to 48 adds exactly the sections whose nearest corner depth is between 41.5 and 49.5`.
+- [ ] **Step 3 (depth policy):** `cameraFar(40) is 44 and cameraFar(96) is 100`; `CAMERA_FAR_MIN is 44`; `nearMaxFor(40) and (64) are 0.2, (96) is 0.25, monotone between`; the table above to three decimals (`depthResolution(40, 0.2, 100, 16)` 0.122, `(60, 0.2, 100, 16)` 0.274, `(96, 0.2, 100, 16)` 0.702, `(96, 0.25, 100, 16)` 0.561); `a one-block gap is resolved out to depth 114 at near 0.2 and far 100`; `far 44 against 100 changes the resolution at z = 40 by under 0.5 percent`; `at near 0.25 the gap at z = 58 is under 0.22`; the existing near and ease tests unchanged (`cameraNear` still 0.05 in a one-block tunnel and never above `nearMaxFor`).
+- [ ] **Step 4 (setting and panel):** `loadViewSetting gives auto for a missing, damaged, wrong-version or unknown value`; `save then load round-trips auto, near, medium and far`; `the key is blockpals.view.v1 and is not in ALL_SAVE_KEYS (Reset progress leaves it)`; `blocked or throwing storage never throws and reads auto`; in jsdom: `the panel shows four buttons Auto, Near, Medium, Far, each with min-width and min-height of at least 88 px (scanned as the other panel buttons are), the current one marked on and aria-pressed`; `clicking Far saves, calls onViewSettingSaved('far') and moves the mark`; `the row wraps (flex-wrap) so at 360 px wide no button is under 88 px`.
+- [ ] **Step 5 (scene and budgets, fake renderer):** `a new distance eases fog.far to the value within 1.5 s and no frame moves it by more than 8 blocks`; `camera.far equals cameraFar(fog.far) after each update and updateProjectionMatrix runs only when it changes`; `at load only the sections visible at 40 are built`; `after growing only the new ring is queued and nothing built is rebuilt`; `the section ahead of him builds before one beside him at equal distance`; `a dig section rebuilds before a lazy one`; `shrinking disposes sections farther than distance + 32 after the 20 s grace, at most 4 a frame, farthest first, and 160 built sections is a hard cap`; `no frame builds more than 2 sections, a stall frame included`. `budgetDeep.test.ts` (Task 23) samples the real world at 12 camera positions and directions at 40, 64 and 96, builds to completion, and asserts frustum-visible sections at most 70, draw calls at most 110 and triangles at most 90,000, writing the numbers into the performance table.
+- [ ] **Step 6 (e2e, `e2e/viewDistance.spec.ts`, Playwright, with `?debug`):** `the debug hook reports 40 at the start; with Far chosen in the grown-ups' panel (through its gate) it reports 96, and the choice survives a reload`; `with Near chosen it stays 40 and says pinned`; `in Auto, with the debug hook feeding fake frame times (a test-only feed that the production build does not expose), the distance climbs to 96 on 20 ms frames and falls back on 45 ms frames`; `at 96 the page's draw calls stay at or under 110 and the console has no errors`; `Reset progress leaves the stored setting`.
+- [ ] **Step 7:** Run, implement, pass; `npm test && npm run build && npm run e2e`. Commit `feat(render): a longer view that adjusts itself to the tablet, with a grown-up setting`.
+
+**Tablet check:** in Chunk B's gate (table below) and line 13b of the parent's playtest checklist.
 
 ### Task 11: Cave look, loading screen and the generation worker
 
@@ -398,7 +484,7 @@ export function generateAsync(seed: number): Promise<GeneratedWorld>; // worker,
 ```
 `caveLook`: outdoors = today's values (`0x78c6ff`, fog 20..40, ground `0x88aa66`, intensity 1.0). Deep = fog and background **`0xb9c7ff`** (soft periwinkle, luminance >= 0.62), fog 14..36, ground colour `0xc8d4ff`, hemisphere intensity 1.15. Between them a smooth blend over 1 s as the zone changes. Background equals fog so a gap never shows black.
 
-- [ ] **Step 1:** Tests: `caveLook(0) equals the outdoor look`; `fog and background luminance at depthFactor 1 is at least 0.62 and never below the outdoor value at any t` (sweep 0..1 in 100 steps: monotone non-decreasing brightness); `hemiIntensity never below 1.0`; `fog far is at least 34 and at most CAMERA_FAR (from depthPolicy.ts, 44) so the far plane never cuts the fog`; `background equals fog colour`; worker: `generateAsync gives the same buffer hash as generateWorld` (run the worker body in-process with a fake `postMessage`); `falls back to the main thread when Worker is undefined`; `a worker error rejects with a clear message and the fallback runs`; `the loading screen stays bright (no dark background in index.html or styles.css: source scan for #000 backgrounds)`; `the world buffer is transferred, not copied` (byteLength of the sent buffer is 0 after postMessage in the fake).
+- [ ] **Step 1:** Tests: `caveLook(0) equals the outdoor look`; `fog and background luminance at depthFactor 1 is at least 0.62 and never below the outdoor value at any t` (sweep 0..1 in 100 steps: monotone non-decreasing brightness); `hemiIntensity never below 1.0`; `fog far is at least 34 and at most CAMERA_FAR_MIN (from depthPolicy.ts, 44) so the far plane never cuts the fog at any view distance` (the cave haze stays 14..36 whatever the view setting, Task 10b); `background equals fog colour`; worker: `generateAsync gives the same buffer hash as generateWorld` (run the worker body in-process with a fake `postMessage`); `falls back to the main thread when Worker is undefined`; `a worker error rejects with a clear message and the fallback runs`; `the loading screen stays bright (no dark background in index.html or styles.css: source scan for #000 backgrounds)`; `the world buffer is transferred, not copied` (byteLength of the sent buffer is 0 after postMessage in the fake).
 - [ ] **Step 2:** `main.ts` becomes `async function boot()`: read the save (cheap), `await generateAsync(seed)`, `applySave` with the generated world (see below), then build the scene. `applySave` takes an optional pre-generated world. The loading picture is a bright sky-blue page with a spinning block and Pip's face (CSS only, no text).
 - [ ] **Step 3:** Run, implement, pass. Commit `feat(render): lighter cave look, loading screen, world generated in a worker`.
 
@@ -636,7 +722,7 @@ Four sequential chunks, each built by Claude (Codex on its pure tasks), reviewed
 | Chunk | Tasks | Gate before the next chunk |
 |---|---|---|
 | A. Foundations | 1, 2, 3, 4, 5, 6 | `npm test` and `npm run build` green; the old-region compare test passes; every extreme-edit save test passes; the v1 and v2 keys are proven never written; Codex review of `shiftV2`, the validation order (validate in the save's own box, then shift) and idempotence; Claude has loaded all three fixtures in a dev build and walked from the cottage to the bakery. The world is stone below the meadow and nothing else is new. |
-| B. Engine | 7, 8, 9, 10, 11 | Section, cull, drop, path-scale and cave-look tests green; **tablet check on the plain deep world (no caves yet): load time, fps while turning the view at spawn and at the village, and a dig's rebuild time** (the first chance to catch a performance problem before building content on it); Codex review of the allocation fix and the cull rule. |
+| B. Engine | 7, 8, 9, 10, 10b, 11 | Section, cull, drop, path-scale and cave-look tests green; **tablet check on the plain deep world (no caves yet): load time, fps while turning the view at spawn and at the village, a dig's rebuild time, and the longer view: Auto starts at 40 and grows, can he see noticeably further, does it stay at 30 fps or better while it grows and while turning, any popping at the mist edge, try Near, Medium and Far (the lowest fps for each), and does Auto settle (write the distance the debug line shows after two minutes)** (the first chance to catch a performance problem before building content on it); Codex review of the allocation fix, the cull rule and the view-distance controller (no oscillation, never below 40 or above 96, one stall frame changes nothing). |
 | C. Caves | 12, 13, 14, 15, 16, 17, 18 | Brightness, no-dark-stretch, connectivity and documented-difference tests green on four seeds; generation time within budget; Codex review of every "reachable on foot" test; **the parent may peek on the tablet here and answer "is any cave dark or scary?" before play is wired**. |
 | D. Playing it | 19, 20, 21, 22, 23, 24, 25 | Full `npm test && npm run build && npm run e2e`; gestures re-tested unchanged; budgets pass; clips generated; Codex review of the chest rule (all or nothing, one time), the Home lift and the tap precedence. |
 
@@ -661,6 +747,8 @@ Measured by tests where marked; the tablet numbers are checked by hand.
 | `pathTowards` per tap | no per-call allocation (was 12 MB at this size); 100 calls under 400 ms |
 | Routes | `routeHome` from the farthest room under 80 ms |
 | Save | edits only; 20,000 edits under 600 KB; load plus shift under 100 ms |
+| View distance (Task 10b) | fog end 40 to 96 (Auto starts at 40, grows by 8 at most every 5 s, never below 40 or above 96); shrinks after 1.5 s over 34 ms, grows after 5 s under 26 ms with an empty build queue; at 96: frustum-visible sections at most 70, draw calls at most 110, triangles at most 90,000 (expected about 45,000 to 60,000 hilly, 17,000 flat); built sections at most 160 (about 9 MB); no frame builds more than 2 sections |
+| Depth buffer at far 100 (16 bit) | resolution at z = 40, 60, 96: 0.122, 0.274, 0.702 (near 0.2); 0.097, 0.219, 0.561 (near 0.25, used at 96); one-block gaps resolved to depth 114 |
 | fps | 30 or better at spawn, in the village, in a cave room, in a tunnel with Pip, with the ruin in view (checklist) |
 
 ## Knock-on edits to later plans (APPLIED in this PR, 2026-11-08; kept here as the record)
@@ -681,6 +769,12 @@ Measured by tests where marked; the tablet numbers are checked by hand.
 5. Atlas `ROWS` grow from 12.
 6. The beacon clamp is `CAMERA_FAR - 2` (read from `depthPolicy.ts`), not 55. 7. Gems from caves feed its trade; the first-gem walk (`letsVisitWizard`) now fires on a cave gem too. Nothing else changes.
 
+**The view distance (Task 10b) and the other plans:**
+1. **Wizard's tower:** the beacon clamp `BEACON_CLAMP = CAMERA_FAR - 2` must read `CAMERA_FAR_MIN` (44, always inside the far plane, so correct at any view distance) or, better, `currentCameraFar() - 2` read each frame (the star may then sit up to 98 blocks away at Far). The sprite has `fog: false`, so the longer haze never fades it. The tower is about 60 blocks from the spawn, so at Medium and Far the real tower is in view too (the beacon is hidden within 10). Recorded here as a note for the wizard plan's beacon task; not edited there (a one-line change when that plan starts).
+2. **Water:** the underwater fog (near 3, far 26) overrides the view fog while he is in water and **lerps from and back to the current view fog (`viewFog(distance)`), not to the constants 20 and 40**; the water plan's `setUnderwater(fade)` must read the scene's current fog values. Water seen from far away is an ordinary transparent mesh and fades with the haze. Nothing else there depends on the far plane.
+3. **Grumps:** nothing; they stay on the farm.
+4. **Every plan quoting `FOG_FAR` 40 or `CAMERA_FAR` 44** means the **minimum** values; the live values are `viewFog(distance).far` and `currentCameraFar()`.
+
 **Village step 3 (note only):** the gem price note in "Decisions made in this plan".
 
 ## Parent playtest checklist (Galaxy Tab A8, after deploying to GitHub Pages)
@@ -700,8 +794,16 @@ Use `?debug` once for the fps counter and the cave hooks, then play without it. 
 11. **The old hideout.** Find it. Lamps, a table, a rug, a chest. Build a wall across a gap.
 12. **Camera.** In tunnels, rooms, the ruin: never inside a wall, never a hole to the sky, turning with a drag works everywhere.
 13. **Speed.** In a big cave room, in a tunnel with Pip, at the village square, at spawn, turning the view: the fps counter stays at 30 or more (write the lowest). After 10 minutes the tablet is not hot.
+13b. **Longer view (Task 10b).** On Auto, play for two minutes in the open meadow, turning the view: can he see noticeably further than before (the hills at the far end of the land)? Does it stay smooth (the fps counter at 30 or more) while the view grows, and while turning? Any popping at the mist edge (land appearing or vanishing in view, instead of fading in out of the haze colour)? Is the far land the haze colour and never dark? Then open the grown-ups' panel and try **Near, Medium and Far**: do the four buttons read well and work with a big finger? Write the lowest fps for Far and the distance the debug line shows for Auto after two minutes. If Far is not smooth, write where (spawn, village, forest).
 14. **Nothing hurt or lost.** No damage anywhere, nothing disappears from the bag except what crafting, planting, eating and feeding used.
 15. **Voice.** The seven new lines are British, clear, short and calm. Listen for "hideout", "sparkly", "daylight".
+
+## Future: distant horizon and tops-only far LOD (not part of this build)
+
+Two ideas make an even longer sight cheap. Both are **deliberately left for after the plain deep world and Task 10b are verified on the tablet** (the real frame times at 96 will say whether they are needed):
+- **Distant horizon:** one or two cheap, fog-coloured ring meshes (a far-hills silhouette, a few hundred triangles, `fog: false`, just inside the far plane, tinted toward the haze colour) beyond the fog end and beyond the map edge, so the land seems to go on to the horizon instead of ending in a clean wall of haze at the map's edge.
+- **Tops-only far chunks (LOD):** beyond about 64 blocks draw each column as one flat top-face mesh (a heightmap strip merged into a few big quads per section, no side faces, no underground, plants and glass dropped), 5 to 10 times cheaper than the full mesh, so Far could go past 96 or hold 96 on a slower tablet.
+Each needs its own small plan and a gate: the plain build must hold 30 fps at Far on the tablet first, and the parent must say he wants more.
 
 ## Self-review against the anti-goals and the save
 
