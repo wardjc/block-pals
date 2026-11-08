@@ -13,14 +13,16 @@ export interface VillagerDef {
   /** The one funny thing about them (also drives the model). */
   feature: string;
   speaker: Speaker;
+  /** Data only for now: used for friendship in a later step. Nothing reads it yet. */
+  favourite: 'cake' | 'carrot' | 'biscuit' | 'apple';
 }
 
 /** Original characters. One per village house, in house order. */
 export const VILLAGERS: VillagerDef[] = [
-  { id: 'bramble', name: 'Bramble the Baker', house: 'bakery', icon: '🍞', feature: 'a tall floury hat that wobbles', speaker: 'bramble' },
-  { id: 'pebble', name: 'Captain Pebble', house: 'shop', icon: '⛏️', feature: 'a huge moustache and a tiny pickaxe', speaker: 'pebble' },
-  { id: 'fern', name: 'Fern the Farmer', house: 'farmhouse', icon: '🥕', feature: 'a sunhat with a carrot in the band', speaker: 'fern' },
-  { id: 'willow', name: 'Granny Willow', house: 'granny', icon: '🧶', feature: 'round glasses and a very long knitted scarf', speaker: 'granny' },
+  { id: 'bramble', name: 'Bramble the Baker', house: 'bakery', icon: '🍞', feature: 'a tall floury hat that wobbles', speaker: 'bramble', favourite: 'cake' },
+  { id: 'pebble', name: 'Captain Pebble', house: 'shop', icon: '⛏️', feature: 'a huge moustache and a tiny pickaxe', speaker: 'pebble', favourite: 'carrot' },
+  { id: 'fern', name: 'Fern the Farmer', house: 'farmhouse', icon: '🥕', feature: 'a sunhat with a carrot in the band', speaker: 'fern', favourite: 'apple' },
+  { id: 'willow', name: 'Granny Willow', house: 'granny', icon: '🧶', feature: 'round glasses and a very long knitted scarf', speaker: 'granny', favourite: 'biscuit' },
 ];
 
 /**
@@ -52,6 +54,26 @@ export const VILLAGER_LINES: Record<VillagerId, string[]> = {
     'Hello, dear. I like to knit.',
     'I knit all my own scarves, dear.',
     'Hello, dear. Come in and sit down.',
+  ],
+};
+
+/**
+ * Fern's farm lines (a separate set from her hellos, spoken in her own voice). The first is her very
+ * first hello, once per save, with the starter seeds; the second tops up an empty bag. Both are true
+ * wherever they fire: she is giving seeds.
+ */
+export const FERN_LINES: { seedGift: string[]; moreSeeds: string[] } = {
+  seedGift: [
+    'Here are some seeds for your garden.',
+    'Plant these seeds and watch them grow.',
+    "I've brought you some seeds, neighbour.",
+    'Some seeds for you. Have a go!',
+  ],
+  moreSeeds: [
+    "You're out of seeds. Here are some more.",
+    'Here are some more seeds for you.',
+    'More seeds for your garden, neighbour.',
+    'Fresh seeds for the garden. Off you go!',
   ],
 };
 

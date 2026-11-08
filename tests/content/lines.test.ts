@@ -5,7 +5,7 @@ const keys = Object.keys(LINES) as LineKey[];
 
 describe('lines', () => {
   it('every LineKey has at least one line', () => {
-    expect(keys).toHaveLength(18);
+    expect(keys).toHaveLength(34);
     for (const k of keys) {
       expect(LINES[k].length).toBe(4);
       expect(new Set(LINES[k]).size).toBe(4);
@@ -14,6 +14,17 @@ describe('lines', () => {
   it('lines use British spelling', () => {
     for (const k of keys)
       for (const l of LINES[k]) expect(l).not.toMatch(/\b(color|favorite|gray|mom|math|center|theater|realize)\b/i);
+  });
+  it('no cheer or sound words (the voice would read them out as words)', () => {
+    for (const k of keys) for (const l of LINES[k]) expect(l).not.toMatch(/\b(ooh+|hmm+|mmm+|aww+|ta-?da|hup|whee+|yay|yippee|woo-?hoo|hooray|hee hee|yum+|ha ha)\b/i);
+  });
+  it('the farm and eating lines exist, each with a picture', () => {
+    for (const k of ['plantSome', 'needWaterSun', 'cropReady', 'harvested', 'tryMunch', 'ateApple', 'ateCarrot', 'atePotato', 'drankMilk',
+      'holdOutFood', 'fedAnimal', 'animalFull', 'petAnimal', 'gotEgg', 'gotMilk', 'gotWool'] as const) {
+      expect(LINES[k]).toHaveLength(4);
+      expect(LINE_ICONS[k]).toBeTruthy();
+    }
+    expect(LINE_ICONS.tryMunch).toBe('👄');
   });
   it('lines are short', () => {
     for (const k of keys) for (const l of LINES[k]) expect(l.split(/\s+/).length).toBeLessThanOrEqual(12);
