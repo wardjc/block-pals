@@ -35,7 +35,7 @@ function dotTexture(): THREE.Texture | null {
 /**
  * One pooled `THREE.Points` for every effect (water drops, sun, hearts, crumbs): one draw call, a
  * fixed number of particles, nothing allocated after the constructor. A burst when the pool is full
- * reuses the oldest particles. Additive blending, so a fading particle just dims to nothing.
+ * reuses the oldest particles. Normal blending with a per-particle alpha, so pink stays pink on a bright field.
  */
 export class Sparkles {
   readonly points: THREE.Points;
@@ -46,26 +46,24 @@ export class Sparkles {
   private readonly col: Float32Array;
   private readonly vel: Float32Array;
   private readonly base: Float32Array;
-  private readonly tint: Float32Array;
   private readonly age: Float32Array;
   private head = 0;
   private readonly tmp = new THREE.Color();
 
   constructor(scene: THREE.Scene, readonly capacity = 64, private readonly rand: () => number = Math.random) {
     this.pos = new Float32Array(capacity * 3).fill(FAR_AWAY);
-    this.col = new Float32Array(capacity * 3);
+    this.col = new Float32Array(capacity * 4);
     this.vel = new Float32Array(capacity * 3);
     this.base = new Float32Array(capacity * 3);
-    this.tint = new Float32Array(capacity * 3);
     this.age = new Float32Array(capacity).fill(Infinity);
     const geo = new THREE.BufferGeometry();
     geo.setAttribute('position', new THREE.BufferAttribute(this.pos, 3));
-    geo.setAttribute('color', new THREE.BufferAttribute(this.col, 3));
+    geo.setAttribute('color', new THREE.BufferAttribute(this.col, 4)); // r, g, b, alpha
     geo.boundingSphere = new THREE.Sphere(new THREE.Vector3(0, 0, 0), 1e6); // never culled
     const map = dotTexture();
     const mat = new THREE.PointsMaterial({
       size: 0.28, sizeAttenuation: true, vertexColors: true, transparent: true, depthWrite: false,
-      blending: THREE.AdditiveBlending, fog: false, ...(map ? { map } : {}),
+      fog: false, ...(map ? { map } : {}),
     });
     this.points = new THREE.Points(geo, mat);
     this.points.frustumCulled = false;
@@ -91,9 +89,10 @@ export class Sparkles {
       this.base[i * 3] = at.x; this.base[i * 3 + 1] = startY; this.base[i * 3 + 2] = at.z;
       this.pos[i * 3] = at.x; this.pos[i * 3 + 1] = startY; this.pos[i * 3 + 2] = at.z;
       this.tmp.set(palette[k % palette.length]);
-      this.tint[i * 3] = this.col[i * 3] = this.tmp.r;
-      this.tint[i * 3 + 1] = this.col[i * 3 + 1] = this.tmp.g;
-      this.tint[i * 3 + 2] = this.col[i * 3 + 2] = this.tmp.b;
+      this.col[i * 4] = this.tmp.r;
+      this.col[i * 4 + 1] = this.tmp.g;
+      this.col[i * 4 + 2] = this.tmp.b;
+      this.col[i * 4 + 3] = 1;
       this.age[i] = 0;
     }
     this.mark();
@@ -108,7 +107,7 @@ export class Sparkles {
         this.live--;
         this.age[i] = Infinity;
         this.pos[i * 3 + 1] = FAR_AWAY;
-        this.col[i * 3] = this.col[i * 3 + 1] = this.col[i * 3 + 2] = 0;
+        this.col[i * 4 + 3] = 0;
         continue;
       }
       const t = this.age[i];
@@ -116,10 +115,7 @@ export class Sparkles {
       this.pos[i * 3 + 1] = this.base[i * 3 + 1] + this.vel[i * 3 + 1] * t - 0.5 * (this.vel[i * 3 + 1] > 0.5 ? 1.2 : 0) * t * t;
       this.pos[i * 3 + 2] = this.base[i * 3 + 2] + this.vel[i * 3 + 2] * t;
       const fade = 1 - t / SPARKLE_LIFE;
-      const k = fade * fade;
-      this.col[i * 3] = this.tint[i * 3] * k;
-      this.col[i * 3 + 1] = this.tint[i * 3 + 1] * k;
-      this.col[i * 3 + 2] = this.tint[i * 3 + 2] * k;
+      this.col[i * 4 + 3] = Math.min(1, fade * 1.6);
     }
     this.mark();
   }

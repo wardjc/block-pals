@@ -6,6 +6,11 @@ import { generateWorld } from './core/worldgen';
 import { GrowthClock } from './core/growth';
 import { cropBlock, seedFor, type CropKind } from './core/crops';
 import { Game } from './game/game';
+import { Herd } from './game/animals';
+import { mulberry32 } from './core/rng';
+import { AnimalView, ANIMAL_VIEW_RANGE } from './render/animals';
+import { Sparkles } from './render/effects';
+import { pickAnimal } from './input/entityPick';
 import { GamepadInput } from './input/gamepad';
 import { loadMapping } from './input/mapping';
 import { GestureClassifier, type GestureEvent } from './input/gesture';
@@ -45,9 +50,18 @@ if (loaded) {
   game.farm.advance(loaded.offlineMs);
 }
 game.farm.records();
+// The friendly herd lives inside the pasture fence (the fence ring itself and the gate row are never used).
+const pasture = village.farm.pasture;
+const roam = { x0: pasture.x0 + 1, z0: pasture.z0 + 1, x1: pasture.x1 - 1, z1: pasture.z1 - 1 };
+const herd = new Herd(mulberry32((seed ^ 0xa11) >>> 0));
+if (loaded) herd.restore(loaded.animals, village.farm.herdSpawns, world, roam, loaded.offlineMs / 1000);
+else herd.populate(village.farm.herdSpawns);
+game.herd = herd;
 const scene = new GameScene(document.getElementById('game')!, world);
+const animalView = new AnimalView(scene.scene);
+const sparkles = new Sparkles(scene.scene);
 const flags = loaded?.flags ?? { ledToVillage: false };
-const stopAutosave = startAutosave(game, seed, storage, flags);
+const stopAutosave = startAutosave(game, seed, storage, flags, () => herd.toJSON());
 const usage = new UsageTracker(storage);
 world.onChange((x, _y, z) => scene.rebuildChunkAt(x, z));
 
@@ -128,13 +142,16 @@ const greetOnce = (): void => {
   tryWelcome();
 };
 
-const occupied = (): Cell[] => {
+/** Where people stand (him, Pip, the neighbours): the animals keep out of these. */
+const peopleCells = (): Cell[] => {
   const [x, y, z] = game.player.feetCell();
   const [px, py, pz] = pal.feetCell();
   const cells: Cell[] = [[x, y, z], [x, y + 1, z], [px, py, pz], [px, py + 1, pz]];
   for (const v of villagers) cells.push(v.cell, [v.cell[0], v.cell[1] + 1, v.cell[2]]);
   return cells;
 };
+/** Everyone, animals too: nothing can be built into an animal and the ground under one is never dug. */
+const occupied = (): Cell[] => [...peopleCells(), ...herd.occupiedCells()];
 game.setOccupied(occupied);
 
 // Real-time growth: one clock, one rule (never negative, capped). A sleeping tab sees one capped step.
@@ -142,10 +159,28 @@ const growthClock = new GrowthClock(Date.now());
 const tickGrowth = (): void => game.farm.advance(growthClock.step(Date.now()));
 setInterval(tickGrowth, 1000);
 document.addEventListener('visibilitychange', () => { if (document.visibilityState === 'visible') tickGrowth(); });
+const burstAt = (cell: Cell, kind: 'water' | 'sun' | 'both' | 'heart' | 'crumb'): void =>
+  sparkles.burst({ x: cell[0] + 0.5, y: cell[1] + 0.4, z: cell[2] + 0.5 }, kind);
 game.farm.onEvent(e => {
-  if (e.type === 'planted') sfx.place();
-  else if (e.type === 'helped') sfx.tap();
-  else if (e.type === 'harvested') sfx.pop();
+  if (e.type === 'planted') { sfx.plant(); burstAt(e.cell, 'crumb'); }
+  else if (e.type === 'helped') {
+    if (e.cue === 'water') sfx.water(); else sfx.sun();
+    burstAt(e.cell, e.cue);
+  } else if (e.type === 'harvested') sfx.pick();
+});
+const NOISE = { chicken: sfx.cluck, cow: sfx.moo, sheep: sfx.baa, pig: sfx.oink } as const;
+game.on(e => {
+  const a = 'animal' in e ? herd.animals.find(o => o.id === e.animal) : undefined;
+  if (!a) return;
+  const at = { x: a.x, y: a.y + 0.9, z: a.z };
+  if (e.type === 'fed') {
+    sfx.gift();
+    sparkles.burst(at, 'heart');
+    hud.showBubble(ITEMS[e.gift].icon);
+  } else if (e.type === 'petted' || e.type === 'resting') {
+    sfx.pet();
+    sparkles.burst(at, 'heart', 6);
+  }
 });
 
 game.on(e => {
@@ -239,8 +274,13 @@ const gesture = new GestureClassifier();
 const canvas = scene.renderer.domElement;
 type Hit = ReturnType<typeof scene.pick>;
 let pressHit: Hit = null;
+/** The animal under the finger when it went down: a hold on it does nothing and never digs behind it. */
+let pressAnimal: number | null = null;
+/** An animal is picked on screen first (a 56 px disc round it), before the block ray. */
+const animalAt = (clientX: number, clientY: number): number | null =>
+  pickAnimal({ x: clientX, y: clientY }, animalView.screenPositions(scene.camera, canvas.getBoundingClientRect()));
 
-const holdNow = (hit: Hit) => resolveHold(hit, game.player.feetCell(), world, occupied());
+const holdNow = (hit: Hit) => resolveHold(hit, game.player.feetCell(), world, occupied(), pressAnimal !== null);
 function endHoldVisuals(): void {
   hud.hideDigRing();
   scene.showOutline(null);
@@ -266,9 +306,17 @@ function handleGesture(events: GestureEvent[]): void {
       case 'tap':
         endHoldVisuals();
         if (!allowTap('tap', performance.now())) break;
+        const tapped = animalAt(ev.x, ev.y);
+        const animal = tapped === null ? undefined : herd.animals.find(o => o.id === tapped);
+        const pf = game.player.pos;
         game.applyIntent(resolveTap(
           scene.pick(ev.x, ev.y), game.effectiveSelected(), game.player.feetCell(), world, occupied(),
-          { plantAt: c => game.farm.isPlantCell(c) },
+          {
+            plantAt: c => game.farm.isPlantCell(c),
+            animalHit: animal
+              ? { id: animal.id, dist: Math.hypot(animal.x - pf.x, animal.z - pf.z), cell: [Math.floor(animal.x), animal.y, Math.floor(animal.z)] }
+              : null,
+          },
         ));
         break;
       case 'holdStop':
@@ -291,6 +339,7 @@ canvas.addEventListener('pointerdown', e => {
   if (gesture.activeId !== e.pointerId) return; // a second finger: ignored
   try { canvas.setPointerCapture(e.pointerId); } catch { /* not every pointer can be captured */ }
   pressHit = scene.pick(e.clientX, e.clientY);
+  pressAnimal = animalAt(e.clientX, e.clientY);
 });
 canvas.addEventListener('pointermove', e => {
   if (hud.blockingOverlayOpen) { cancelPress(); return; }
@@ -347,7 +396,7 @@ game.on(e => { if (e.type !== 'idle') acted = true; });
 let pendingPip: LineKey | null = null;
 let cosySaid = false;
 const cottage = village.houses.find(h => h.id === 'cottage');
-const saveNow = (): void => { storeSave(storage, serialise(game, seed, flags)); };
+const saveNow = (): void => { storeSave(storage, serialise(game, seed, flags, Date.now(), herd.toJSON())); };
 
 function updateVillage(dt: number): void {
   const breakOpen = hud.breakOpen;
@@ -420,6 +469,17 @@ function updateVillage(dt: number): void {
   }
 }
 
+/** Animals wander, come over for food and make small happy noises (only near him, never over a voice). */
+function updateHerd(dt: number, seconds: number): void {
+  const events = herd.update({ world, roam, player: game.player.pos, held: game.effectiveSelected(), occupied: peopleCells(), dt });
+  for (const ev of events) {
+    if (ev.dist > 12 || voice.speaking() || hud.blockingOverlayOpen) continue;
+    NOISE[ev.kind]();
+  }
+  const cam = scene.camera.position;
+  animalView.sync(herd.animals, (x, z) => Math.hypot(x - cam.x, z - cam.z) < ANIMAL_VIEW_RANGE, seconds);
+}
+
 let fpsValue = 0;
 let fpsFrames = 0;
 let fpsSince = performance.now();
@@ -460,7 +520,14 @@ if (debugOn) {
     flags: () => ({ ...flags }),
     leadState: () => lead.state,
     drawCalls: () => scene.renderer.info.render.calls,
-    stats: () => ({ ...scene.stats(), fps: fpsValue, worldTriangles: scene.triangleCount() }),
+    stats: () => ({ ...scene.stats(), fps: fpsValue, worldTriangles: scene.triangleCount(), animals: herd.animals.length, particles: sparkles.live }),
+    herd: () => herd.animals.map(a => ({ id: a.id, kind: a.kind, x: a.x, y: a.y, z: a.z, state: a.state, giftIn: a.giftIn })),
+    pasture: () => ({ ...pasture, roam, gate: village.farm.gate }),
+    screenOfAnimal: (id: number) => {
+      const p = animalView.screenPositions(scene.camera, canvas.getBoundingClientRect()).find(o => o.id === id);
+      return p ? { x: p.sx, y: p.sy } : null;
+    },
+    burst: (kind: 'water' | 'sun' | 'both' | 'heart' | 'crumb') => { const q = game.player.pos; sparkles.burst({ x: q.x + 1.2, y: q.y + 1.6, z: q.z }, kind); },
     worldSize: () => ({ x: world.sizeX, y: world.sizeY, z: world.sizeZ }),
     saveNow,
     farm: () => ({ ...game.farm.records(), seeds: game.farm.seedsAndGrowing() }),
@@ -474,6 +541,7 @@ if (debugOn) {
     setStage: (x: number, z: number, stage: number) => {
       world.set(x, world.topSolidY(x, z) + 1, z, cropBlock('wheat', stage));
     },
+    sparkles,
     hidePlayer: (hide: boolean) => { debugHidePlayer = hide; },
     setCamera: (yaw: number, pitch: number) => { scene.rig.yaw = yaw; scene.rig.pitch = pitch; },
     teleport: (x: number, y: number, z: number) => {
@@ -529,7 +597,11 @@ function frame(now: number): void {
   if (hud.blockingOverlayOpen) cancelPress();
   else if (gesture.busy && !gesture.dragging) handleGesture(gesture.tick(now, holdNow(pressHit).kind === 'dig'));
   game.update(dt);
-  if (!game.paused) game.farm.update(dt);
+  if (!game.paused) {
+    game.farm.update(dt);
+    updateHerd(dt, now / 1000);
+  }
+  sparkles.update(dt);
   // Usage is counted once a second, not every frame (it caps each tick at 5 s anyway).
   usageMs += rawMs;
   if (usageMs >= 1000) {
