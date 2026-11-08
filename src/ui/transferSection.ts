@@ -18,6 +18,8 @@ export interface TransferSectionDeps {
   stopAutosave: () => void;
   resumeAutosave?: () => void;
   reload: () => void;
+  /** False once the grown-up session this section belongs to has ended; late results are then dropped. */
+  isCurrent?: () => boolean;
   sha256?: Sha256;
   app?: string;
   /** Test seams; the defaults use the browser. */
@@ -75,7 +77,8 @@ export function createTransferSection(d: TransferSectionDeps, initialNote = ''):
   const status = el('p', 'gu-status gu-transfer-status', initialNote);
   status.dataset.testid = 'transfer-status';
   status.setAttribute('role', 'status');
-  const say = (msg: string): void => { status.textContent = msg; };
+  const alive = (): boolean => d.isCurrent?.() ?? true;
+  const say = (msg: string): void => { if (alive()) status.textContent = msg; };
 
   const saveBtn = el('button', 'gu-action gu-save', 'Save a copy of his game');
   const shareBtn = el('button', 'gu-action gu-share', 'Share…');
@@ -97,6 +100,7 @@ export function createTransferSection(d: TransferSectionDeps, initialNote = ''):
   saveBtn.addEventListener('click', async () => {
     say('Making the copy…');
     const r = await make();
+    if (!alive()) return;
     if (!r.ok) { say(r.message); return; }
     try { (d.download ?? downloadText)(r.fileName, r.text); } catch { say('The file could not be saved by this browser. Nothing has been changed.'); return; }
     done();
@@ -106,6 +110,7 @@ export function createTransferSection(d: TransferSectionDeps, initialNote = ''):
   shareBtn.addEventListener('click', async () => {
     say('Making the copy…');
     const r = await make();
+    if (!alive()) return;
     if (!r.ok) { say(r.message); return; }
     const file = new File([r.text], r.fileName, { type: 'application/json' });
     try {
@@ -127,7 +132,9 @@ export function createTransferSection(d: TransferSectionDeps, initialNote = ''):
     say('Checking the file…');
     let text: string;
     try { text = await readText(file); } catch { say('That file could not be read. Nothing has been changed.'); return; }
+    if (!alive()) return;
     const r = await parseBundle(text, { storage: d.storage, now: d.now, sha256: d.sha256 });
+    if (!alive()) return;
     if (!r.ok) { say(r.message); return; }
     say('');
     d.host.present(confirmCard(d, r.raw, r.preview));
@@ -157,10 +164,10 @@ function confirmCard(d: TransferSectionDeps, raw: string, p: Preview): HTMLEleme
   const status = el('p', 'gu-status');
   const yes = el('button', 'gu-action gu-danger gu-replace', "Replace this device's game");
   const no = el('button', 'gu-action gu-cancel', 'Cancel');
-  no.addEventListener('click', () => d.host.back());
+  no.addEventListener('click', () => { if (d.isCurrent?.() ?? true) d.host.back(); });
   let busy = false;
   yes.addEventListener('click', () => {
-    if (busy) return;
+    if (busy || !(d.isCurrent?.() ?? true)) return;
     busy = true;
     const r = commitImport(raw, { storage: d.storage, stopAutosave: d.stopAutosave, resumeAutosave: d.resumeAutosave });
     if (!r.ok) { busy = false; d.host.back(r.message); return; }

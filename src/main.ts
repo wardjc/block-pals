@@ -36,6 +36,7 @@ import { DOOR_EMBLEMS, FERN_LINES, VILLAGERS, VILLAGER_LINES, pickVillagerLine, 
 import { isStandable } from './core/pathfind';
 import { UsageTracker } from './core/usage';
 import { GrownUps } from './ui/grownups';
+import { createAutosaveControl } from './game/autosaveControl';
 
 let storage: Storage | null = null;
 try { storage = window.localStorage; } catch { /* Storage may be blocked. */ }
@@ -65,10 +66,8 @@ const animalView = new AnimalView(scene.scene);
 const sparkles = new Sparkles(scene.scene);
 const flags = loaded?.flags ?? { ledToVillage: false };
 const hints = new FarmHints(flags.hints ?? []);
-const beginAutosave = (): (() => void) => startAutosave(game, seed, storage, flags, () => herd.toJSON());
-let stopAutosaveNow = beginAutosave();
-/** True from the moment a reset or a loaded copy has stopped autosave: nothing may write the save any more. */
-let saveFrozen = false;
+const saveGame = (): boolean => storeSave(storage, serialise(game, seed, flags, Date.now(), herd.toJSON()));
+const autosave = createAutosaveControl(() => startAutosave(game, seed, storage, flags, () => herd.toJSON()), saveGame);
 const usage = new UsageTracker(storage);
 world.onChange((x, _y, z) => scene.rebuildChunkAt(x, z));
 
@@ -285,8 +284,8 @@ const grownUps = new GrownUps(document.getElementById('ui')!, {
   cancelCapture: () => pad.cancelCapture(),
   getMapping: () => loadMapping(storage),
   onMappingSaved: m => { pad = new GamepadInput(m); },
-  stopAutosave: () => { saveFrozen = true; stopAutosaveNow(); },
-  resumeAutosave: () => { stopAutosaveNow(); stopAutosaveNow = beginAutosave(); saveFrozen = false; },
+  stopAutosave: () => autosave.stop(),
+  resumeAutosave: () => autosave.resume(),
   onOpenChange: syncOverlays,
 });
 
@@ -432,7 +431,7 @@ game.on(e => { if (e.type !== 'idle') acted = true; });
 let pendingPip: LineKey | null = null;
 let cosySaid = false;
 const cottage = village.houses.find(h => h.id === 'cottage');
-const saveNow = (): void => { if (!saveFrozen) storeSave(storage, serialise(game, seed, flags, Date.now(), herd.toJSON())); };
+const saveNow = (): void => autosave.save();
 
 const HINT_ORDER: readonly HintKey[] = ['cropReady', 'tryMunch', 'plantSome', 'needWaterSun', 'holdOutFood'];
 const isHintKey = (k: LineKey): k is HintKey => (HINT_ORDER as readonly string[]).includes(k);

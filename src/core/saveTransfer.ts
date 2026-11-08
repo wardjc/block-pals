@@ -41,9 +41,8 @@ export const webCryptoSha256: Sha256 = async text => {
 
 /** The text the checksum covers: keys in sorted order, so the same content always gives the same sum. */
 export function canonicalKeys(keys: Record<string, string>): string {
-  const sorted: Record<string, string> = {};
-  for (const k of Object.keys(keys).sort()) sorted[k] = keys[k];
-  return JSON.stringify(sorted);
+  // fromEntries defines own properties, so a key called __proto__ is kept like any other.
+  return JSON.stringify(Object.fromEntries(Object.keys(keys).sort().map(k => [k, keys[k]])));
 }
 
 export interface TransferDeps {
@@ -121,7 +120,7 @@ const sumCounts = (r: unknown): number =>
 /** Checks a chosen file's text completely, without writing anything. */
 export async function parseBundle(text: string, deps: TransferDeps): Promise<ParseResult> {
   const mainKey = deps.mainKey ?? SAVE_KEY;
-  if (text.length > MAX_BUNDLE_BYTES) return fail('big', 'That file is much too big to be a saved game. Nothing has been changed.');
+  if (text.length > MAX_BUNDLE_BYTES || new TextEncoder().encode(text).length > MAX_BUNDLE_BYTES) return fail('big', 'That file is much too big to be a saved game. Nothing has been changed.');
   if (text.trim() === '') return fail('empty', 'That file is empty. Nothing has been changed.');
   let parsed: unknown;
   try { parsed = JSON.parse(text); } catch { return fail('garbage', 'That file is not a Block Pals saved game. Nothing has been changed.'); }
@@ -177,41 +176,56 @@ export type CommitResult = { ok: true } | Failure;
 /**
  * All or nothing. Order: stop autosave, read everything first, rotate the pre-import copies
  * (oldest first, so the most recent previous game is never lost), then one write to the main key.
- * Any failure before that write leaves the main save untouched. Never writes anything else.
+ * Every write is read back; on any failure every key touched is put back as it was (and checked),
+ * so the whole storage ends as it started. Never writes anything else.
  */
 export function commitImport(raw: string, deps: CommitDeps): CommitResult {
   const mainKey = deps.mainKey ?? SAVE_KEY;
   const storage = deps.storage;
   const abandon = (message: string): CommitResult => {
     try { deps.resumeAutosave?.(); } catch { /* nothing more to do */ }
-    return fail('storage', `${message} Nothing has been changed.`);
+    return fail('storage', message);
   };
-  if (!storage) return abandon('This browser is not letting the game keep anything.');
+  if (!storage) return abandon('This browser is not letting the game keep anything. Nothing has been changed.');
   deps.stopAutosave();
   const slots = preimportKeys(mainKey);
+  const originals = new Map<string, string | null>();
   let current: string | null;
-  const held: Array<string | null> = [];
   try {
     current = storage.getItem(mainKey);
-    for (const k of slots) held.push(storage.getItem(k));
+    originals.set(mainKey, current);
+    for (const k of slots) originals.set(k, storage.getItem(k));
   } catch {
-    return abandon('The current game could not be read.');
+    return abandon('The current game could not be read. Nothing has been changed.');
   }
-  if (current !== null && current !== raw && current !== held[0]) {
-    try {
-      // Oldest first: slot 3 takes slot 2, slot 2 takes slot 1, slot 1 takes the current game.
-      for (let i = slots.length - 1; i >= 1; i--) if (held[i - 1] !== null) storage.setItem(slots[i], held[i - 1] as string);
-      storage.setItem(slots[0], current);
-    } catch {
-      return abandon('There was not enough room to keep a safety copy of the current game.');
+  // The complete list of writes, decided up front: oldest copy first, the new main save last.
+  const steps: Array<[string, string]> = [];
+  if (current !== null && current !== raw && current !== originals.get(slots[0])) {
+    for (let i = slots.length - 1; i >= 1; i--) {
+      const older = originals.get(slots[i - 1]);
+      if (older !== null && older !== undefined) steps.push([slots[i], older]);
     }
+    steps.push([slots[0], current]);
   }
+  steps.push([mainKey, raw]);
+  const touched: string[] = [];
   try {
-    storage.setItem(mainKey, raw);
-    if (storage.getItem(mainKey) !== raw) throw new Error('verify');
+    for (const [key, value] of steps) {
+      touched.push(key);
+      storage.setItem(key, value);
+      if (storage.getItem(key) !== value) throw new Error('verify');
+    }
   } catch {
-    try { if (current !== null) storage.setItem(mainKey, current); else storage.removeItem(mainKey); } catch { /* best effort */ }
-    return abandon('The new game could not be saved.');
+    // Put every key we touched back exactly as it was, then check it really is back.
+    let back = true;
+    for (const key of touched) {
+      const was = originals.get(key) as string | null;
+      try { if (was === null) storage.removeItem(key); else storage.setItem(key, was); } catch { back = false; }
+    }
+    try { for (const key of touched) if (storage.getItem(key) !== originals.get(key)) back = false; } catch { back = false; }
+    return back
+      ? abandon('There was not enough room, or the browser refused to save, so the game was not replaced. Nothing has been changed.')
+      : abandon('Something went wrong part way and the earlier games could not all be put back. Please do not load another copy; the game on this device is still playable.');
   }
   return { ok: true };
 }

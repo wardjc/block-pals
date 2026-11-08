@@ -19,6 +19,8 @@ export interface GrownUpsDeps {
   resumeAutosave?(): void;
   onOpenChange(open: boolean): void;
   reload?: () => void;
+  /** Test seam for the checksum. */
+  sha256?: (text: string) => Promise<string>;
   now?: () => number;
 }
 
@@ -52,6 +54,8 @@ export class GrownUps {
   private open_ = false;
   private captureRun = 0;
   private gateTimer = 0;
+  /** Bumped whenever the panel closes, the gate comes up or the panel is rebuilt: anything started earlier is stale. */
+  private session = 0;
 
   constructor(root: HTMLElement, private readonly deps: GrownUpsDeps) {
     this.ring.hidden = true;
@@ -105,6 +109,7 @@ export class GrownUps {
   }
 
   close(): void {
+    this.session++;
     this.stopGateTimer();
     this.captureRun++;
     this.deps.cancelCapture();
@@ -127,6 +132,7 @@ export class GrownUps {
   };
 
   private showGate(): void {
+    this.session++;
     this.show();
     this.restartGateTimer();
     const sum = makeSum();
@@ -162,6 +168,7 @@ export class GrownUps {
   }
 
   private showPanel(note = ''): void {
+    const token = ++this.session;
     this.stopGateTimer();
     this.show();
     const { usage } = this.deps;
@@ -214,6 +221,8 @@ export class GrownUps {
       resumeAutosave: this.deps.resumeAutosave,
       reload: this.deps.reload ?? (() => location.reload()),
       app: 'block-pals',
+      sha256: this.deps.sha256,
+      isCurrent: () => token === this.session,
     }, note));
 
     const reset = el('button', 'gu-action gu-danger', 'Reset progress');
@@ -221,7 +230,7 @@ export class GrownUps {
     confirm.hidden = true;
     reset.addEventListener('click', () => { confirm.hidden = false; reset.hidden = true; });
     confirm.append(
-      el('p', 'gu-warn', 'This deletes the world and everything collected. Usage history is kept. Are you sure?'),
+      el('p', 'gu-warn', "This deletes this device's game and all safety copies kept in this browser. Files you saved elsewhere and usage history are kept. Are you sure?"),
     );
     const yes = el('button', 'gu-action gu-danger', 'Yes, reset everything');
     yes.addEventListener('click', () => this.resetProgress());
