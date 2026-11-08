@@ -293,6 +293,13 @@ describe('resolveHold: plants and animals (farm)', () => {
     expect(resolveHold({ cell: [4, 5, 2], normal: up }, feet, w, occupied)).toEqual({ kind: 'dig', cell: [4, 5, 2] });
     expect(resolveHold({ cell: [5, 5, 2], normal: up }, feet, w, occupied)).toEqual({ kind: 'walkNear', block: [5, 5, 2] });
   });
+  it('apples behind a wall are out of reach: a hold walks beside the tree instead', () => {
+    const w = flatWorld();
+    w.set(4, 5, 2, BlockId.AppleLeaves);
+    for (const y of [2, 3, 4]) w.set(3, y, 2, BlockId.Planks);
+    for (const y of [2, 3, 4, 5]) w.set(4, y, 2 - 0, y === 5 ? BlockId.AppleLeaves : BlockId.Planks);
+    expect(resolveHold({ cell: [4, 5, 2], normal: up }, feet, w, occupied)).toEqual({ kind: 'walkNear', block: [4, 5, 2] });
+  });
   it('hold on an animal gives none and never digs the ground behind it', () => {
     expect(resolveHold({ cell: [4, 0, 4], normal: up }, feet, flatWorld(), occupied, true)).toEqual({ kind: 'none' });
   });

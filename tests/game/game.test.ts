@@ -554,6 +554,24 @@ describe('Game: farm', () => {
     expect(world.get(6, 6, 5)).toBe(BlockId.AppleLeaves);
   });
 
+  it('apples are not picked through a wall, but are through leaves and the tree\'s own trunk', () => {
+    const { world, game } = setup();
+    // feet (5,1,5): an apple 4 up and 1 across, with a planks wall between eye and fruit
+    world.set(6, 5, 5, BlockId.AppleLeaves);
+    world.set(6, 3, 5, BlockId.Planks);
+    world.set(5, 3, 5, BlockId.Planks);
+    world.set(5, 4, 5, BlockId.Planks);
+    world.set(6, 4, 5, BlockId.Planks);
+    game.applyIntent({ kind: 'dig', cell: [6, 5, 5] });
+    expect(world.get(6, 5, 5)).toBe(BlockId.AppleLeaves);
+    expect(game.inventory.count(ItemId.Apple)).toBe(0);
+    for (const [x, y] of [[6, 3], [5, 3], [5, 4], [6, 4]]) world.set(x, y, 5, BlockId.Leaves); // leaves do not hide it
+    world.set(6, 2, 5, BlockId.Wood); // nor does a trunk beside the fruit
+    game.applyIntent({ kind: 'dig', cell: [6, 5, 5] });
+    expect(world.get(6, 5, 5)).toBe(BlockId.Leaves);
+    expect(game.inventory.count(ItemId.Apple)).toBe(2);
+  });
+
   it('selecting a seed does not change what pad Collect does', () => {
     const { world, game } = setup(bagWith([ItemId.WheatSeed, 2]));
     world.set(6, 1, 5, BlockId.Wood);
