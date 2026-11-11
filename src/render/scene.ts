@@ -20,8 +20,6 @@ interface ChunkMeshes {
   /** null when the chunk has nothing of that kind (no empty draw calls). */
   solid: THREE.Mesh | null;
   trans: THREE.Mesh | null;
-  /** It holds a shimmer block (see ChunkGeometry.hasShimmer). */
-  shimmer: boolean;
 }
 
 function toGeometry(a: MeshArrays): THREE.BufferGeometry {
@@ -64,6 +62,8 @@ export class GameScene {
   /** Counters for the debug panel and the shimmer budget: atlas repaints and chunk mesh builds. */
   private shimmerRepaints = 0;
   private chunkBuilds = 0;
+  /** Keys of chunks holding a shimmer block, kept up to date only when a chunk is rebuilt (empty: zero cost a frame). */
+  private readonly shimmerChunks = new Set<string>();
 
   constructor(private readonly host: HTMLElement, private readonly world: World) {
     this.dirty = new DirtyChunks(world.sizeX, world.sizeZ);
@@ -153,7 +153,9 @@ export class GameScene {
       m.visible = shown;
       this.scene.add(m);
     }
-    this.chunks.set(key, { solid, trans, shimmer: geo.hasShimmer });
+    this.chunks.set(key, { solid, trans });
+    if (geo.hasShimmer) this.shimmerChunks.add(key);
+    else this.shimmerChunks.delete(key);
   }
 
   /** Hides chunks whose nearest corner is deeper than the fog along the view direction (nothing visible changes). */
@@ -178,10 +180,17 @@ export class GameScene {
     };
   }
 
-  /** Whether a chunk the culler keeps drawn holds a shimmer block. */
+  /**
+   * Whether a chunk the culler keeps drawn holds a shimmer block. Walks only the (usually empty)
+   * set of shimmer chunks, never the chunk list, and allocates nothing.
+   */
   anyVisibleShimmer(): boolean {
-    for (const [key, c] of this.chunks) if (c.shimmer && (this.shown === null || this.shown.has(key))) return true;
-    return false;
+    if (this.shimmerChunks.size === 0) return false;
+    const shown = this.shown;
+    if (shown === null) return true;
+    let any = false;
+    this.shimmerChunks.forEach(key => { if (!any && shown.has(key)) any = true; });
+    return any;
   }
 
   /**

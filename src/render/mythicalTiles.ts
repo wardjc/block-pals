@@ -159,9 +159,9 @@ function dragonScale(p: Paint): void {
 
 const STARS: Array<[number, number]> = [[3, 3], [11, 4], [7, 9], [2, 12], [13, 12]];
 
-/** Clear blue with white and pale yellow stars; four of them take turns to twinkle, one a frame. */
+/** A bright, rich sky blue (never night-dark) with white and pale yellow stars; four of them take turns to twinkle, one a frame. */
 function star(p: Paint, frame: ShimmerFrame): void {
-  noisy(p, '#3a56c8', 46, 0.08);
+  noisy(p, '#5b7cec', 46, 0.06);
   for (let i = 0; i < 9; i++) dot(p, '#c8d4ff', Math.floor(hash(i, 1, 46) * T), Math.floor(hash(i, 2, 46) * T)); // tiny far stars
   STARS.forEach(([x, y], i) => {
     dot(p, i % 2 ? '#fff3a0' : '#ffffff', x, y);

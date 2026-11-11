@@ -179,6 +179,31 @@ describe('the scene drives the shimmer', () => {
     expect(scene.stats().shimmerRepaints).toBe(0);
   });
 
+  test('with no shimmer block, a frame never walks the chunk list (zero cost, no allocation)', async () => {
+    const scene = await sceneWith(null, [8, 1, 8]);
+    const chunks = (scene as unknown as { chunks: Map<string, unknown> }).chunks;
+    const iter = vi.spyOn(chunks, Symbol.iterator as never);
+    const values = vi.spyOn(chunks, 'values');
+    const entries = vi.spyOn(chunks, 'entries');
+    const each = vi.spyOn(chunks, 'forEach');
+    for (let i = 0; i < 120; i++) scene.render(i / 60);
+    expect(scene.anyVisibleShimmer()).toBe(false);
+    expect([iter, values, entries, each].map(s => s.mock.calls.length)).toEqual([0, 0, 0, 0]);
+  });
+
+  test('the shimmer chunk count follows rebuilds: placing one turns it on, digging it turns it off', async () => {
+    const scene = await sceneWith(null, [8, 1, 8]);
+    const world = (scene as unknown as { world: World }).world;
+    world.set(9, 1, 12, BlockId.StarBlock);
+    scene.rebuildChunkAt(9, 12);
+    scene.flush();
+    expect(scene.anyVisibleShimmer()).toBe(true);
+    world.set(9, 1, 12, BlockId.Air);
+    scene.rebuildChunkAt(9, 12);
+    scene.flush();
+    expect(scene.anyVisibleShimmer()).toBe(false);
+  });
+
   test('no repaint while the only shimmer chunk is hidden in the far fog', async () => {
     // The camera looks along +z (yaw 0); a block 80 cells ahead is past the fog.
     const scene = await sceneWith([8, 1, 90], [8, 1, 4]);

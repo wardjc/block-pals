@@ -44,12 +44,12 @@ describe('mythical tiles', () => {
     expect(mirror.some(p => p[3] === 1)).toBe(true); // the frame
   });
 
-  test('no tile is dark: mean luminance at least 0.45 (0.30 for Star block), darkest pixel at least 0.15', () => {
+  test('no tile is dark: every tile, Star block included, has mean luminance at least 0.45 and darkest pixel at least 0.15', () => {
     for (const name of MYTHICAL_TILES) {
       for (const frame of FRAMES) {
         const px = render(name, frame);
         const ls = px.map(luma);
-        expect(mean(ls), `${name} mean`).toBeGreaterThanOrEqual(name === 'star' ? 0.30 : 0.45);
+        expect(mean(ls), `${name} mean`).toBeGreaterThanOrEqual(0.45);
         expect(Math.min(...ls), `${name} darkest`).toBeGreaterThanOrEqual(0.15);
       }
     }
