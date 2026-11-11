@@ -55,6 +55,31 @@ export function craftSpeech(
   };
 }
 
+/** The wizard says hello under exactly the same rules as a neighbour. */
+export const mayWizardGreet: typeof mayGreet = mayGreet;
+
+/** The wizard's speech: what he can say, every call behind the break guard. */
+export interface WizardSpeaker {
+  /** One of his lines, by key. */
+  line(key: string): void;
+  /** A counting sentence stitched from recorded parts ("bring me 3 apples and 2 carrots"). */
+  countSentence(parts: unknown): void;
+  /** Says the last line again (the 🔊 button). */
+  again(): void;
+}
+
+/**
+ * Like `craftSpeech`: while the break bubble is open the wizard says nothing (and so never cuts the
+ * reminder); his screen itself keeps working.
+ */
+export function wizardSpeech<S extends WizardSpeaker>(breakOpen: () => boolean, speak: S): WizardSpeaker {
+  return {
+    line: key => { if (!breakOpen()) speak.line(key); },
+    countSentence: parts => { if (!breakOpen()) speak.countSentence(parts); },
+    again: () => { if (!breakOpen()) speak.again(); },
+  };
+}
+
 /**
  * A line that must be said exactly once but may have to wait (the welcome while the break bubble
  * is up). `want()` asks for it; `take(blocked)` returns true exactly once, the first time it is
