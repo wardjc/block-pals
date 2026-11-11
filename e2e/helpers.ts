@@ -14,6 +14,7 @@ export interface FarmDbg {
   bag(): Array<{ id: number; count: number }>;
   screenOf(x: number, y: number, z: number): { x: number; y: number };
   screenOfAnimal(id: number): { x: number; y: number } | null;
+  animalAt(x: number, y: number): number | null;
   pick(x: number, y: number): { cell: Cell; normal: Cell } | null;
   setCamera(yaw: number, pitch: number): void;
   camera(): { position: { x: number; y: number; z: number }; yaw: number; pitch: number; distance: number; close: boolean };
