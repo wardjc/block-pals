@@ -1,6 +1,7 @@
 import { BLOCKS, BlockId } from './blocks';
 import { DOOR_HEIGHT, DOOR_WIDTH, type Rect } from './houses';
 import type { Cell } from './pathfind';
+import { boundsOf, grow, groundTop, inRect, pave, polyline, reshape, widen } from './village';
 import type { World } from './world';
 
 /**
@@ -197,5 +198,64 @@ export function stampTower(world: World): TowerInfo {
     topLamp,
     windowCells,
     beacon: { x: (r.x0 + r.x1 + 1) / 2, y: g + BEACON_ABOVE, z: (r.z0 + r.z1 + 1) / 2 },
+  };
+}
+
+export interface TowerLayout {
+  info: TowerInfo;
+  /** Ordered centre line of the path, square -> door front; each step walkable. */
+  route: Cell[];
+  /** Every PathStone-covered standing cell of the path, as world indices. */
+  routeCells: Set<number>;
+  /** Everything the tower's generator may have changed (trees keep out of these). */
+  stampedRects: Rect[];
+}
+
+/**
+ * Stage 3b of the generator, after the village: raises the hilltop pad to TOWER_GROUND_Y with a
+ * gentle skirt, shapes the path's legs over natural ground (trees touching them go whole), stamps
+ * the tower and paves a 3-wide PathStone path from the village square to its door.
+ */
+export function buildTower(world: World): TowerLayout {
+  const plan = TOWER_PLAN;
+  const centre = polyline(plan.waypoints);
+  // The first legs run on the village pad, which is already level: they are only paved, so no
+  // shaping region ever reaches a village house.
+  const shaped = plan.waypoints.slice(plan.shapeFrom);
+  const legRects = shaped.slice(1).map((p, i) => grow(boundsOf([shaped[i], p], 1), 3));
+  const padRegion = grow(plan.pad, 6);
+  const keepClear = new Set(widen(world, centre, 2));
+  for (let x = plan.pad.x0; x <= plan.pad.x1; x++) {
+    for (let z = plan.pad.z0; z <= plan.pad.z1; z++) if (world.inBounds(x, 1, z)) keepClear.add(x + world.sizeX * z);
+  }
+  reshape(world, [{ rect: plan.pad, height: TOWER_GROUND_Y }], [padRegion, ...legRects], keepClear);
+
+  const info = stampTower(world);
+  const corridor = widen(world, centre, 1);
+  pave(world, corridor, [plan.footprint]);
+
+  const route: Cell[] = centre.map(([x, z]) => [x, groundTop(world, x, z) + 1, z]);
+  const routeCells = new Set<number>();
+  for (const k of corridor) {
+    const x = k % world.sizeX;
+    const z = Math.floor(k / world.sizeX);
+    if (inRect(plan.footprint, x, z)) continue;
+    routeCells.add(x + world.sizeX * (z + world.sizeZ * (groundTop(world, x, z) + 1)));
+  }
+  const pavedOnly = boundsOf(polyline(plan.waypoints.slice(0, plan.shapeFrom + 1)), 1);
+  return { info, route, routeCells, stampedRects: [padRegion, ...legRects, pavedOnly] };
+}
+
+/** For tests that build tiny worlds with no tower. */
+export function emptyTower(): TowerLayout {
+  const zero: Cell = [0, 0, 0];
+  const none: Rect = { x0: 0, z0: 0, x1: 0, z1: 0 };
+  return {
+    info: {
+      groundY: 0, rect: none, interior: none, doorCells: [], doorFront: zero, doorInside: zero, floors: [],
+      stairCells: [], wizardSpot: zero, greetRect: none, lampCells: [], topLamp: zero, windowCells: [],
+      beacon: { x: 0, y: 0, z: 0 },
+    },
+    route: [], routeCells: new Set(), stampedRects: [],
   };
 }

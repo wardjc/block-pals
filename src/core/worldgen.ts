@@ -1,11 +1,16 @@
 import { BlockId } from './blocks';
 import { insideWall, LEGACY_WORLD, WORLD } from './bounds';
+import type { Cell } from './pathfind';
 import { mulberry32, valueNoise2D } from './rng';
+import { buildTower, type TowerInfo } from './tower';
 import { buildVillage, type Rect, type VillageLayout } from './village';
 import { World } from './world';
 
-/** Bump when later steps add stamps, so saves can tell which generator made the world. */
-export const GEN_VERSION = 2;
+/**
+ * Bump when later steps add stamps, so saves can tell which generator made the world.
+ * 3: the wizard's tower, its hill and its path. Old saves regenerate and replay his edits on top.
+ */
+export const GEN_VERSION = 3;
 
 type Cell3 = { x: number; y: number; z: number };
 type Tree = { x: number; z: number };
@@ -42,6 +47,11 @@ export interface GeneratedWorld {
   world: World;
   spawn: { x: number; y: number; z: number };
   village: VillageLayout;
+  tower: TowerInfo;
+  /** Centre line of the path from the village square to the tower door. */
+  towerRoute: Cell[];
+  /** Everything the tower's generator may have changed. */
+  towerRects: Rect[];
 }
 
 function plantTree(
@@ -142,13 +152,16 @@ export function generateWorld(seed = 2026): GeneratedWorld {
 
   // Stage 3: pads, houses and the path (Task 5).
   const village = buildVillage(world, spawn);
+  // Stage 3b: the wizard's hill, tower and path (after the village, so its stamps stay byte-identical).
+  const tower = buildTower(world);
 
   // Stage 4: edge ring and scatter on the new ground, from its own stream.
   const random = mulberry32((seed ^ 0x5eed) >>> 0);
   const blocked = (x: number, z: number): boolean =>
     !insideWall(world, x, z)
     || !(x >= 50 || z >= 50)
-    || village.stampedRects.some(rect => inRect(rect, x, z, 3));
+    || village.stampedRects.some(rect => inRect(rect, x, z, 3))
+    || tower.stampedRects.some(rect => inRect(rect, x, z, 3));
   const plant = (x: number, z: number): boolean =>
     plantTree(world, heights, trees, spawn, x, z, world.sizeY, blocked);
 
@@ -180,5 +193,5 @@ export function generateWorld(seed = 2026): GeneratedWorld {
 
   world.clearEdits();
   world.markClean();
-  return { world, spawn, village };
+  return { world, spawn, village, tower: tower.info, towerRoute: tower.route, towerRects: tower.stampedRects };
 }
