@@ -42,6 +42,24 @@ describe('items in the save', () => {
     expect(back.inventory.count(ItemId.WheatSeed)).toBe(5);
   });
 
+  test('mythical blocks are plain ids in inventory, order and edits: same fields, same version, round-trip', () => {
+    const game = new Game(generateWorld(1234));
+    game.inventory.add(BlockId.Wood, 2);
+    game.inventory.add(BlockId.MagicMirror, 4);
+    game.inventory.add(BlockId.StarlightCrystal, 1);
+    game.world.set(30, 15, 30, BlockId.RainbowBlock);
+    const data = serialise(game, 1234);
+    expect(Object.keys(data).sort()).toEqual(Object.keys(serialise(new Game(generateWorld(1234)), 1234)).sort());
+    expect(data.version).toBe(2);
+    expect(data.inventory).toEqual({ [BlockId.Wood]: 2, [BlockId.MagicMirror]: 4, [BlockId.StarlightCrystal]: 1 });
+    expect(data.edits).toContainEqual([30, 15, 30, BlockId.RainbowBlock]);
+    expect(storeSave(localStorage, data)).toBe(true);
+    const back = applySave(readSave(localStorage)!);
+    expect(back.inventory.slots()).toEqual([BlockId.Wood, BlockId.MagicMirror, BlockId.StarlightCrystal]);
+    expect(back.inventory.count(BlockId.MagicMirror)).toBe(4);
+    expect(back.world.get(30, 15, 30)).toBe(BlockId.RainbowBlock);
+  });
+
   test('the v1 key is never written', () => {
     const game = new Game(generateWorld(1234));
     game.inventory.add(ItemId.Milk, 1);

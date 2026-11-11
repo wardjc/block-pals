@@ -4,7 +4,9 @@ import { isStackId } from '../../src/core/items';
 import { BUNDLE, isMythical, MYTHICAL, PRICE, rewardKind } from '../../src/core/mythical';
 import { canCollect, canPlace } from '../../src/core/placement';
 import { RECIPES } from '../../src/core/recipes';
+import { Inventory } from '../../src/core/inventory';
 import { World } from '../../src/core/world';
+import { Game } from '../../src/game/game';
 
 const PINNED: Record<string, number> = {
   StarlightCrystal: 40, RainbowBlock: 41, CloudBlock: 42, MoonBlock: 43,
@@ -56,6 +58,24 @@ describe('mythical block definitions', () => {
       expect(canCollect(w, [1, 1, 1])).toBe(true);
       // Solid ground for the next block, like any other cube.
       expect(canPlace(w, [1, 2, 1], [], BlockId.Planks)).toBe(true);
+    }
+  });
+
+  test('in the game, each of the eight is placed from the bag and dug back into it (the save keeps only ids)', () => {
+    const world = new World(16, 8, 16);
+    for (let x = 0; x < 16; x++) for (let z = 0; z < 16; z++) world.set(x, 0, z, BlockId.Grass);
+    world.clearEdits();
+    const inventory = new Inventory();
+    for (const id of MYTHICAL) inventory.add(id, 1);
+    const game = new Game({ world, spawn: { x: 5.5, y: 1, z: 5.5 }, inventory });
+    for (const id of MYTHICAL) {
+      game.selected = id;
+      game.applyIntent({ kind: 'place', cell: [6, 1, 5] });
+      expect(world.get(6, 1, 5)).toBe(id);
+      expect(game.inventory.count(id)).toBe(0);
+      game.applyIntent({ kind: 'dig', cell: [6, 1, 5] });
+      expect(world.get(6, 1, 5)).toBe(BlockId.Air);
+      expect(game.inventory.count(id)).toBe(1);
     }
   });
 
