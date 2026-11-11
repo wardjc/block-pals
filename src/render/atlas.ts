@@ -1,10 +1,14 @@
 import * as THREE from 'three';
 import { BLOCKS, BlockId } from '../core/blocks';
 import type { Face } from './mesher';
+import { MYTHICAL_TILES, paintMythical, type MythicalTile } from './mythicalTiles';
+
+export { MYTHICAL_TILES, paintMythical, SHIMMER_TILES, type MythicalTile, type Paint, type ShimmerFrame } from './mythicalTiles';
 
 const TILE = 16;
 const COLS = 4;
-const ROWS = 10;
+/** 12 rows since the mythical blocks (46 tiles). New tiles are appended; existing positions never move. */
+const ROWS = 12;
 
 export type TileName =
   | 'grassTop' | 'grassSide' | 'dirt' | 'stone' | 'woodSide' | 'woodTop' | 'leaves'
@@ -13,7 +17,8 @@ export type TileName =
   | 'farmTop' | 'farmSide' | 'fence' | 'woolWhite' | 'woolRed' | 'woolBlue' | 'woolYellow' | 'sapling' | 'appleLeaves'
   | 'wheat0' | 'wheat1' | 'wheat2' | 'wheat3'
   | 'carrot0' | 'carrot1' | 'carrot2' | 'carrot3'
-  | 'potato0' | 'potato1' | 'potato2' | 'potato3';
+  | 'potato0' | 'potato1' | 'potato2' | 'potato3'
+  | MythicalTile;
 
 export const TILE_NAMES: TileName[] = [
   'grassTop', 'grassSide', 'dirt', 'stone', 'woodSide', 'woodTop', 'leaves',
@@ -23,6 +28,7 @@ export const TILE_NAMES: TileName[] = [
   'wheat0', 'wheat1', 'wheat2', 'wheat3',
   'carrot0', 'carrot1', 'carrot2', 'carrot3',
   'potato0', 'potato1', 'potato2', 'potato3',
+  ...MYTHICAL_TILES,
 ];
 export const ATLAS_COLS = COLS;
 export const ATLAS_ROWS = ROWS;
@@ -131,7 +137,13 @@ function potatoTile(ctx: CanvasRenderingContext2D, stage: number): void {
   }
 }
 
+const isMythicalTile = (name: TileName): name is MythicalTile => (MYTHICAL_TILES as readonly string[]).includes(name);
+
 function drawTile(ctx: CanvasRenderingContext2D, name: TileName): void {
+  if (isMythicalTile(name)) {
+    paintMythical(name, ctx, 0);
+    return;
+  }
   switch (name) {
     case 'farmTop':
       noisy(ctx, '#5b3a20', 21, 0.18);
@@ -393,6 +405,14 @@ export function tileFor(id: BlockId, face: Face): TileName {
     case BlockId.RoofTile: return 'roofTile';
     case BlockId.DoorFrame: return 'doorFrame';
     case BlockId.Lamp: return 'lamp';
+    case BlockId.StarlightCrystal: return 'starlight';
+    case BlockId.RainbowBlock: return 'rainbow';
+    case BlockId.CloudBlock: return 'cloud';
+    case BlockId.MoonBlock: return 'moon';
+    case BlockId.SunBlock: return 'sun';
+    case BlockId.DragonScaleBlock: return 'dragonScale';
+    case BlockId.StarBlock: return 'star';
+    case BlockId.MagicMirror: return 'mirror';
     default: return 'dirt';
   }
 }
