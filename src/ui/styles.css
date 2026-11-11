@@ -562,3 +562,38 @@ html, body {
 .gu-summary { margin: 8px 0; padding-left: 22px; font-size: 18px; line-height: 1.6; }
 .gu-warn-big { font-size: 17px; font-weight: 700; background: #fde8e4; border-radius: 10px; padding: 10px 12px; }
 .gu-import .gu-action { width: 100%; }
+
+/* The star on the screen edge that points to the tower's far light. Picture only, never tappable. */
+.edge-marker {
+  position: fixed;
+  left: 0;
+  top: 0;
+  z-index: 20;
+  width: 64px;
+  height: 64px;
+  pointer-events: none;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  border-radius: 50%;
+  background: radial-gradient(circle, rgba(255, 249, 214, 0.95) 0 45%, rgba(207, 230, 255, 0.55) 70%, rgba(207, 230, 255, 0) 100%);
+  animation: edge-glow 4s ease-in-out infinite;
+}
+.edge-marker[hidden] { display: none; }
+.edge-star { font-size: 40px; line-height: 1; }
+.edge-arrow {
+  position: absolute;
+  left: 50%;
+  top: 50%;
+  width: 0;
+  height: 0;
+  margin: -10px 0 0 -8px;
+  border-top: 10px solid transparent;
+  border-bottom: 10px solid transparent;
+  border-left: 16px solid #ffd23f;
+  transform-origin: 8px 10px;
+}
+@keyframes edge-glow {
+  0%, 100% { opacity: 0.85; }
+  50% { opacity: 1; }
+}
