@@ -1,7 +1,7 @@
 import * as THREE from 'three';
 import { BLOCKS, BlockId } from '../core/blocks';
 import type { Face } from './mesher';
-import { MYTHICAL_TILES, paintMythical, type MythicalTile } from './mythicalTiles';
+import { MYTHICAL_TILES, paintMythical, SHIMMER_TILES, type MythicalTile, type ShimmerFrame } from './mythicalTiles';
 
 export { MYTHICAL_TILES, paintMythical, SHIMMER_TILES, type MythicalTile, type Paint, type ShimmerFrame } from './mythicalTiles';
 
@@ -32,6 +32,17 @@ export const TILE_NAMES: TileName[] = [
 ];
 export const ATLAS_COLS = COLS;
 export const ATLAS_ROWS = ROWS;
+
+/** One shimmer frame lasts 0.4 s; four frames make a slow 1.6 s cycle (never flashing). */
+export const SHIMMER_FRAME_SECONDS = 0.4;
+
+/** The shimmer frame at a time in seconds: floor(t / 0.4) mod 4. Anything not finite gives frame 0. */
+export function shimmerFrame(timeSeconds: number): ShimmerFrame {
+  // The tiny nudge keeps exact frame edges on the new frame (1.2 / 0.4 is 2.9999999999999996).
+  const n = Math.floor(timeSeconds / SHIMMER_FRAME_SECONDS + 1e-9);
+  if (!Number.isFinite(n)) return 0;
+  return (((n % 4) + 4) % 4) as ShimmerFrame;
+}
 
 function hash(x: number, y: number, s: number): number {
   let h = (x * 374761393 + y * 668265263 + s * 2147483647) | 0;
@@ -417,11 +428,19 @@ export function tileFor(id: BlockId, face: Face): TileName {
   }
 }
 
-export function createAtlas(): {
+export interface Atlas {
   texture: THREE.CanvasTexture;
   uvFor: (id: BlockId, face: Face) => [number, number, number, number];
+  /** The bag picture for a block; mythical blocks always show their still frame 0. */
   iconDataUrl: (id: BlockId) => string;
-} {
+  /**
+   * Repaints the four shimmer tiles for the frame at `timeSeconds` and marks the texture for upload.
+   * Does nothing (and returns false) while the frame is unchanged. UVs and meshes never change.
+   */
+  shimmer: (timeSeconds: number) => boolean;
+}
+
+export function createAtlas(): Atlas {
   const canvas = document.createElement('canvas');
   canvas.width = TILE * COLS;
   canvas.height = TILE * ROWS;
@@ -462,12 +481,41 @@ export function createAtlas(): {
     out.width = out.height = 64;
     const octx = out.getContext('2d')!;
     octx.imageSmoothingEnabled = false;
-    const i = TILE_NAMES.indexOf(tileFor(id, id === BlockId.Grass || id === BlockId.Farmland ? 'top' : 'south'));
-    octx.drawImage(canvas, (i % COLS) * TILE, Math.floor(i / COLS) * TILE, TILE, TILE, 0, 0, 64, 64);
+    const name = tileFor(id, id === BlockId.Grass || id === BlockId.Farmland ? 'top' : 'south');
+    if (isMythicalTile(name)) {
+      // Painted fresh (not copied from the atlas, which may be mid-shimmer), so the icon is always frame 0.
+      octx.save();
+      octx.scale(64 / TILE, 64 / TILE);
+      paintMythical(name, octx, 0);
+      octx.restore();
+    } else {
+      const i = TILE_NAMES.indexOf(name);
+      octx.drawImage(canvas, (i % COLS) * TILE, Math.floor(i / COLS) * TILE, TILE, TILE, 0, 0, 64, 64);
+    }
     const url = out.toDataURL('image/png');
     icons.set(id, url);
     return url;
   };
 
-  return { texture, uvFor, iconDataUrl };
+  let painted: ShimmerFrame = 0; // the atlas is drawn with frame 0
+  const shimmer = (timeSeconds: number): boolean => {
+    const frame = shimmerFrame(timeSeconds);
+    if (frame === painted) return false;
+    for (const name of SHIMMER_TILES) {
+      const i = TILE_NAMES.indexOf(name);
+      ctx.save();
+      ctx.translate((i % COLS) * TILE, Math.floor(i / COLS) * TILE);
+      ctx.beginPath();
+      ctx.rect(0, 0, TILE, TILE);
+      ctx.clip();
+      ctx.clearRect(0, 0, TILE, TILE); // Magic mirror is partly see-through: never paint over the old frame
+      paintMythical(name, ctx, frame);
+      ctx.restore();
+    }
+    painted = frame;
+    texture.needsUpdate = true;
+    return true;
+  };
+
+  return { texture, uvFor, iconDataUrl, shimmer };
 }

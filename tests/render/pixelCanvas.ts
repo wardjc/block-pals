@@ -21,7 +21,7 @@ export function parseColour(s: string): RGBA {
   return [parts[0], parts[1], parts[2], parts.length > 3 ? parts[3] : 1];
 }
 
-interface State { tx: number; ty: number; clip: [number, number, number, number] | null }
+interface State { tx: number; ty: number; sx: number; sy: number; clip: [number, number, number, number] | null }
 
 export class PixelCanvas {
   readonly data: Float64Array; // r, g, b, a (a 0..1)
@@ -29,7 +29,7 @@ export class PixelCanvas {
   imageSmoothingEnabled = false;
   fillRects = 0;
   clears = 0;
-  private state: State = { tx: 0, ty: 0, clip: null };
+  private state: State = { tx: 0, ty: 0, sx: 1, sy: 1, clip: null };
   private stack: State[] = [];
   private path: [number, number, number, number] | null = null;
 
@@ -38,16 +38,21 @@ export class PixelCanvas {
   }
 
   save(): void { this.stack.push({ ...this.state }); }
-  restore(): void { this.state = this.stack.pop() ?? { tx: 0, ty: 0, clip: null }; }
-  translate(x: number, y: number): void { this.state.tx += x; this.state.ty += y; }
+  restore(): void { this.state = this.stack.pop() ?? { tx: 0, ty: 0, sx: 1, sy: 1, clip: null }; }
+  translate(x: number, y: number): void { this.state.tx += x * this.state.sx; this.state.ty += y * this.state.sy; }
+  scale(x: number, y: number): void { this.state.sx *= x; this.state.sy *= y; }
   beginPath(): void { this.path = null; }
-  rect(x: number, y: number, w: number, h: number): void { this.path = [x + this.state.tx, y + this.state.ty, w, h]; }
+  rect(x: number, y: number, w: number, h: number): void {
+    const { tx, ty, sx, sy } = this.state;
+    this.path = [x * sx + tx, y * sy + ty, w * sx, h * sy];
+  }
   clip(): void { if (this.path) this.state.clip = this.path; }
   drawImage(): void { /* icons: not needed for pixel checks */ }
 
   private each(x: number, y: number, w: number, h: number, f: (i: number) => void): void {
-    let x0 = Math.round(x + this.state.tx), y0 = Math.round(y + this.state.ty);
-    let x1 = x0 + Math.round(w), y1 = y0 + Math.round(h);
+    const { tx, ty, sx, sy } = this.state;
+    let x0 = Math.round(x * sx + tx), y0 = Math.round(y * sy + ty);
+    let x1 = x0 + Math.round(w * sx), y1 = y0 + Math.round(h * sy);
     const c = this.state.clip;
     if (c) { x0 = Math.max(x0, c[0]); y0 = Math.max(y0, c[1]); x1 = Math.min(x1, c[0] + c[2]); y1 = Math.min(y1, c[1] + c[3]); }
     x0 = Math.max(0, x0); y0 = Math.max(0, y0); x1 = Math.min(this.width, x1); y1 = Math.min(this.height, y1);

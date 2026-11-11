@@ -20,6 +20,8 @@ interface ChunkMeshes {
   /** null when the chunk has nothing of that kind (no empty draw calls). */
   solid: THREE.Mesh | null;
   trans: THREE.Mesh | null;
+  /** It holds a shimmer block (see ChunkGeometry.hasShimmer). */
+  shimmer: boolean;
 }
 
 function toGeometry(a: MeshArrays): THREE.BufferGeometry {
@@ -59,6 +61,9 @@ export class GameScene {
   private readonly marker: THREE.Mesh<THREE.RingGeometry, THREE.MeshBasicMaterial>;
   private markerAge = Infinity;
   private readonly outline = new THREE.Group();
+  /** Counters for the debug panel and the shimmer budget: atlas repaints and chunk mesh builds. */
+  private shimmerRepaints = 0;
+  private chunkBuilds = 0;
 
   constructor(private readonly host: HTMLElement, private readonly world: World) {
     this.dirty = new DirtyChunks(world.sizeX, world.sizeZ);
@@ -138,6 +143,7 @@ export class GameScene {
       }
     }
     const geo = buildChunkGeometry(this.world, cx, cz, this.atlas.uvFor);
+    this.chunkBuilds++;
     const solid = geo.indices.length > 0 ? new THREE.Mesh(toGeometry(geo), this.solidMat) : null;
     const trans = geo.transparent.indices.length > 0 ? new THREE.Mesh(toGeometry(geo.transparent), this.transMat) : null;
     if (trans) trans.renderOrder = 1;
@@ -147,7 +153,7 @@ export class GameScene {
       m.visible = shown;
       this.scene.add(m);
     }
-    this.chunks.set(key, { solid, trans });
+    this.chunks.set(key, { solid, trans, shimmer: geo.hasShimmer });
   }
 
   /** Hides chunks whose nearest corner is deeper than the fog along the view direction (nothing visible changes). */
@@ -163,10 +169,19 @@ export class GameScene {
   }
 
   /** Chunk and draw numbers for the debug panel and the budget checks. */
-  stats(): { chunks: number; visible: number; triangles: number; drawCalls: number } {
+  stats(): { chunks: number; visible: number; triangles: number; drawCalls: number; shimmerRepaints: number; chunkBuilds: number } {
     let visible = 0;
     for (const c of this.chunks.values()) if (c.solid?.visible || c.trans?.visible) visible++;
-    return { chunks: this.chunks.size, visible, triangles: this.renderer.info.render.triangles, drawCalls: this.renderer.info.render.calls };
+    return {
+      chunks: this.chunks.size, visible, triangles: this.renderer.info.render.triangles, drawCalls: this.renderer.info.render.calls,
+      shimmerRepaints: this.shimmerRepaints, chunkBuilds: this.chunkBuilds,
+    };
+  }
+
+  /** Whether a chunk the culler keeps drawn holds a shimmer block. */
+  anyVisibleShimmer(): boolean {
+    for (const [key, c] of this.chunks) if (c.shimmer && (this.shown === null || this.shown.has(key))) return true;
+    return false;
   }
 
   /**
@@ -291,11 +306,13 @@ export class GameScene {
     this.scene.add(obj);
   }
 
-  render(): void {
+  /** `timeSeconds` drives the tile shimmer (a texture repaint only: no chunk is ever rebuilt for it). */
+  render(timeSeconds = performance.now() / 1000): void {
     if (this.dirty.size > 0) {
       const p = this.smoothEye;
       for (const [cx, cz] of this.dirty.take(DIRTY_PER_FRAME, p.x, p.z)) this.rebuildChunk(cx, cz);
     }
+    if (this.anyVisibleShimmer() && this.atlas.shimmer(timeSeconds)) this.shimmerRepaints++;
     this.renderer.render(this.scene, this.camera);
   }
 }
