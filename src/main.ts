@@ -300,17 +300,21 @@ game.onCraftRequest = openCraft;
 
 // Orlo's voice: every line through wizardSpeech (silent while the break bubble is up), speaker 'wizard'.
 const lastWizard: Partial<Record<WizardKey, string>> = {};
+/** The last wizard line asked for (debug: which key, since clips are named by hash). */
+let lastWizardKey = '';
 let wizardAgain: (() => void) | null = null;
 const wizardSay = (key: WizardKey): void => {
   const text = pickWizardLine(key, lastWizard[key]);
   if (!text) return;
   lastWizard[key] = text;
+  lastWizardKey = key;
   wizardAgain = () => voice.say(text, 'wizard');
   voice.say(text, 'wizard');
 };
 const wizardCount = (p: Puzzle): void => {
   const lead = pickWizardLine('countAsk', lastWizard.countAsk);
   lastWizard.countAsk = lead;
+  lastWizardKey = 'countAsk';
   const parts = [lead, ...countSentence(p)];
   wizardAgain = () => voice.sayParts('wizard', parts);
   voice.sayParts('wizard', parts); // stitched clips only, never the tablet voice
@@ -640,6 +644,7 @@ function updateVillage(dt: number): void {
   if (wizardHello) {
     const text = pickWizardLine('hello', lastWizard.hello);
     lastWizard.hello = text;
+    lastWizardKey = 'hello';
     currentWizardHello = text;
     wizardAgain = () => voice.say(text, 'wizard');
     voice.say(text, 'wizard', { holdForAudio: true });
@@ -875,6 +880,7 @@ if (debugOn) {
         return s ? { ...s.puzzle, solved: s.solved, helped: s.helped, wrong: s.wrong, basket: { ...s.basket } } : null;
       },
       hint: () => wizardScreen.session?.hint() ?? null,
+      lastKey: () => lastWizardKey,
       advance: (seconds: number) => { for (let t = 0; t < seconds; t += 0.5) wizardScreen.update(0.5); },
       screenOf: () => {
         const r = canvas.getBoundingClientRect();
