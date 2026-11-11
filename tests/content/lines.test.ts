@@ -5,7 +5,7 @@ const keys = Object.keys(LINES) as LineKey[];
 
 describe('lines', () => {
   it('every LineKey has at least one line', () => {
-    expect(keys).toHaveLength(34);
+    expect(keys).toHaveLength(39); // step 2's 34 plus the wizard step's 5 (the grumps step is not built yet)
     for (const k of keys) {
       expect(LINES[k].length).toBe(4);
       expect(new Set(LINES[k]).size).toBe(4);
@@ -25,6 +25,16 @@ describe('lines', () => {
       expect(LINE_ICONS[k]).toBeTruthy();
     }
     expect(LINE_ICONS.tryMunch).toBe('👄');
+  });
+  it('the wizard step\'s Pip lines exist, each with a picture, and pass the scary-word check', () => {
+    for (const k of ['seeTowerLight', 'letsVisitWizard', 'meetWizard', 'puzzleStuck', 'gotMagicBlock'] as const) {
+      expect(LINES[k]).toHaveLength(4);
+      expect(LINE_ICONS[k]).toBeTruthy();
+      for (const l of LINES[k]) expect(l).not.toMatch(/\b(scary|scared|dark|afraid|hurt|lost|wrong|fail|failed|read)\b/i);
+    }
+  });
+  it('puzzleStuck is true for every puzzle kind (it never mentions counting or dots)', () => {
+    for (const l of LINES.puzzleStuck) expect(l).not.toMatch(/\b(count|dots?|basket)\b/i);
   });
   it('holdOutFood never says "hold" (that means press-and-hold elsewhere in the game)', () => {
     for (const l of LINES.holdOutFood) expect(l).not.toMatch(/\bhold/i);

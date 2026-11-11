@@ -33,7 +33,13 @@ export type LineKey =
   | 'petAnimal'
   | 'gotEgg'
   | 'gotMilk'
-  | 'gotWool';
+  | 'gotWool'
+  // The wizard's tower. Each is true wherever it can fire (letsVisitWizard is only offered with a gem).
+  | 'seeTowerLight'
+  | 'letsVisitWizard'
+  | 'meetWizard'
+  | 'puzzleStuck'
+  | 'gotMagicBlock';
 
 /** Lines spoken by Pip. British English, short and warm. */
 export const LINES: Record<LineKey, string[]> = {
@@ -243,6 +249,37 @@ export const LINES: Record<LineKey, string[]> = {
     'Sheep give us wool.',
     'Wool can be made into coloured blocks.',
   ],
+  seeTowerLight: [
+    'What is that glowing light far away?',
+    'A light is shining far away.',
+    'Something is glowing over there.',
+    'Someone has a light on a hill.',
+  ],
+  letsVisitWizard: [
+    "Let's go and visit the wizard in his tower.",
+    'You have a gem. The wizard likes gems.',
+    'Shall we visit the wizard? Follow me.',
+    'There is a wizard in the tower. Follow me.',
+  ],
+  meetWizard: [
+    "Here we are at the wizard's tower.",
+    "This is the wizard's tower. Let's go in.",
+    'Look how tall it is. Shall we go in?',
+    "We are at the tower. Let's say hello.",
+  ],
+  // Hint 2 of every puzzle kind, so never about counting or dots.
+  puzzleStuck: [
+    'Shall we look at it together?',
+    "Let's look at each picture slowly.",
+    'Take your time. I will help.',
+    'Look closely. What do you notice?',
+  ],
+  gotMagicBlock: [
+    'A magic block! Where will you put it?',
+    "That looks lovely. Let's build something.",
+    'What a shiny new block!',
+    'Your bag has a new magic block.',
+  ],
 };
 
 /** Pick a variant for a key, never the same one twice in a row. */
@@ -290,4 +327,9 @@ export const LINE_ICONS: Record<LineKey, string> = {
   gotEgg: '🥚',
   gotMilk: '🥛',
   gotWool: '🧶',
+  seeTowerLight: '✨',
+  letsVisitWizard: '🧙',
+  meetWizard: '🧙',
+  puzzleStuck: '🧩',
+  gotMagicBlock: '✨',
 };
