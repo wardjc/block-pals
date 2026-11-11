@@ -249,9 +249,9 @@ describe('worldgen stages', () => {
     }
   });
 
-  it('heightAt matches the generated surface and GEN_VERSION is 2', () => {
+  it('heightAt matches the generated surface and GEN_VERSION is 3', () => {
     const { world } = generateMeadowStage(2026);
-    expect(GEN_VERSION).toBe(2);
+    expect(GEN_VERSION).toBe(3);
     for (const [x, z] of [[0, 0], [24, 24], [34, 12], [14, 32], [70, 70], [95, 95]]) {
       const h = heightAt(2026, x, z);
       expect(BLOCKS[world.get(x, h, z)].solid).toBe(true);
@@ -315,14 +315,16 @@ describe('worldgen stages', () => {
 
   it('final world differs from the meadow only at stamps', () => {
     const meadow = generateMeadowStage(2026).world;
-    const { world, village } = generateWorld(2026);
+    const { world, village, towerRects } = generateWorld(2026);
+    const within = (rects: typeof towerRects, x: number, z: number): boolean => rects.some(r => x >= r.x0 && x <= r.x1 && z >= r.z0 && z <= r.z1);
     let differing = 0;
     for (let x = 0; x < 48; x++) {
       for (let z = 0; z < 48; z++) {
         for (let y = 0; y < world.sizeY; y++) {
           if (world.get(x, y, z) === meadow.get(x, y, z)) continue;
-          differing++;
-          expect(village.stampedRects.some(r => x >= r.x0 && x <= r.x1 && z >= r.z0 && z <= r.z1), `${x},${y},${z}`).toBe(true);
+          expect(within(village.stampedRects, x, z) || within(towerRects, x, z), `${x},${y},${z}`).toBe(true);
+          // The village's own changes keep their old limit; the tower's skirt edge is counted separately.
+          if (!within(towerRects, x, z)) differing++;
         }
       }
     }

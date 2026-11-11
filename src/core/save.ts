@@ -5,7 +5,8 @@ import { LEGACY_WORLD, WORLD } from './bounds';
 import { GrowthClock, STAGE_MS, TREE_STAGE_MS } from './growth';
 import { Inventory, MAX_STACK } from './inventory';
 import { isItemId } from './items';
-import { isStandable } from './pathfind';
+import { isStandable, type Cell } from './pathfind';
+import type { TowerInfo } from './tower';
 import type { VillageLayout } from './village';
 import type { World } from './world';
 import { GEN_VERSION, generateWorld } from './worldgen';
@@ -300,6 +301,8 @@ export interface Applied {
   inventory: Inventory;
   spawn: { x: number; y: number; z: number };
   village: VillageLayout;
+  tower: TowerInfo;
+  towerRoute: Cell[];
   flags: SaveFlags;
   items: Record<number, number>;
   /** Plant timers to hand to Farm.restore after the edits are in. */
@@ -311,19 +314,21 @@ export interface Applied {
 
 export function applySave(data: SaveData, now: number = Date.now()): Applied {
   // Stamps first, then his edits: whatever he built or dug always wins over generated houses and paths.
-  const { world, spawn, village } = generateWorld(data.seed);
+  const { world, spawn, village, tower, towerRoute } = generateWorld(data.seed);
   for (const [x, y, z, id] of data.edits) world.replayEdit(x, y, z, id);
   // Replayed edits must remain in every later save, even while the world is clean.
   world.markClean();
   const { x, y, z } = data.player;
-  // Never put him back under a roof: a saved spot inside any house footprint means spawn instead.
-  const inHouse = village.houses.some(h => x >= h.rect.x0 && x < h.rect.x1 + 1 && z >= h.rect.z0 && z < h.rect.z1 + 1);
+  // Never put him back under a roof: a saved spot inside any house or the tower means spawn instead.
+  const inHouse = [...village.houses.map(h => h.rect), tower.rect].some(r => x >= r.x0 && x < r.x1 + 1 && z >= r.z0 && z < r.z1 + 1);
   return {
     world,
     inventory: Inventory.fromJSON(data.inventory, data.order, data.items, data.itemOrder),
     spawn: !inHouse && isStandable(world, [Math.floor(x), Math.floor(y), Math.floor(z)])
       ? { ...data.player } : spawn,
     village,
+    tower,
+    towerRoute,
     flags: cleanFlags(data.flags as unknown as Record<string, unknown>),
     items: { ...(data.items ?? {}) },
     farm: {

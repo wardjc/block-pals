@@ -79,10 +79,10 @@ describe('farm fields in the save', () => {
     expect(applied.flags).toEqual(flags);
   });
 
-  test('gen is written as the generator version (2) and a stored higher gen is never lowered', () => {
+  test('gen is written as the generator version (3, the tower) and a stored higher gen is never lowered', () => {
     const game = new Game(generateWorld(1234));
-    expect(GEN_VERSION).toBe(2);
-    expect(serialise(game, 1234, undefined, NOW).gen).toBe(2);
+    expect(GEN_VERSION).toBe(3);
+    expect(serialise(game, 1234, undefined, NOW).gen).toBe(3);
     localStorage.setItem(SAVE_KEY, JSON.stringify({ ...base(), gen: 5 }));
     storeSave(localStorage, serialise(game, 1234, undefined, NOW));
     expect(JSON.parse(localStorage.getItem(SAVE_KEY)!).gen).toBe(5);

@@ -74,17 +74,17 @@ export const VILLAGE_PLAN: {
 };
 
 /** Distance (Chebyshev) from a column to a rectangle; 0 inside. */
-function distance(r: Rect, x: number, z: number): number {
+export function distance(r: Rect, x: number, z: number): number {
   return Math.max(r.x0 - x, 0, x - r.x1, r.z0 - z, 0, z - r.z1);
 }
 
-const inRect = (r: Rect, x: number, z: number, margin = 0): boolean => distance(r, x, z) <= margin;
-const grow = (r: Rect, m: number): Rect => ({ x0: r.x0 - m, z0: r.z0 - m, x1: r.x1 + m, z1: r.z1 + m });
+export const inRect = (r: Rect, x: number, z: number, margin = 0): boolean => distance(r, x, z) <= margin;
+export const grow = (r: Rect, m: number): Rect => ({ x0: r.x0 - m, z0: r.z0 - m, x1: r.x1 + m, z1: r.z1 + m });
 
 const isTerrain = (id: BlockId): boolean => id !== BlockId.Air && id !== BlockId.Wood && id !== BlockId.Leaves;
 
 /** Height of the topmost ground block, ignoring trees. */
-function groundTop(world: World, x: number, z: number): number {
+export function groundTop(world: World, x: number, z: number): number {
   for (let y = world.sizeY - 1; y >= 0; y--) if (isTerrain(world.get(x, y, z))) return y;
   return 0;
 }
@@ -104,7 +104,7 @@ function removeTree(world: World, x: number, z: number): void {
 }
 
 /** Removes every tree whose trunk or canopy touches any of the columns. */
-function clearTreesTouching(world: World, columns: Iterable<number>): void {
+export function clearTreesTouching(world: World, columns: Iterable<number>): void {
   const sx = world.sizeX;
   for (const key of columns) {
     const x = key % sx;
@@ -129,7 +129,7 @@ function setColumn(world: World, x: number, z: number, h: number): void {
   for (let y = h + 1; y < world.sizeY; y++) world.set(x, y, z, BlockId.Air);
 }
 
-interface Pin { rect: Rect; height: number }
+export interface Pin { rect: Rect; height: number }
 
 /**
  * Eases the ground to each pinned height inside its rectangle; outside, a column's height is
@@ -138,7 +138,7 @@ interface Pin { rect: Rect; height: number }
  * cutting the higher one. Trees touching a changed column (or `keepClear`) go whole.
  * Returns the final ground height of every column of the world.
  */
-function reshape(world: World, pins: Pin[], region: Rect[], keepClear: Iterable<number> = []): Int16Array {
+export function reshape(world: World, pins: Pin[], region: Rect[], keepClear: Iterable<number> = []): Int16Array {
   const { sizeX, sizeZ } = world;
   const natural = new Int16Array(sizeX * sizeZ);
   const target = new Int16Array(sizeX * sizeZ);
@@ -194,7 +194,7 @@ function reshape(world: World, pins: Pin[], region: Rect[], keepClear: Iterable<
 }
 
 /** Manhattan line (x first, or z first) between two columns, inclusive. */
-function line(a: [number, number], b: [number, number], xFirst = true): Array<[number, number]> {
+export function line(a: [number, number], b: [number, number], xFirst = true): Array<[number, number]> {
   const cells: Array<[number, number]> = [[a[0], a[1]]];
   let [x, z] = a;
   const stepX = (): void => { while (x !== b[0]) { x += Math.sign(b[0] - x); cells.push([x, z]); } };
@@ -206,7 +206,7 @@ function line(a: [number, number], b: [number, number], xFirst = true): Array<[n
 const key = (world: World, x: number, z: number): number => x + world.sizeX * z;
 
 /** Columns within `radius` (Chebyshev) of any centre cell. */
-function widen(world: World, centre: Array<[number, number]>, radius: number, offset = -radius): Set<number> {
+export function widen(world: World, centre: Array<[number, number]>, radius: number, offset = -radius): Set<number> {
   const out = new Set<number>();
   for (const [cx, cz] of centre) {
     for (let dx = offset; dx <= offset + 2 * radius; dx++) {
@@ -218,13 +218,13 @@ function widen(world: World, centre: Array<[number, number]>, radius: number, of
   return out;
 }
 
-function polyline(waypoints: Array<[number, number]>): Array<[number, number]> {
+export function polyline(waypoints: Array<[number, number]>): Array<[number, number]> {
   const out: Array<[number, number]> = [waypoints[0]];
   for (let i = 1; i < waypoints.length; i++) out.push(...line(waypoints[i - 1], waypoints[i]).slice(1));
   return out;
 }
 
-function boundsOf(points: Array<[number, number]>, margin: number): Rect {
+export function boundsOf(points: Array<[number, number]>, margin: number): Rect {
   return {
     x0: Math.min(...points.map(p => p[0])) - margin, x1: Math.max(...points.map(p => p[0])) + margin,
     z0: Math.min(...points.map(p => p[1])) - margin, z1: Math.max(...points.map(p => p[1])) + margin,
@@ -232,7 +232,7 @@ function boundsOf(points: Array<[number, number]>, margin: number): Rect {
 }
 
 /** Paves columns with PathStone on top of the (already shaped) ground, with clear headroom. */
-function pave(world: World, columns: Iterable<number>, skip: Rect[] = []): void {
+export function pave(world: World, columns: Iterable<number>, skip: Rect[] = []): void {
   for (const k of columns) {
     const x = k % world.sizeX;
     const z = Math.floor(k / world.sizeX);
