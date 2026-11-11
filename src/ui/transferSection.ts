@@ -77,7 +77,8 @@ export function createTransferSection(d: TransferSectionDeps, initialNote = ''):
   const status = el('p', 'gu-status gu-transfer-status', initialNote);
   status.dataset.testid = 'transfer-status';
   status.setAttribute('role', 'status');
-  const alive = (): boolean => d.isCurrent?.() ?? true;
+  let finished = false; // set once an import has succeeded: late file reads must not open another confirmation
+  const alive = (): boolean => !finished && (d.isCurrent?.() ?? true);
   const say = (msg: string): void => { if (alive()) status.textContent = msg; };
 
   const saveBtn = el('button', 'gu-action gu-save', 'Save a copy of his game');
@@ -137,14 +138,14 @@ export function createTransferSection(d: TransferSectionDeps, initialNote = ''):
     if (!alive()) return;
     if (!r.ok) { say(r.message); return; }
     say('');
-    d.host.present(confirmCard(d, r.raw, r.preview));
+    d.host.present(confirmCard(d, r.raw, r.preview, () => { finished = true; }));
   });
 
   box.append(last, saveBtn, shareBtn, loadBtn, input, hint, status);
   return box;
 }
 
-function confirmCard(d: TransferSectionDeps, raw: string, p: Preview): HTMLElement {
+function confirmCard(d: TransferSectionDeps, raw: string, p: Preview, onDone: () => void): HTMLElement {
   const card = el('div', 'gu-card gu-panel gu-import');
   card.appendChild(el('h2', 'gu-title', 'Load this saved game?'));
   const lines = el('ul', 'gu-summary');
@@ -171,6 +172,7 @@ function confirmCard(d: TransferSectionDeps, raw: string, p: Preview): HTMLEleme
     busy = true;
     const r = commitImport(raw, { storage: d.storage, stopAutosave: d.stopAutosave, resumeAutosave: d.resumeAutosave });
     if (!r.ok) { busy = false; d.host.back(r.message); return; }
+    onDone();
     status.textContent = 'Done. Starting his new game…';
     d.reload();
   });

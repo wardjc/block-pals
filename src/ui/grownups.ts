@@ -260,6 +260,7 @@ export class GrownUps {
   }
 
   private resetProgress(): void {
+    this.session++; // any file read still in flight is now stale
     this.deps.stopAutosave();
     // The grown-ups' reset is the only thing that ever deletes the old v1 save and its backup.
     for (const key of [...ALL_SAVE_KEYS, ...transferResetKeys()]) {

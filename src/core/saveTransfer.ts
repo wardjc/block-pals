@@ -218,10 +218,17 @@ export function commitImport(raw: string, deps: CommitDeps): CommitResult {
   } catch {
     // Put every key we touched back exactly as it was, then check it really is back.
     let back = true;
-    for (const key of touched) {
-      const was = originals.get(key) as string | null;
-      try { if (was === null) storage.removeItem(key); else storage.setItem(key, was); } catch { back = false; }
+    // Newest write first (the big new main save), so space is freed before older backups go back; a second pass retries any that failed.
+    let pending = [...touched].reverse();
+    for (let pass = 0; pass < 2 && pending.length > 0; pass++) {
+      const failed: string[] = [];
+      for (const key of pending) {
+        const was = originals.get(key) as string | null;
+        try { if (was === null) storage.removeItem(key); else storage.setItem(key, was); } catch { failed.push(key); }
+      }
+      pending = failed;
     }
+    if (pending.length > 0) back = false;
     try { for (const key of touched) if (storage.getItem(key) !== originals.get(key)) back = false; } catch { back = false; }
     return back
       ? abandon('There was not enough room, or the browser refused to save, so the game was not replaced. Nothing has been changed.')
