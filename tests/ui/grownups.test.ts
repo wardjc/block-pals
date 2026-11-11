@@ -1,6 +1,7 @@
 // @vitest-environment jsdom
 import { afterEach, beforeEach, describe, expect, test, vi } from 'vitest';
 import { ALL_SAVE_KEYS } from '../../src/core/save';
+import { transferResetKeys } from '../../src/core/saveTransfer';
 import { UsageTracker } from '../../src/core/usage';
 import { DEFAULT_MAPPING } from '../../src/input/mapping';
 import { GrownUps } from '../../src/ui/grownups';
@@ -92,7 +93,7 @@ describe('grown-up gate', () => {
     root.querySelector<HTMLButtonElement>('.gu-danger')!.click();
     const yes = [...root.querySelectorAll<HTMLButtonElement>('.gu-danger')].find(b2 => b2.textContent?.startsWith('Yes'))!;
     yes.click();
-    expect(removed.sort()).toEqual([...ALL_SAVE_KEYS].sort());
+    expect(removed.sort()).toEqual([...ALL_SAVE_KEYS, ...transferResetKeys()].sort());
     expect(reload).toHaveBeenCalled();
   });
 });

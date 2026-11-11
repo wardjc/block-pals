@@ -191,7 +191,40 @@ sum (the sum screen closes itself after 20 seconds of nobody touching it; once y
   game is never locked.
 - **Reset progress:** wipes the saved world (it asks you to confirm). It clears all three save entries: the current save, the old version 1 save and its backup.
 - **Saves and rolling back:** the bigger-world version saves under its own name (`blockpals.save.v2`). The earlier version's save (`blockpals.save.v1`) is left exactly as it was and a one-time backup copy is kept, so going back to an older build of the app never loses his world.
+- **Save a copy / Load a saved copy:** see "Moving his game to another device" below.
 - **Set up controller:** see above.
+
+## Moving his game to another device (or keeping a backup)
+
+His game lives inside the browser on the device he plays on. You can save a copy as a file and load it on another device (or keep it as a backup). There are no accounts and nothing goes over the internet; you move the file yourself.
+
+**To make a copy**
+
+1. Hold the top-left corner for 3 seconds and answer the sum to open the **Grown-ups** panel.
+2. Press **Save a copy of his game**. A file called `block-pals-saved-game-YYYY-MM-DD.json` is saved (on a tablet you may also see **Share…**, which can send it straight to email or a drive). The panel shows "Last copy saved".
+3. Send the file to the other device by email, a cloud drive or a USB stick.
+
+**To load a copy on the other device**
+
+1. Open the game at the same address, then open the Grown-ups panel the same way.
+2. Press **Load a saved copy** and choose the file.
+3. Check the summary (date, blocks changed, things in his bag), then press **Replace this device's game**. The game restarts with his world. **Cancel** changes nothing.
+
+**Safety**
+
+- The file is checked completely before anything is changed. A damaged, edited, empty, wrong or too-new file is refused with a message and the game on that device is left exactly as it was.
+- Before the game is replaced, the game that was on that device is kept as a safety copy in the browser (`blockpals.save.v2.preimport`, then `.preimport.2` and `.preimport.3`; the three most recent previous games). If there is no room for the safety copy, nothing is replaced. These are not shown anywhere in the game; they are there for someone technical to rescue (browser developer tools, Application, Local storage). **Reset progress** clears them too.
+
+**Honest limits**
+
+- The file contains his whole game. Keep it private and delete spare copies you no longer need.
+- Both devices must use the same game address (a copy made on a different web address or a much older or newer version of the game may be refused).
+- Copies are manual: nothing is kept in step automatically, and loading a copy replaces what is on that device (it does not merge).
+- Loading needs a browser that allows saving files, and the copy needs a secure (https) address.
+
+**Emergency: the laptop's browser data was cleared**
+
+His game is gone from that browser, and nothing can bring it back unless a copy was made first. That is why it is worth pressing **Save a copy of his game** now and then (for example once a week), and keeping the file somewhere safe.
 
 ## Tablet playtest checklist
 
