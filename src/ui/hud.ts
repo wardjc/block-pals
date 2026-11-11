@@ -176,7 +176,8 @@ export class Hud {
       el.addEventListener(type, e => e.stopPropagation());
   }
 
-  private lastSelected = -1;
+  /** Slot index plus the stack behind the bag slot: the bag slot (9) shows different stacks. */
+  private lastSelected = '';
 
   /** Scrolls the bar the least it takes to show the whole selected slot. */
   private revealSelected(): void {
@@ -223,8 +224,9 @@ export class Hud {
     });
     if (state.overflow || state.selected > BAR_STACKS) this.bar.appendChild(this.bagSlot(state));
     this.bar.scrollLeft = keepLeft;
-    if (state.selected !== this.lastSelected) this.revealSelected();
-    this.lastSelected = state.selected;
+    const key = `${state.selected}:${state.pick?.id ?? ''}`;
+    if (key !== this.lastSelected) this.revealSelected();
+    this.lastSelected = key;
     this.updateHints();
   }
 

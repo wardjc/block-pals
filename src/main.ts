@@ -687,6 +687,7 @@ if (debugOn) {
     usage,
     pal,
     hud,
+    craftScreen,
   };
   (window as unknown as { __triangles: () => number }).__triangles = () => scene.triangleCount();
 }

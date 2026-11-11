@@ -4,6 +4,8 @@ import { readFileSync } from 'node:fs';
 import { BlockId } from '../../src/core/blocks';
 import type { StackId } from '../../src/core/items';
 import { Hud, hudStateFor } from '../../src/ui/hud';
+import { Inventory } from '../../src/core/inventory';
+import { CraftScreen } from '../../src/ui/craft';
 
 const css = readFileSync('src/ui/styles.css', 'utf8');
 /** The declarations of the first rule whose selector list is exactly `sel` (top level, not inside @media). */
@@ -119,5 +121,41 @@ describe('hotbar scrolling', () => {
     bar.scrollLeft = 200;
     bar.dispatchEvent(new Event('scroll'));
     expect(bar.classList.contains('more-start')).toBe(true);
+  });
+});
+
+describe('the craft list follows the controller', () => {
+  test('opening and every pad move bring the selected row into view', () => {
+    document.body.replaceChildren();
+    const revealed: Element[] = [];
+    Element.prototype.scrollIntoView = function (this: Element) { revealed.push(this); };
+    const inv = new Inventory();
+    const screen = new CraftScreen(document.body, {
+      inventory: inv, tryCraft: () => false, iconFor: () => '', say: () => {}, sayNeedMore: () => {},
+      sfxTap: () => {}, sfxCraft: () => {}, onOpenChange: () => {}, now: () => 0,
+    });
+    screen.open();
+    const rows = [...document.querySelectorAll('.craft-row')];
+    expect(rows.length).toBe(7);
+    expect(revealed.at(-1)).toBe(rows[0]);
+    for (let i = 1; i < 7; i++) {
+      screen.padInput([1, 0], []);
+      screen.padInput([0, 0], []);
+      expect(revealed.at(-1), `row ${i}`).toBe(rows[i]);
+    }
+    screen.padInput([-1, 0], []); // back round
+    expect(revealed.at(-1)).toBe(rows[5]);
+  });
+});
+
+describe('the bag slot shows different stacks', () => {
+  test('a new stack behind the bag slot is revealed though the slot index stays 9', () => {
+    const { hud, bar } = make();
+    const many = [...stacks, { id: BlockId.Bricks as StackId, count: 1 }, { id: BlockId.Sand as StackId, count: 1 }, { id: BlockId.PathStone as StackId, count: 1 }];
+    hud.render(hudStateFor(many, BlockId.Bricks, false));
+    expect(bar.scrollLeft).toBeGreaterThan(0);
+    bar.scrollLeft = 0; // the player swipes back
+    hud.render(hudStateFor(many, BlockId.Sand, false)); // pad "next slot": still slot 9, another stack
+    expect(bar.scrollLeft).toBeGreaterThan(0);
   });
 });
