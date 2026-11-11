@@ -12,6 +12,8 @@ export interface MeshArrays {
 
 export interface ChunkGeometry extends MeshArrays {
   transparent: MeshArrays;
+  /** The chunk holds a block whose tile shimmers (the scene repaints the atlas only while one is visible). */
+  hasShimmer: boolean;
 }
 
 export type UvFor = (id: BlockId, face: Face) => [number, number, number, number];
@@ -94,12 +96,14 @@ export function buildChunkGeometry(world: World, cx: number, cz: number, uvFor: 
   const z0 = cz * CHUNK_SIZE;
   const x1 = Math.min(x0 + CHUNK_SIZE, world.sizeX);
   const z1 = Math.min(z0 + CHUNK_SIZE, world.sizeZ);
+  let hasShimmer = false;
 
   for (let y = 0; y < world.sizeY; y++) {
     for (let z = z0; z < z1; z++) {
       for (let x = x0; x < x1; x++) {
         const id = world.get(x, y, z);
         if (id === BlockId.Air) continue;
+        if (BLOCKS[id].shimmer) hasShimmer = true;
         if (BLOCKS[id].shape === 'cross') {
           trans.cross(x, y, z, uvFor(id, 'south'));
           continue;
@@ -116,5 +120,5 @@ export function buildChunkGeometry(world: World, cx: number, cz: number, uvFor: 
     }
   }
 
-  return { ...solid.finish(), transparent: trans.finish() };
+  return { ...solid.finish(), transparent: trans.finish(), hasShimmer };
 }
