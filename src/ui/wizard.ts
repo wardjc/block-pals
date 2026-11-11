@@ -109,6 +109,7 @@ export class WizardScreen {
   private focus = 0;
   private padX = 0;
   private padY = 0;
+  private padUsed = false;
   private readonly allow = createDebouncer(150);
   private readonly stock: WizardStock;
 
@@ -474,12 +475,14 @@ export class WizardScreen {
     const t = this.targets();
     if (t.length === 0) return;
     this.focus = Math.max(0, Math.min(t.length - 1, this.focus));
-    t.forEach((e, i) => e.classList.toggle('focus', i === this.focus));
+    // The ring only shows once the controller is used, so it never looks like a second chosen tab.
+    t.forEach((e, i) => e.classList.toggle('focus', this.padUsed && i === this.focus));
   }
 
   padMove(dx: number, dy: number): void {
     const t = this.targets();
     if (t.length === 0) return;
+    this.padUsed = true;
     const step = dx + dy * (this.tab_ === 'trade' ? 4 : 1);
     this.focus = (this.focus + step + t.length * 4) % t.length;
     this.deps.sfx?.tap();

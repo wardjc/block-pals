@@ -37,6 +37,20 @@ import { isStandable } from './core/pathfind';
 import { UsageTracker } from './core/usage';
 import { GrownUps } from './ui/grownups';
 import { createAutosaveControl } from './game/autosaveControl';
+import { TOWER_PLAN } from './core/tower';
+import { VILLAGE_PLAN } from './core/village';
+import type { Puzzle } from './core/puzzles';
+import { WIZARD_STOCK, newWizardState } from './game/wizardTrade';
+import { WizardVisit } from './game/wizardVisit';
+import { makeTowerLead } from './game/leadTower';
+import { mayWizardGreet, wizardSpeech } from './game/speechPolicy';
+import { WIZARD_ICONS, WIZARD_LINES, countSentence, pickWizardLine, wizardPartTexts, type WizardKey } from './content/wizard';
+import { WizardView } from './render/wizard';
+import { Beacon, beaconScreen, markerShown } from './render/beacon';
+import { EdgeMarker } from './ui/marker';
+import { WizardScreen } from './ui/wizard';
+import { pickEntity, pickEntityAlongRay, type EntityBox, type EntityType } from './input/entityPick';
+import { WIZARD_REACH } from './input/tap';
 
 let storage: Storage | null = null;
 try { storage = window.localStorage; } catch { /* Storage may be blocked. */ }
@@ -45,7 +59,7 @@ export const hadSave: boolean = saved !== null; // for Pip's welcome-back line (
 const seed = saved?.seed ?? 2026;
 const loaded = saved ? applySave(saved) : null;
 const initial = loaded ?? generateWorld(seed);
-const { world, spawn, village } = initial;
+const { world, spawn, village, tower, towerRoute } = initial;
 const game = new Game(initial);
 // Plants are blocks; the farm keeps their timers. Offline growth (capped at 8 h) is applied, and any
 // pending stage changes are shown, before the first mesh is built so a catch-up costs no chunk rebuilds.
@@ -66,8 +80,10 @@ const animalView = new AnimalView(scene.scene);
 const sparkles = new Sparkles(scene.scene);
 const flags = loaded?.flags ?? { ledToVillage: false };
 const hints = new FarmHints(flags.hints ?? []);
-const saveGame = (): boolean => storeSave(storage, serialise(game, seed, flags, Date.now(), herd.toJSON()));
-const autosave = createAutosaveControl(() => startAutosave(game, seed, storage, flags, () => herd.toJSON()), saveGame);
+/** Orlo's gift, visit, lead and puzzle counters: read live by every save. */
+const wizard = loaded?.wizard ?? newWizardState();
+const saveGame = (): boolean => storeSave(storage, serialise(game, seed, flags, Date.now(), herd.toJSON(), wizard));
+const autosave = createAutosaveControl(() => startAutosave(game, seed, storage, flags, () => herd.toJSON(), wizard), saveGame);
 const usage = new UsageTracker(storage);
 world.onChange((x, _y, z) => scene.rebuildChunkAt(x, z));
 
@@ -96,6 +112,10 @@ for (const house of village.houses) {
   placeEmblem(emblem, house);
   scene.add(emblem);
 }
+// Orlo stands on the ground floor of his tower facing the door; Glim circles his shoulder. Not solid (like Pip).
+const wizardView = new WizardView(scene.scene, { x: tower.wizardSpot[0], y: tower.wizardSpot[1], z: tower.wizardSpot[2] }, { x: tower.doorInside[0] + 0.5, z: tower.doorInside[2] + 0.5 });
+const beacon = new Beacon(scene.scene, tower.beacon);
+const edgeMarker = new EdgeMarker(document.getElementById('ui')!);
 let pipHop = 0; // seconds into the happy hop; 0 = not hopping
 const BUBBLE_WORDS: Partial<Record<LineKey, string>> = { hello: 'Hi!', welcomeBack: 'Hi!', crafted: 'Yay!', collectedFirst: 'Yay!', upYouCome: 'Up!' };
 let bubbleTimer = 0;
@@ -109,6 +129,7 @@ const lastSpoken: Partial<Record<LineKey, string>> = {};
 const HELD_KEYS: ReadonlySet<LineKey> = new Set<LineKey>([
   'letsMeetNeighbours', 'comeOn', 'thisWay', 'weAreHere', 'cosyHome', 'idleHint', 'letsFindWood',
   'plantSome', 'needWaterSun', 'cropReady', 'holdOutFood', 'tryMunch',
+  'letsVisitWizard', 'meetWizard', 'seeTowerLight',
 ]);
 const speakVariant = (key: LineKey): void => {
   if (!allowLine(hud.breakOpen, key)) return; // the break reminder is never cut by another line
@@ -156,6 +177,7 @@ const peopleCells = (): Cell[] => {
   const [px, py, pz] = pal.feetCell();
   const cells: Cell[] = [[x, y, z], [x, y + 1, z], [px, py, pz], [px, py + 1, pz]];
   for (const v of villagers) cells.push(v.cell, [v.cell[0], v.cell[1] + 1, v.cell[2]]);
+  cells.push(...wizardView.cells());
   return cells;
 };
 /** Everyone, animals too: nothing can be built into an animal and the ground under one is never dug. */
@@ -246,12 +268,12 @@ const hud = new Hud(document.getElementById('ui')!, stackIcon, {
 hud.onMunch(() => game.applyIntent({ kind: 'eat' }));
 
 function syncOverlays(): void {
-  const open = craftScreen.isOpen || grownUps.isOpen || bagTray.isOpen;
+  const open = craftScreen.isOpen || grownUps.isOpen || bagTray.isOpen || wizardScreen.isOpen;
   hud.setOverlayOpen(open);
   game.paused = open;
   if (open) { game.player.setPath(null); game.player.setStick(0, 0); }
 }
-function openCraft(): void { if (!grownUps.isOpen && !bagTray.isOpen) craftScreen.open(); }
+function openCraft(): void { if (!grownUps.isOpen && !bagTray.isOpen && !wizardScreen.isOpen) craftScreen.open(); }
 
 const bagTray = new BagTray(document.getElementById('ui')!, {
   stacks: bagStacks,
@@ -275,6 +297,59 @@ const craftScreen = new CraftScreen(document.getElementById('ui')!, {
   onOpenChange: syncOverlays,
 });
 game.onCraftRequest = openCraft;
+
+// Orlo's voice: every line through wizardSpeech (silent while the break bubble is up), speaker 'wizard'.
+const lastWizard: Partial<Record<WizardKey, string>> = {};
+let wizardAgain: (() => void) | null = null;
+const wizardSay = (key: WizardKey): void => {
+  const text = pickWizardLine(key, lastWizard[key]);
+  if (!text) return;
+  lastWizard[key] = text;
+  wizardAgain = () => voice.say(text, 'wizard');
+  voice.say(text, 'wizard');
+};
+const wizardCount = (p: Puzzle): void => {
+  const lead = pickWizardLine('countAsk', lastWizard.countAsk);
+  lastWizard.countAsk = lead;
+  const parts = [lead, ...countSentence(p)];
+  wizardAgain = () => voice.sayParts('wizard', parts);
+  voice.sayParts('wizard', parts); // stitched clips only, never the tablet voice
+};
+const wizardVoice = wizardSpeech(() => hud.breakOpen, {
+  line: k => wizardSay(k as WizardKey),
+  countSentence: p => wizardCount(p as Puzzle),
+  again: () => wizardAgain?.(),
+});
+const wizardScreen = new WizardScreen(document.getElementById('ui')!, {
+  inventory: game.inventory,
+  state: () => wizard,
+  save: () => saveNow(),
+  iconFor: id => scene.atlas.iconDataUrl(id as BlockId),
+  speak: { line: k => wizardVoice.line(k), countSentence: p => wizardVoice.countSentence(p), again: () => wizardVoice.again() },
+  pipNudge: () => { if (!hud.breakOpen) pal.react('puzzleStuck'); },
+  pipGot: () => react('gotMagicBlock'),
+  rng: Math.random,
+  celebrate: () => wizardView.celebrate(),
+  onOpenChange: open => { syncOverlays(); if (open) voice.prefetch(wizardPartTexts(), 'wizard'); },
+  sfx: { tap: () => sfx.tap(), gift: () => { sfx.gift(); renderHud(); }, nudge: () => sfx.nudge(), solved: () => sfx.solved() },
+  stock: WIZARD_STOCK,
+});
+/** The screen opens only when no other overlay has the game paused. */
+function openWizard(): void {
+  if (craftScreen.isOpen || grownUps.isOpen || bagTray.isOpen || wizardScreen.isOpen) return;
+  wizardScreen.open();
+}
+game.on(e => { if (e.type === 'talk') openWizard(); });
+// The pad's place button talks when Orlo is right in front of him (within 2 blocks, roughly faced).
+game.wizardInFront = () => {
+  const p = game.player.pos;
+  const wx = tower.wizardSpot[0] + 0.5, wz = tower.wizardSpot[2] + 0.5;
+  if (Math.abs(p.y - tower.wizardSpot[1]) > 1 || Math.hypot(wx - p.x, wz - p.z) > 2.2) return false;
+  const want = Math.atan2(wx - p.x, wz - p.z);
+  let d = Math.abs(want - game.player.heading) % (Math.PI * 2);
+  if (d > Math.PI) d = Math.PI * 2 - d;
+  return d < Math.PI / 3;
+};
 
 let pad = new GamepadInput(loadMapping(storage));
 const grownUps = new GrownUps(document.getElementById('ui')!, {
@@ -304,8 +379,8 @@ const gesture = new GestureClassifier();
 const canvas = scene.renderer.domElement;
 type Hit = ReturnType<typeof scene.pick>;
 let pressHit: Hit = null;
-/** The animal under the finger when it went down: a hold on it does nothing and never digs behind it. */
-let pressAnimal: number | null = null;
+/** The animal or wizard under the finger when it went down: a hold on it does nothing and never digs behind it. */
+let pressEntity: { type: EntityType; id: number } | null = null;
 /**
  * The animal the finger is on: the ray through the point against the animals' padded boxes, the
  * nearest of animal and block along it wins, and an animal behind a block is never picked.
@@ -314,8 +389,29 @@ const animalAt = (clientX: number, clientY: number): number | null => {
   const r = scene.pickRay(clientX, clientY);
   return pickAnimalAlongRay(r.origin, r.dir, animalView.boxes(), r.t);
 };
+/**
+ * Who the finger is on: the animals and the wizard in one list along the pick ray (nearest wins,
+ * nobody behind a block). A finger near the wizard (his 72 px disc) still counts when nothing
+ * stands in front of him.
+ */
+const entityAt = (clientX: number, clientY: number): { type: EntityType; id: number } | null => {
+  const r = scene.pickRay(clientX, clientY);
+  const boxes: EntityBox[] = animalView.boxes().map(b => ({ ...b, type: 'animal' as const }));
+  if (wizardView.group.visible) boxes.push({ ...wizardView.box(), type: 'wizard' });
+  const hit = pickEntityAlongRay(r.origin, r.dir, boxes, r.t);
+  if (hit || !wizardView.group.visible) return hit;
+  const rect = canvas.getBoundingClientRect();
+  const c = wizardView.screenCentre(scene.camera, rect);
+  if (c.sz < -1 || c.sz > 1) return null;
+  const disc = pickEntity({ x: clientX, y: clientY }, [{ type: 'wizard', id: -1, ...c }]);
+  if (!disc) return null;
+  const s = tower.wizardSpot;
+  const cam = scene.camera.position;
+  const far = Math.hypot(s[0] + 0.5 - cam.x, s[1] + 1.2 - cam.y, s[2] + 0.5 - cam.z);
+  return r.t === null || r.t >= far - 0.7 ? disc : null;
+};
 
-const holdNow = (hit: Hit) => resolveHold(hit, game.player.feetCell(), world, occupied(), pressAnimal !== null);
+const holdNow = (hit: Hit) => resolveHold(hit, game.player.feetCell(), world, occupied(), pressEntity !== null);
 function endHoldVisuals(): void {
   hud.hideDigRing();
   scene.showOutline(null);
@@ -341,15 +437,20 @@ function handleGesture(events: GestureEvent[]): void {
       case 'tap':
         endHoldVisuals();
         if (!allowTap('tap', performance.now())) break;
-        const tapped = animalAt(ev.x, ev.y);
+        const tappedOn = entityAt(ev.x, ev.y);
+        const tapped = tappedOn?.type === 'animal' ? tappedOn.id : null;
         const animal = tapped === null ? undefined : herd.animals.find(o => o.id === tapped);
         const pf = game.player.pos;
+        const ws = tower.wizardSpot;
         game.applyIntent(resolveTap(
           scene.pick(ev.x, ev.y), game.effectiveSelected(), game.player.feetCell(), world, occupied(),
           {
             plantAt: c => game.farm.isPlantCell(c),
             animalHit: animal
               ? { id: animal.id, dist: Math.hypot(animal.x - pf.x, animal.z - pf.z), cell: [Math.floor(animal.x), animal.y, Math.floor(animal.z)] }
+              : null,
+            wizardHit: tappedOn?.type === 'wizard'
+              ? { dist: Math.max(Math.hypot(ws[0] + 0.5 - pf.x, ws[2] + 0.5 - pf.z), Math.abs(ws[1] - pf.y) > 1.5 ? WIZARD_REACH + 1 : 0), cell: ws }
               : null,
           },
         ));
@@ -374,7 +475,7 @@ canvas.addEventListener('pointerdown', e => {
   if (gesture.activeId !== e.pointerId) return; // a second finger: ignored
   try { canvas.setPointerCapture(e.pointerId); } catch { /* not every pointer can be captured */ }
   pressHit = scene.pick(e.clientX, e.clientY);
-  pressAnimal = animalAt(e.clientX, e.clientY);
+  pressEntity = entityAt(e.clientX, e.clientY);
 });
 canvas.addEventListener('pointermove', e => {
   if (hud.blockingOverlayOpen) { cancelPress(); return; }
@@ -426,6 +527,16 @@ const feet: Cell = [0, 0, 0]; // reused every frame
 const isAudioLocked = (): boolean => audioLocked(tapped, sfx.audioOut()?.ctx.state);
 const lockedHold = new LockedHold();
 const lead = new LeadToVillage(village.route, village.square, flags.ledToVillage);
+// Pip's second walk: to the wizard, once per save, only once he has a gem and the village walk is done.
+const leadTower = makeTowerLead(tower, towerRoute, TOWER_PLAN.pad, wizard.led, {
+  hasGem: () => game.inventory.count(WIZARD_STOCK.gem as StackId) > 0,
+  ledToVillage: () => flags.ledToVillage,
+  villageLeading: () => lead.state === 'leading',
+  villagePad: VILLAGE_PLAN.pad,
+});
+const visit = new WizardVisit();
+let currentWizardHello: string | null = null;
+let wizardWarmed = false;
 let acted = false;
 game.on(e => { if (e.type !== 'idle') acted = true; });
 let pendingPip: LineKey | null = null;
@@ -470,7 +581,16 @@ function updateVillage(dt: number): void {
   feet[0] = Math.floor(pp.x); feet[1] = Math.floor(pp.y); feet[2] = Math.floor(pp.z);
   const cell = feet;
   const ev = lead.update(dt, cell, acted, leadPaused(paused, breakOpen));
+  const evT = leadTower.update(dt, cell, acted, leadPaused(paused, breakOpen));
   acted = false;
+  if (evT === 'start') { pal.setLead(towerRoute, () => leadTower.targetIndex()); pendingPip = 'letsVisitWizard'; }
+  else if (evT === 'comeOn' || evT === 'thisWay') pendingPip = evT;
+  else if (evT === 'arrive') { pal.setLead(null); pendingPip = 'meetWizard'; }
+  else if (evT === 'giveUp') pal.setLead(null);
+  if (leadTower.takeFlagSet()) {
+    wizard.led = true;
+    saveNow();
+  }
   if (ev === 'start') { pal.setLead(village.route, () => lead.targetIndex()); pendingPip = 'letsMeetNeighbours'; }
   else if (ev === 'comeOn' || ev === 'thisWay') pendingPip = ev;
   else if (ev === 'arrive') { pal.setLead(null); pendingPip = 'weAreHere'; }
@@ -499,11 +619,36 @@ function updateVillage(dt: number): void {
   if (lockedHold.update(dt, locked)) {
     pendingPip = null;
     greet.skipCurrent(cell, village.houses);
+    visit.skipCurrent();
+  }
+  const speech: SpeechContext = {
+    breakOpen, speaking: voice.speaking(), locked, pipPending: pendingPip !== null, gestureBusy: gesture.busy,
+  };
+  // Orlo: he counts as met the first time he stands in the tower or on its doorstep (saved at once,
+  // so the star marker is gone for good); his hello waits for Pip, the break bubble and the audio.
+  const wizardHello = visit.update(cell, tower, !mayWizardGreet(speech));
+  if (visit.firstEnter() && !wizard.met) { wizard.met = true; saveNow(); }
+  if (visit.takeCancel() && currentWizardHello) {
+    if (voice.stopIfCurrent(currentWizardHello, 'wizard')) hud.hideBubble();
+    currentWizardHello = null;
+  }
+  if (!wizardWarmed && Math.hypot(cell[0] - tower.doorFront[0], cell[2] - tower.doorFront[2]) < 14) {
+    wizardWarmed = true;
+    voice.prefetch(WIZARD_LINES.hello, 'wizard');
   }
   if (locked) return;
-  const speech: SpeechContext = {
-    breakOpen, speaking: voice.speaking(), locked: false, pipPending: pendingPip !== null, gestureBusy: gesture.busy,
-  };
+  if (wizardHello) {
+    const text = pickWizardLine('hello', lastWizard.hello);
+    lastWizard.hello = text;
+    currentWizardHello = text;
+    wizardAgain = () => voice.say(text, 'wizard');
+    voice.say(text, 'wizard', { holdForAudio: true });
+    hud.showBubble(WIZARD_ICONS.hello, 'Hi!');
+    clearTimeout(bubbleTimer);
+    bubbleTimer = window.setTimeout(() => hud.hideBubble(), 3000);
+    pal.hush(5000);
+    return;
+  }
   // Pip waits for a neighbour to finish (and the other way round): nobody talks over anybody.
   if (pendingPip && mayPipSpeakQueued(speech)) {
     const said = pendingPip;
@@ -608,6 +753,28 @@ function updateShimmer(dt: number): void {
   if (ripe) sparkles.burst({ x: ripe[0] + 0.5, y: ripe[1] + 1.1, z: ripe[2] + 0.5 }, 'sun', 2);
 }
 
+/** The tower's far light and the star marker; Pip notices the light once (saved in the wizard's hints). */
+let markerClock = 0;
+let pipLookFor = 0;
+let lastBeacon = { onScreen: false, x: 0, y: 0, angle: 0, distance: 0 };
+function updateTowerLight(dt: number, seconds: number): void {
+  beacon.update(scene.camera, seconds);
+  markerClock += dt;
+  if (markerClock < 0.1) return; // ten checks a second is plenty for a picture on the edge
+  markerClock = 0;
+  const w = canvas.clientWidth || window.innerWidth;
+  const h = canvas.clientHeight || window.innerHeight;
+  lastBeacon = beaconScreen(scene.camera, tower.beacon, w, h);
+  const shown = markerShown(lastBeacon, wizard.met, hud.blockingOverlayOpen || hud.breakOpen);
+  edgeMarker.update(lastBeacon, shown);
+  if (shown && !wizard.hints.includes('seeLight') && pendingPip === null && !game.paused) {
+    wizard.hints.push('seeLight');
+    pendingPip = 'seeTowerLight';
+    pipLookFor = 2.5;
+    saveNow();
+  }
+}
+
 let fpsValue = 0;
 let fpsFrames = 0;
 let fpsSince = performance.now();
@@ -648,7 +815,10 @@ if (debugOn) {
     flags: () => ({ ...flags }),
     leadState: () => lead.state,
     drawCalls: () => scene.renderer.info.render.calls,
-    stats: () => ({ ...scene.stats(), fps: fpsValue, worldTriangles: scene.triangleCount(), animals: herd.animals.length, particles: sparkles.live }),
+    stats: () => {
+      const gl = scene.renderer.getContext();
+      return { ...scene.stats(), fps: fpsValue, worldTriangles: scene.triangleCount(), animals: herd.animals.length, particles: sparkles.live, depthBits: gl.getParameter(gl.DEPTH_BITS) as number };
+    },
     herd: () => herd.animals.map(a => ({ id: a.id, kind: a.kind, x: a.x, y: a.y, z: a.z, state: a.state, giftIn: a.giftIn })),
     pasture: () => ({ ...pasture, roam, gate: village.farm.gate }),
     animalAt: (x: number, y: number) => animalAt(x, y), // the animal a finger at this point would be on (the real pick)
@@ -692,6 +862,34 @@ if (debugOn) {
     pal,
     hud,
     craftScreen,
+    tower: () => ({ ...tower, route: towerRoute, wizardSpot: tower.wizardSpot }),
+    wizard: () => ({
+      state: { ...wizard, hints: [...wizard.hints] },
+      open: () => openWizard(),
+      close: () => wizardScreen.close(),
+      tab: (t: 'trade' | 'puzzle') => wizardScreen.tab(t),
+      isOpen: wizardScreen.isOpen,
+      currentTab: wizardScreen.currentTab,
+      puzzle: () => {
+        const s = wizardScreen.session;
+        return s ? { ...s.puzzle, solved: s.solved, helped: s.helped, wrong: s.wrong, basket: { ...s.basket } } : null;
+      },
+      hint: () => wizardScreen.session?.hint() ?? null,
+      advance: (seconds: number) => { for (let t = 0; t < seconds; t += 0.5) wizardScreen.update(0.5); },
+      screenOf: () => {
+        const r = canvas.getBoundingClientRect();
+        const c = wizardView.screenCentre(scene.camera, r);
+        return { x: c.sx, y: c.sy };
+      },
+      entityAt: (x: number, y: number) => entityAt(x, y),
+    }),
+    giveGem: (n: number) => { game.inventory.add(WIZARD_STOCK.gem as StackId, n); renderHud(); return game.inventory.count(WIZARD_STOCK.gem as StackId); },
+    beacon: () => ({ ...lastBeacon, markerVisible: edgeMarker.visible, spriteVisible: beacon.sprite.visible }),
+    leadTowerState: () => leadTower.state,
+    depthBits: () => {
+      const gl = scene.renderer.getContext();
+      return gl.getParameter(gl.DEPTH_BITS) as number;
+    },
   };
   (window as unknown as { __triangles: () => number }).__triangles = () => scene.triangleCount();
 }
@@ -713,6 +911,9 @@ function frame(now: number): void {
   const { stick, look, pressed } = pad.poll(now);
   if (grownUps.isOpen) {
     game.player.setStick(0, 0);
+  } else if (wizardScreen.isOpen) {
+    game.player.setStick(0, 0);
+    wizardScreen.padInput(stick, pressed);
   } else if (craftScreen.isOpen) {
     game.player.setStick(0, 0);
     craftScreen.padInput(stick, pressed);
@@ -762,6 +963,10 @@ function frame(now: number): void {
   updateVillage(dt);
   pal.update(world, game.player, helperDt(game.paused || hud.blockingOverlayOpen, dt));
   for (const v of villagers) idleVillager(v.model, now / 1000);
+  // The puzzle's hint clock stands still while the break bubble is up.
+  wizardScreen.update(hud.breakOpen ? 0 : dt);
+  const wizardSpeaking = voice.speaking() && voice.last.key.startsWith('wizard/');
+  wizardView.update(dt, now / 1000, game.player.pos, wizardSpeaking, scene.camera.position);
   if (pal.takeHop()) pipHop = 0.0001;
   let hopY = 0;
   if (pipHop > 0) {
@@ -771,6 +976,11 @@ function frame(now: number): void {
   }
   pip.position.set(pal.pos.x, pal.pos.y + hopY, pal.pos.z);
   pip.rotation.y = pal.heading;
+  if (pipLookFor > 0) {
+    // Pip turns his head towards the far light he has just noticed.
+    pipLookFor -= dt;
+    pip.rotation.y = Math.atan2(tower.beacon.x - pal.pos.x, tower.beacon.z - pal.pos.z);
+  }
   animatePalTrot(pip, pipWalk, dt, Math.hypot(pal.pos.x - prevPipX, pal.pos.z - prevPipZ));
   prevPipX = pal.pos.x; prevPipZ = pal.pos.z;
   scene.followTarget(playerModel.position, dt);
@@ -780,6 +990,7 @@ function frame(now: number): void {
   pipGone = pipHiddenFor(scene.rig.position, scene.rig.forward, pip.position, pipGone);
   pip.visible = !pipGone;
   scene.updateMarker(dt);
+  updateTowerLight(dt, now / 1000);
   scene.render();
 
   // Redraw the hotbar only when a count or the selection changed.

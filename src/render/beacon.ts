@@ -14,7 +14,7 @@ export const BEACON_NEAR_HIDE = 10;
 /** Farther than this the sprite sits on the line of sight at this distance (inside the far plane, read not copied). */
 export const BEACON_CLAMP = CAMERA_FAR - 2;
 /** Size of the star in blocks at its real distance. */
-export const BEACON_SIZE = 3;
+export const BEACON_SIZE = 6;
 export const BEACON_PULSE_SECONDS = 4;
 export const BEACON_OPACITY_MIN = 0.8;
 export const BEACON_OPACITY_MAX = 1;
