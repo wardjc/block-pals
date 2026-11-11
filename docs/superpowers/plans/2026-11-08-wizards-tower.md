@@ -1,6 +1,6 @@
 # The Wizard's Tower Implementation Plan
 
-**Status: plan approved by the parent; built after Village step 2 (merged), the bigger, deeper world with caves, the villagers-wander step and the grumps/weapons step, before Village step 3. Build in chunks, each reviewed (Claude builds, Codex reviews; Claude is the fallback builder and reviewer if Codex is out of allowance). Docs only: this PR contains no product code.**
+**Status: chunks A to D built (chunk D: the wizard himself, his screen, the far light, the lead to the tower, wiring, budgets, browser story; the gem trades wait for the grumps step, which adds the gem item). Plan approved by the parent; built after Village step 2 (merged), the bigger, deeper world with caves, the villagers-wander step and the grumps/weapons step, before Village step 3. Build in chunks, each reviewed (Claude builds, Codex reviews; Claude is the fallback builder and reviewer if Codex is out of allowance). Docs only: this PR contains no product code.**
 
 > **For agentic workers:** REQUIRED SUB-SKILL: Use superpowers:subagent-driven-development (recommended) or superpowers:executing-plans to implement this plan task-by-task. Steps use checkbox (`- [ ]`) syntax for tracking.
 
