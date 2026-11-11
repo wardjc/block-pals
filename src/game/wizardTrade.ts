@@ -1,4 +1,5 @@
 import { MAX_STACK } from '../core/inventory';
+import { BUNDLE, MYTHICAL, PRICE } from '../core/mythical';
 
 /**
  * The wizard's trades (spec §7g): gems for bundles of mythical blocks, the one free welcome block,
@@ -22,18 +23,11 @@ export interface WizardStock {
   gem: number;
 }
 
-/**
- * PROVISIONAL, for later wiring. The mythical block ids and the gem item are added by other changes
- * that are not on main yet: the blocks by plan Task 1 (`src/core/mythical.ts`: MYTHICAL, PRICE,
- * BUNDLE; planned ids StarlightCrystal 40, RainbowBlock 41, CloudBlock 42, MoonBlock 43, SunBlock 44,
- * DragonScaleBlock 45, StarBlock 46, MagicMirror 47) and the gem by the grumps step
- * (`ItemId.Gem = 123`). When they land, build this from those exports instead of the numbers here.
- */
+/** The gem item is added by the grumps step (`ItemId.Gem = 123`); the blocks come from `src/core/mythical.ts`. */
 export const WIZARD_STOCK: WizardStock = {
-  //      Starlight, Rainbow, Cloud, Moon, Sun, Dragon-scale, Star, Magic mirror
-  order: [40, 41, 42, 43, 44, 45, 46, 47],
-  price: { 40: 2, 41: 1, 42: 1, 43: 1, 44: 1, 45: 2, 46: 2, 47: 2 },
-  bundle: 4,
+  order: MYTHICAL,
+  price: PRICE,
+  bundle: BUNDLE,
   gem: 123,
 };
 

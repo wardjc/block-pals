@@ -156,7 +156,7 @@ export class PuzzleSession {
     this.solved = true;
   }
 
-  /** Hint 3: Glim lights the answer and the puzzle completes itself. */
+  /** Hint 3: Orlo lights the answer and the puzzle completes itself. */
   private finishForHim(): void {
     if (this.puzzle.kind === 'count') for (const t of THINGS) this.basket[t] = this.wants[t];
     this.level = 3;
