@@ -50,8 +50,8 @@ describe('farm blocks', () => {
       expect((BlockId as unknown as Record<string, number>)[name]).toBe(id);
       expect(Object.hasOwn(BLOCKS, id)).toBe(true);
     }
-    expect(Math.max(...Object.keys(BLOCKS).map(Number))).toBe(35);
-    expect(Object.keys(BLOCKS).length).toBe(36);
+    expect(Math.max(...Object.keys(BLOCKS).map(Number))).toBe(47); // the mythical blocks (40..47) follow; see mythical.test.ts
+    expect(Object.keys(BLOCKS).length).toBe(44);
   });
 
   test('plants are non-solid, collectable, transparent crosses with stage info', () => {
