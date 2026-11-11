@@ -83,7 +83,8 @@ export class Beacon {
   }
 
   update(camera: THREE.Camera, timeSeconds: number): void {
-    camera.getWorldPosition(this.cam);
+    // The game camera has no parent: its position is its world position (no matrix update each frame).
+    if (camera.parent) camera.getWorldPosition(this.cam); else this.cam.copy(camera.position);
     const d = this.cam.distanceTo(this.at);
     const s = this.sprite;
     if (d < BEACON_NEAR_HIDE) { s.visible = false; return; }
