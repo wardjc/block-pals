@@ -21,7 +21,7 @@ class FakeBag implements Bag {
   remove(id: number, n = 1): boolean { if (this.count(id) < n) return false; this.m.set(id, this.count(id) - n); return true; }
 }
 
-function setup(o: { bag?: Bag; state?: WizardState; breakOpen?: () => boolean } = {}) {
+function setup(o: { bag?: Bag; state?: WizardState; breakOpen?: () => boolean; now?: () => number } = {}) {
   const bag = o.bag ?? new FakeBag();
   const state = o.state ?? newWizardState();
   const said: string[] = [];
@@ -43,7 +43,7 @@ function setup(o: { bag?: Bag; state?: WizardState; breakOpen?: () => boolean } 
     pipNudge: () => { counts.nudge++; },
     pipGot: () => { counts.got++; },
     rng: mulberry32(7),
-    now: () => (t += 1000),
+    now: o.now ?? (() => (t += 1000)),
     celebrate: () => { counts.celebrate++; },
     onOpenChange: open => counts.open.push(open),
   });
@@ -410,5 +410,21 @@ describe('WizardScreen: overlay and break bubble', () => {
     }
     expect(solves).toBeGreaterThan(20);
     expect(bag.count(BlockId.Planks)).toBe(10);
+  });
+});
+
+describe('WizardScreen: the opening tap', () => {
+  it('the browser click that echoes the tap on Orlo never chooses a card; a real tap a moment later does', () => {
+    let clock = 10_000;
+    const { screen, root, bag, state } = setup({ now: () => clock });
+    screen.open();
+    clock += 120; // the opening tap's own click, at the same spot
+    cards(root)[4].click();
+    expect(state.gift).toBe(false);
+    expect(total(bag)).toBe(0);
+    clock += 1000; // he looks, then chooses
+    cards(root)[4].click();
+    expect(state.gift).toBe(true);
+    expect(total(bag)).toBe(1);
   });
 });

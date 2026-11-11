@@ -25,6 +25,8 @@ export const THING_ICONS: Record<Thing, string> = { apple: '🍎', carrot: '🥕
 export const NEXT_PUZZLE_SECONDS = 2.2;
 /** Pip's "you got a magic block" reaction is said at most this often. */
 export const GOT_REACTION_SECONDS = 20;
+/** Clicks this soon after opening are the opening tap's own echo, never a choice. */
+export const GHOST_CLICK_MS = 450;
 
 export interface WizardSpeak {
   line(key: WizardKey): void;
@@ -110,6 +112,7 @@ export class WizardScreen {
   private padX = 0;
   private padY = 0;
   private padUsed = false;
+  private openedAt = -Infinity;
   private readonly allow = createDebouncer(150);
   private readonly stock: WizardStock;
 
@@ -118,6 +121,11 @@ export class WizardScreen {
     this.root.hidden = true;
     for (const type of ['pointerdown', 'pointerup', 'pointermove', 'touchstart', 'touchend', 'mousedown', 'mouseup', 'click'])
       this.root.addEventListener(type, e => e.stopPropagation());
+    // The tap on Orlo that opens the screen is followed by the browser's own click at the same spot:
+    // it must never land on a card (that would choose his gift for him).
+    this.root.addEventListener('click', e => {
+      if (this.now() - this.openedAt < GHOST_CLICK_MS) { e.stopPropagation(); e.preventDefault(); }
+    }, true);
     const head = el('div', 'wiz-head');
     const orlo = button('wiz-orlo', '🧙', 'Orlo');
     orlo.appendChild(el('span', 'wiz-glim', '✨'));
@@ -148,6 +156,7 @@ export class WizardScreen {
   open(): void {
     if (this.open_) return;
     this.open_ = true;
+    this.openedAt = this.now();
     this.root.hidden = false;
     this.deps.onOpenChange(true);
     // The gift is the first thing he sees; with no gem (and the gift had) the puzzles are more use.
