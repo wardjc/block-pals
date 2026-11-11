@@ -648,6 +648,7 @@ if (debugOn) {
     stats: () => ({ ...scene.stats(), fps: fpsValue, worldTriangles: scene.triangleCount(), animals: herd.animals.length, particles: sparkles.live }),
     herd: () => herd.animals.map(a => ({ id: a.id, kind: a.kind, x: a.x, y: a.y, z: a.z, state: a.state, giftIn: a.giftIn })),
     pasture: () => ({ ...pasture, roam, gate: village.farm.gate }),
+    animalAt: (x: number, y: number) => animalAt(x, y), // the animal a finger at this point would be on (the real pick)
     screenOfAnimal: (id: number) => {
       const p = animalView.screenPositions(scene.camera, canvas.getBoundingClientRect()).find(o => o.id === id);
       return p ? { x: p.sx, y: p.sy } : null;

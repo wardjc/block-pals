@@ -116,17 +116,24 @@ test.describe('eating and the farm', () => {
     const lay = await page.evaluate(() => (window.__debug as unknown as FarmDbg).layoutFarm());
     const p = lay.pasture;
     await standLooking(page, { x: p.x0 + 3, z: p.z0 + 4 }, p.x0 + 8.5, p.z0 + 5.5);
-    await page.evaluate(() => (window.__debug as unknown as FarmDbg).game.applyIntent({ kind: 'walk', to: [0, 0, 0] }));
+    // He must stand still: a walk in progress drags the camera, and a small animal slides out from
+    // under the spot we aim at between measuring and pressing (that was the flake).
+    await expect.poll(async () => {
+      const a = await page.evaluate(() => (window.__debug as unknown as FarmDbg).playerPos());
+      await page.waitForTimeout(150);
+      const b = await page.evaluate(() => (window.__debug as unknown as FarmDbg).playerPos());
+      return Math.hypot(a.x - b.x, a.z - b.z);
+    }).toBeLessThan(0.001);
     const animals = await page.evaluate(() => (window.__debug as unknown as FarmDbg).herd());
     expect(animals).toHaveLength(10);
-    // The animal nearest to him that is on screen.
+    // The animal nearest to him that is on screen, and the real pick agrees the finger is on it.
     let target: { id: number; x: number; y: number } | null = null;
     for (let i = 0; i < 40 && !target; i++) {
       const found = await page.evaluate(() => {
         const d = window.__debug as unknown as FarmDbg;
         const me = d.playerPos();
         const list = d.herd().map(a => ({ a, s: d.screenOfAnimal(a.id), dist: Math.hypot(a.x - me.x, a.z - me.z) }))
-          .filter(o => o.s && o.s.x > 150 && o.s.x < 1130 && o.s.y > 150 && o.s.y < 650 && o.dist < 6)
+          .filter(o => o.s && o.s.x > 150 && o.s.x < 1130 && o.s.y > 150 && o.s.y < 650 && o.dist < 6 && d.animalAt(o.s.x, o.s.y) === o.a.id)
           .sort((u, v) => u.dist - v.dist);
         return list[0] ? { id: list[0].a.id, ...list[0].s! } : null;
       });
@@ -136,6 +143,7 @@ test.describe('eating and the farm', () => {
     const groundBefore = await page.evaluate(() => (window.__debug as unknown as FarmDbg).game.world.get(0, 0, 0)); // sentinel: world reads work
     void groundBefore;
     const edits = await page.evaluate(() => JSON.stringify((window.__debug as unknown as FarmDbg).bag()));
+    expect(await page.evaluate(([x, y]) => (window.__debug as unknown as FarmDbg).animalAt(x, y), [target!.x, target!.y])).toBe(target!.id); // still under the finger
     await press(page, target!.x, target!.y, 900, async () => { await expect(page.locator('.dig-ring')).toBeHidden(); });
     await page.waitForTimeout(300);
     expect(await page.evaluate(() => JSON.stringify((window.__debug as unknown as FarmDbg).bag()))).toBe(edits); // nothing dug
