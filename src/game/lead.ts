@@ -45,6 +45,8 @@ export class LeadToVillage {
     private readonly square: Rect,
     flagSet: boolean,
     private readonly pad: Rect = VILLAGE_PLAN.pad,
+    /** An extra condition for the offer (the walk to the tower needs a gem, say). The timers still run while it is false. */
+    private readonly canOffer: (playerCell: Cell) => boolean = () => true,
   ) {
     this.state = flagSet || route.length < 2 ? 'done' : 'waiting';
   }
@@ -67,6 +69,7 @@ export class LeadToVillage {
     if (this.sinceAction !== null) this.sinceAction += dt;
     else if (active) this.sinceAction = 0;
     if (this.sinceLoad < LEAD_OFFER_AFTER_LOAD && !(this.sinceAction !== null && this.sinceAction >= LEAD_OFFER_AFTER_ACTION)) return null;
+    if (!this.canOffer(playerCell)) return null;
     this.state = 'leading';
     this.playerIdx = this.nearestIndex(playerCell, true);
     this.bestIdx = this.playerIdx;
