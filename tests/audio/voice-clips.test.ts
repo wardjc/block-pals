@@ -476,3 +476,134 @@ describe('suspend and resume mid-clip, and held lines', () => {
     expect(r.synth.speak).toHaveBeenCalledTimes(1);
   });
 });
+
+describe('Voice.sayParts (the wizard\'s stitched counting sentence)', () => {
+  const PARTS = ['Bring me', 'three', 'apples'];
+  const partManifest = (parts: string[]) => ({
+    ...manifest,
+    ...Object.fromEntries(parts.map((t) => { const k = clipKey('wizard', t); return [k, { file: `${k}.ogg`, text: t, duration: 1 }]; })),
+  });
+
+  it('plays the parts in order, one gap each, and counts as one line throughout', async () => {
+    vi.useFakeTimers();
+    try {
+      const r = rig({ manifest: partManifest(PARTS) });
+      r.voice.sayParts('wizard', PARTS, 120);
+      expect(r.voice.speaking()).toBe(true);
+      await vi.advanceTimersByTimeAsync(5);
+      expect(r.sources).toHaveLength(1);
+      expect(r.voice.last.key).toBe(clipKey('wizard', 'Bring me'));
+      r.sources[0].onended!();
+      expect(r.voice.speaking()).toBe(true); // the gap still counts
+      await vi.advanceTimersByTimeAsync(100);
+      expect(r.sources).toHaveLength(1); // not before the gap is over
+      await vi.advanceTimersByTimeAsync(30);
+      expect(r.sources).toHaveLength(2);
+      expect(r.voice.last.key).toBe(clipKey('wizard', 'three'));
+      r.sources[1].onended!();
+      await vi.advanceTimersByTimeAsync(130);
+      expect(r.sources).toHaveLength(3);
+      expect(r.voice.last.key).toBe(clipKey('wizard', 'apples'));
+      expect(r.voice.speaking()).toBe(true);
+      r.sources[2].onended!();
+      expect(r.voice.speaking()).toBe(false);
+      await vi.advanceTimersByTimeAsync(500);
+      expect(r.sources).toHaveLength(3);
+      expect(r.synth.speak).not.toHaveBeenCalled();
+    } finally {
+      vi.useRealTimers();
+    }
+  });
+
+  it('a break line interrupts it and nothing replaces the break', async () => {
+    vi.useFakeTimers();
+    try {
+      const r = rig({ manifest: partManifest(PARTS) });
+      r.voice.sayParts('wizard', PARTS, 120);
+      await vi.advanceTimersByTimeAsync(5);
+      r.sources[0].onended!();
+      await vi.advanceTimersByTimeAsync(130);
+      expect(r.sources).toHaveLength(2);
+      r.voice.say(TEXT); // Pip's break reminder
+      await vi.advanceTimersByTimeAsync(5);
+      expect(r.sources[1].stop).toHaveBeenCalled();
+      expect(r.sources).toHaveLength(3);
+      expect(r.voice.last.key).toBe(KEY);
+      r.sources[1].onended?.(); // the stopped part ending late changes nothing
+      await vi.advanceTimersByTimeAsync(1000);
+      expect(r.sources).toHaveLength(3);
+      expect(r.voice.speaking()).toBe(true); // the break line is still playing
+      expect(r.sources[2].stop).not.toHaveBeenCalled();
+    } finally {
+      vi.useRealTimers();
+    }
+  });
+
+  it('a newer line or stop() cancels the rest of the parts', async () => {
+    vi.useFakeTimers();
+    try {
+      const r = rig({ manifest: partManifest(PARTS) });
+      r.voice.sayParts('wizard', PARTS, 120);
+      await vi.advanceTimersByTimeAsync(5);
+      r.sources[0].onended!();
+      r.voice.stop(); // in the gap
+      await vi.advanceTimersByTimeAsync(500);
+      expect(r.sources).toHaveLength(1);
+      expect(r.voice.speaking()).toBe(false);
+    } finally {
+      vi.useRealTimers();
+    }
+  });
+
+  it('a missing wizard clip never uses the tablet voice: that part is skipped, the rest still plays', async () => {
+    const r = rig({ manifest: partManifest(['Bring me', 'apples']) }); // 'three' has no clip
+    r.voice.sayParts('wizard', PARTS, 1);
+    await settle();
+    expect(r.sources).toHaveLength(1);
+    r.sources[0].onended!();
+    await settle();
+    expect(r.sources).toHaveLength(2);
+    expect(r.voice.last.key).toBe(clipKey('wizard', 'apples'));
+    r.sources[1].onended!();
+    expect(r.voice.speaking()).toBe(false);
+    expect(r.synth.speak).not.toHaveBeenCalled();
+  });
+
+  it('with no clips at all it says nothing, never the tablet voice, and does not stay speaking', async () => {
+    for (const opts of [{ manifest: {} }, { manifestFails: true }, { clip: 'missing' as const }, { noAudio: true }]) {
+      const r = rig(opts);
+      r.voice.sayParts('wizard', PARTS);
+      await settle();
+      expect(r.sources).toHaveLength(0);
+      expect(r.synth.speak).not.toHaveBeenCalled();
+      expect(r.voice.speaking()).toBe(false);
+    }
+  });
+
+  it('while audio is locked it is dropped quietly, never spoken by the tablet voice', async () => {
+    const r = rig({ manifest: partManifest(PARTS), state: 'suspended' });
+    r.voice.sayParts('wizard', PARTS);
+    await settle();
+    expect(r.sources).toHaveLength(0);
+    expect(r.synth.speak).not.toHaveBeenCalled();
+    expect(r.voice.speaking()).toBe(false);
+  });
+
+  it('an empty list does nothing and does not cut the line that is playing', async () => {
+    const r = rig();
+    r.voice.say(TEXT);
+    await settle();
+    r.voice.sayParts('wizard', ['', '']);
+    expect(r.sources[0].stop).not.toHaveBeenCalled();
+    expect(r.voice.speaking()).toBe(true);
+  });
+
+  it('without clip support (no deps) it says nothing at all', () => {
+    const synth = { getVoices: () => [], cancel: vi.fn(), speak: vi.fn() };
+    vi.stubGlobal('SpeechSynthesisUtterance', class { constructor(public text: string) {} });
+    const v = new Voice(synth as unknown as SpeechSynthesis);
+    v.sayParts('wizard', PARTS);
+    expect(synth.speak).not.toHaveBeenCalled();
+    expect(v.speaking()).toBe(false);
+  });
+});
