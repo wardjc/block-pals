@@ -498,3 +498,12 @@ html, body {
 .break-bubble[hidden] { display: none; }
 .break-picture { font-size: 64px; }
 .break-ok { width: 96px; height: 96px; border: 0; border-radius: 24px; background: #2fb34a; color: #fff; font-size: 56px; cursor: pointer; }
+
+/* Save a copy / load a copy (grown-ups) */
+.gu-transfer { margin-top: 10px; }
+.gu-transfer .gu-action { width: 100%; text-align: left; }
+.gu-last { margin: 4px 0; font-weight: 700; }
+.gu-hint { margin: 10px 0 0; font-size: 14px; color: #445; }
+.gu-summary { margin: 8px 0; padding-left: 22px; font-size: 18px; line-height: 1.6; }
+.gu-warn-big { font-size: 17px; font-weight: 700; background: #fde8e4; border-radius: 10px; padding: 10px 12px; }
+.gu-import .gu-action { width: 100%; }
