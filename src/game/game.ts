@@ -31,6 +31,8 @@ export type GameEvent =
   | { type: 'petted'; animal: number; kind: AnimalKind }
   /** One edible was eaten (or drunk). Nothing else changes: there is no hunger and no stat. */
   | { type: 'ate'; id: ItemId }
+  /** He asked to talk to the wizard (a tap on him, or the pad facing him): main opens his screen. */
+  | { type: 'talk' }
   | { type: 'idle' };
 
 /** Seconds of quiet before each idle hint; after the last one Pip waits for the next action. */
@@ -59,6 +61,8 @@ export class Game {
   /** While true (overlay open) the player does not move. */
   paused = false;
   onCraftRequest: () => void = () => {};
+  /** True when the wizard is right in front of him (set by main): the pad's place button talks instead. */
+  wizardInFront: () => boolean = () => false;
 
   private readonly listeners: Array<(e: GameEvent) => void> = [];
   private occupiedFn: () => Cell[];
@@ -135,6 +139,12 @@ export class Game {
       case 'feed':
         this.active();
         this.feedAnimal(intent.animal);
+        return;
+      case 'talk':
+        // Costs nothing and changes nothing: the screen opens (never while another overlay has paused the game).
+        if (this.paused) return;
+        this.active();
+        this.emit({ type: 'talk' });
         return;
       case 'pet': {
         this.active();
@@ -339,6 +349,7 @@ export class Game {
         }
         return;
       case 'place': {
+        if (this.wizardInFront()) { this.applyIntent({ kind: 'talk' }); return; }
         // With a food selected: an animal right in front is fed; otherwise an edible is eaten. Blocks place as before.
         const sel = this.effectiveSelected();
         if (sel !== 'hand' && isItemId(sel)) {
