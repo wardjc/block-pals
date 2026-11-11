@@ -128,6 +128,17 @@ Use `?debug` once for the frame-rate counter, then play without it.
 10. Controller: walk the path and enter a house with the stick.
 11. After 10 minutes the tablet is not hot and the frame rate is the same.
 
+## The wizard's tower
+
+Far to the south, on a hill, stands a tall stone tower with a soft glowing star above its roof. A stone path leads there from the village square. **How to find it:** tilt the view up from the meadow to see the star, or follow the little ⭐ that sits on the edge of the screen and points towards it (it goes away for good once he has been inside). Once he has his first gem, Pip offers to walk him there, once per saved game. He can always walk there himself.
+
+Inside lives **Orlo the wizard**, with his floating orb **Glim**. Orlo greets him in his own voice. A quick tap on Orlo opens his screen, which is all pictures, digits and dots:
+
+- **💎 Trade.** The first time, every block shows a 🎁: he picks one magic block as a welcome gift. After that, gems buy a set of four blocks (one gem for Cloud, Rainbow, Sun and Moon; two for Starlight crystal, Star, Dragon-scale and Magic mirror). If he has too few gems the card only wobbles, Orlo says so kindly and the 🧩 tab glows. Nothing is ever spent unless the four blocks arrive.
+- **🧩 Puzzles.** Counting (fill the basket on the screen: his bag is never touched), "what comes next?" and matching shapes. A wrong card just gets "try again". After a while the right answer glows, then wrong cards fade, and in the end Orlo and Glim finish it with him. Every puzzle gives one magic block. They start very easy and get a little harder as he solves them; the level is saved and never goes down.
+
+The eight magic blocks (Starlight crystal, Rainbow, Cloud, Moon, Sun, Dragon-scale, Star, Magic mirror) build and dig like any other block. Starlight, Moon and Sun are always bright like a lamp; Rainbow, Starlight, Star and Magic mirror slowly shimmer. Gems come with the grumps step: until then the welcome gift and the puzzles work and the trade cards gently say "not yet". Orlo's voice is the `wizard` speaker in `tools/voice/voices.json` (see `tools/voice/README.md` to re-record it). The full tablet checklist is at the end of the [wizard's tower plan](docs/superpowers/plans/2026-11-08-wizards-tower.md#parent-playtest-checklist-galaxy-tab-a8-after-deploying-to-github-pages).
+
 ## Running it on your computer
 
 You need Node 22.22 or newer.
