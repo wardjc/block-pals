@@ -17,7 +17,7 @@ Then, after changing any line in `src/content/lines.ts`:
 
 ```
 npm run voice:lines          # writes tools/voice/lines.json (committed, so review shows which lines changed)
-for s in pip bramble pebble fern granny; do
+for s in pip bramble pebble fern granny wizard; do
   tools/voice/.venv/bin/python tools/voice/generate.py --speaker $s --lines tools/voice/lines.json --out public/voice --prune
 done
 ```
@@ -30,12 +30,15 @@ A unit test fails if any line has no clip in `public/voice/manifest.json`, so yo
 
 ## How it hangs together
 
-- `voices.json`: one entry per speaker (voice blend, tempo, pitch lift). `pip` speaks Pip's lines (`src/content/lines.ts`); `bramble`, `pebble`, `fern` and `granny` (Granny Willow) speak the villagers' hellos (`src/content/villagers.ts`); `fern` also speaks her seed lines (`FERN_LINES`). `src/content/spoken.ts` (`spokenLines()`) lists every line per speaker; the exporter and the clip tests both read it. Each speaker only generates its own lines.
+- `voices.json`: one entry per speaker (voice blend, tempo, pitch lift). `pip` speaks Pip's lines (`src/content/lines.ts`); `bramble`, `pebble`, `fern` and `granny` (Granny Willow) speak the villagers' hellos (`src/content/villagers.ts`); `fern` also speaks her seed lines (`FERN_LINES`); `wizard` (Orlo, blend C chosen by the parent) speaks `WIZARD_LINES` and the fragments in `WIZARD_PARTS` (`src/content/wizard.ts`). `src/content/spoken.ts` (`spokenLines()`) lists every line per speaker; the exporter and the clip tests both read it. Each speaker only generates its own lines.
 - `pronunciations.json`: word to respelling, used only when making audio; the text on screen is unchanged.
   An empty respelling means "say it as written". **Please listen for these names** on the tablet:
-  Pip, Bramble, Pebble, Fern, Willow, Cog, and the phrase "Whoops-a-daisy". If one sounds odd,
+  Pip, Bramble, Pebble, Fern, Willow, Cog, Orlo, Glim, "bundles of wheat", "splendid" and the phrase "Whoops-a-daisy". If one sounds odd,
   put a phonetic respelling in the file (for example `"Cog": "Kogg"`) and regenerate.
 - Clip name = first 12 hex digits of the SHA-1 of the line text (whitespace collapsed, curly quotes straightened):
   `public/voice/pip/<hash>.ogg`. Editing a line changes its hash, so it is regenerated, and the old file shows up as stale.
   The same hash is computed in `src/audio/voiceKey.ts`; a test pins them together.
+- The wizard's counting sentences ("bring me three apples and two carrots") are stitched from fragment clips (the
+  `countAsk` lead-in, the numbers one to twenty, each thing singular and plural, "and") by `Voice.sayParts`, which never
+  uses the tablet voice: a fragment without a clip is skipped.
 - Lines must not contain cheers or sound effects ("whee", "yay", "hooray"...): the voice would read them as words. A test checks.
