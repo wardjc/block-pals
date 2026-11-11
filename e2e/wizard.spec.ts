@@ -288,6 +288,7 @@ test.describe('the wizard\'s tower', () => {
   });
 
   test('camera in the tower: drag to turn on both floors and the camera is never inside a block', async ({ page }) => {
+    test.setTimeout(150_000); // eight real drags
     await ready(page);
     const t = await tower(page);
     for (const floor of t.floors) {
