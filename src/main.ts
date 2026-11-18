@@ -20,7 +20,7 @@ import { GestureClassifier, type GestureEvent } from './input/gesture';
 import { createDebouncer, resolveHold, resolveTap } from './input/tap';
 import { animatePalTrot, animatePlayerWalk, idleVillager, makeWalkState, makeEmblem, makePalModel, makePlayerModel, makeVillagerModel, placeEmblem, setEatPose } from './render/characters';
 import { pipHiddenFor } from './render/cameraRig';
-import { GameScene } from './render/scene';
+import { GameScene, PICK_RANGE } from './render/scene';
 import { sfx } from './audio/sfx';
 import { CraftScreen } from './ui/craft';
 import { BagTray } from './ui/bag';
@@ -140,6 +140,7 @@ const speakVariant = (key: LineKey): void => {
   const text = pickLine(key, lastSpoken[key]);
   if (!text) return; // never speak '' - it would cancel current speech
   lastSpoken[key] = text;
+  orloLast = false;
   voice.say(text, 'pip', { holdForAudio: HELD_KEYS.has(key) });
 };
 /** True when the last sayLine really spoke (a hint is only counted as told then). */
@@ -164,6 +165,8 @@ const pal = new Pal(
   sayLine,
 );
 pal.setHasWood(() => game.inventory.count(BlockId.Wood) > 0);
+// Orlo is never talked over: while his line (his goodbye too) is still speaking, Pip holds back.
+pal.setQuiet(() => orloLast && voice.speaking());
 game.on(e => pal.handle(e));
 // The welcome is marked delivered only when it is admitted; an open break bubble holds it until it closes.
 const welcome = new DeferredOnce();
@@ -304,6 +307,9 @@ game.onCraftRequest = openCraft;
 
 // Orlo's voice: every line through wizardSpeech (silent while the break bubble is up), speaker 'wizard'.
 const lastWizard: Partial<Record<WizardKey, string>> = {};
+/** Orlo was the last to be asked to speak: while that line lasts Pip holds back (see pal.setQuiet). */
+let orloLast = false;
+const orloSpoke = (): void => { orloLast = true; };
 /** The last wizard line asked for (debug: which key, since clips are named by hash). */
 let lastWizardKey = '';
 let wizardAgain: (() => void) | null = null;
@@ -312,15 +318,18 @@ const wizardSay = (key: WizardKey): void => {
   if (!text) return;
   lastWizard[key] = text;
   lastWizardKey = key;
-  wizardAgain = () => voice.say(text, 'wizard');
-  voice.say(text, 'wizard');
+  // Held like the hellos: with audio locked or suspended he says nothing rather than use the tablet voice.
+  wizardAgain = () => { orloSpoke(); voice.say(text, 'wizard', { holdForAudio: true }); };
+  orloSpoke();
+  voice.say(text, 'wizard', { holdForAudio: true });
 };
 const wizardCount = (p: Puzzle): void => {
   const lead = pickWizardLine('countAsk', lastWizard.countAsk);
   lastWizard.countAsk = lead;
   lastWizardKey = 'countAsk';
   const parts = [lead, ...countSentence(p)];
-  wizardAgain = () => voice.sayParts('wizard', parts);
+  wizardAgain = () => { orloSpoke(); voice.sayParts('wizard', parts); };
+  orloSpoke();
   voice.sayParts('wizard', parts); // stitched clips only, never the tablet voice
 };
 const wizardVoice = wizardSpeech(() => hud.breakOpen, {
@@ -414,20 +423,22 @@ const animalAt = (clientX: number, clientY: number): number | null => {
 const entityAt = (clientX: number, clientY: number): { type: EntityType; id: number } | null => {
   const r = scene.pickRay(clientX, clientY);
   const boxes: EntityBox[] = animalView.boxes().map(b => ({ ...b, type: 'animal' as const }));
-  if (wizardView.group.visible) boxes.push({ ...wizardView.box(), type: 'wizard' });
+  // Orlo is pickable only as far as the ray looks for walls (it would not see one farther away).
+  const s = tower.wizardSpot;
+  const cam = scene.camera.position;
+  const far = Math.hypot(s[0] + 0.5 - cam.x, s[1] + 1.2 - cam.y, s[2] + 0.5 - cam.z);
+  const wizardPickable = wizardView.group.visible && far <= PICK_RANGE;
+  if (wizardPickable) boxes.push({ ...wizardView.box(), type: 'wizard' });
   const hit = pickEntityAlongRay(r.origin, r.dir, boxes, r.t);
-  if (hit || !wizardView.group.visible) return hit;
+  if (hit || !wizardPickable) return hit;
   const rect = canvas.getBoundingClientRect();
   const c = wizardView.screenCentre(scene.camera, rect);
   if (c.sz < -1 || c.sz > 1) return null;
   const disc = pickEntity({ x: clientX, y: clientY }, [{ type: 'wizard', id: -1, ...c }]);
   if (!disc) return null;
-  const s = tower.wizardSpot;
-  const cam = scene.camera.position;
-  const far = Math.hypot(s[0] + 0.5 - cam.x, s[1] + 1.2 - cam.y, s[2] + 0.5 - cam.z);
   // Both the finger's ray and the ray to his middle must reach him before any block (never through the tower wall).
   const centre = scene.pickRay(c.sx, c.sy);
-  return discPickAllowed(r.t, centre.t, far) ? disc : null;
+  return discPickAllowed(r.t, centre.t, far, 0.7, PICK_RANGE) ? disc : null;
 };
 
 const holdNow = (hit: Hit) => resolveHold(hit, game.player.feetCell(), world, occupied(), pressEntity !== null);
@@ -661,7 +672,8 @@ function updateVillage(dt: number): void {
     lastWizard.hello = text;
     lastWizardKey = 'hello';
     currentWizardHello = text;
-    wizardAgain = () => voice.say(text, 'wizard');
+    wizardAgain = () => { orloSpoke(); voice.say(text, 'wizard', { holdForAudio: true }); };
+    orloSpoke();
     voice.say(text, 'wizard', { holdForAudio: true });
     hud.showBubble(WIZARD_ICONS.hello, 'Hi!');
     clearTimeout(bubbleTimer);
@@ -711,6 +723,7 @@ function updateVillage(dt: number): void {
     }
     lastHello[hello] = text;
     currentHello = { text, speaker: def.speaker };
+    orloLast = false;
     voice.say(text, def.speaker, { holdForAudio: true });
     hud.showBubble(icon, word);
     clearTimeout(bubbleTimer);
@@ -901,6 +914,7 @@ if (debugOn) {
       },
       hint: () => wizardScreen.session?.hint() ?? null,
       lastKey: () => lastWizardKey,
+      play: (p: Puzzle) => wizardScreen.play(p),
       advance: (seconds: number) => { for (let t = 0; t < seconds; t += 0.5) wizardScreen.update(0.5); },
       screenOf: () => {
         const r = canvas.getBoundingClientRect();
@@ -992,8 +1006,7 @@ function frame(now: number): void {
   // The puzzle's hint clock stands still while the break bubble is up.
   wizardScreen.update(hud.breakOpen ? 0 : dt);
   if (wizardScreen.isOpen) {
-    const held = pipHeld.take(voice.speaking(), hud.breakOpen);
-    if (held) pal.react(held as LineKey);
+    pipHeld.offer(voice.speaking(), hud.breakOpen, k => pal.react(k as LineKey));
   }
   const wizardSpeaking = voice.speaking() && voice.last.key.startsWith('wizard/');
   wizardView.update(dt, now / 1000, game.player.pos, wizardSpeaking, scene.camera.position);

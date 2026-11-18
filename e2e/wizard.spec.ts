@@ -377,6 +377,54 @@ test.describe('the wizard\'s tower', () => {
     expect(await page.evaluate(() => localStorage.getItem('blockpals.save.v1'))).toBeNull();
   });
 
+  for (const [w, h] of [[800, 600], [667, 375]] as const) {
+    test(`a 20-picture counting puzzle fits a ${w}×${h} screen: every control at least 88 px and reachable`, async ({ page }) => {
+      await page.setViewportSize({ width: w, height: h });
+      await ready(page);
+      await ev(page, d => {
+        d.wizard().open();
+        d.wizard().play({ kind: 'count', level: 9, wants: [{ thing: 'apple', n: 20 }], shelf: ['apple', 'egg', 'carrot'] });
+      });
+      // Presses closer together than the 150 ms debounce (or within the opening guard) are dropped: press until 19 are in (the 20th would solve it).
+      for (let i = 0; i < 80; i++) {
+        if ((await ev<any>(page, d => d.wizard().puzzle())).basket.apple >= 19) break;
+        await page.locator('.wiz-shelf-item[data-add="apple"]').evaluate(e => (e as HTMLElement).click());
+        await page.waitForTimeout(200);
+      }
+      expect((await ev<any>(page, d => d.wizard().puzzle())).basket.apple).toBe(19);
+      await expect(page.locator('.wiz-item[data-take="apple"]')).toHaveCount(19);
+      await expect(page.locator('.wiz-item.ghost')).toHaveCount(0);
+      const targets = page.locator('.wiz-tab, .wiz-speak, .wiz-shelf-item, .wiz-item[data-take], .wiz-close');
+      const n = await targets.count();
+      for (let i = 0; i < n; i++) {
+        const t = targets.nth(i);
+        // The hint clock may redraw the screen in the middle of a check: then it is simply checked again.
+        await expect(async () => {
+          // Scroll, measure and test the middle point in one go, on the element as it is now.
+          const r = await t.evaluate(e => {
+            e.scrollIntoView({ block: 'nearest', inline: 'nearest' });
+            const b = e.getBoundingClientRect();
+            const top = document.elementFromPoint(b.left + b.width / 2, b.top + b.height / 2);
+            return { x: b.left, y: b.top, width: b.width, height: b.height, hit: !!top && (top === e || e.contains(top)) };
+          }, undefined, { timeout: 2000 });
+          expect(r.width, `target ${i}`).toBeGreaterThanOrEqual(88);
+          expect(r.height, `target ${i}`).toBeGreaterThanOrEqual(88);
+          expect(r.x).toBeGreaterThanOrEqual(0);
+          expect(r.y).toBeGreaterThanOrEqual(0);
+          expect(r.x + r.width).toBeLessThanOrEqual(w + 0.5);
+          expect(r.y + r.height).toBeLessThanOrEqual(h + 0.5);
+          expect(r.hit, `target ${i} is covered`).toBe(true); // a finger at its middle lands on it
+        }).toPass({ timeout: 10_000 });
+      }
+      // The shelf below the big basket really works with a finger.
+      const carrot = page.locator('.wiz-shelf-item[data-add="carrot"]');
+      await carrot.scrollIntoViewIfNeeded();
+      const cb = (await carrot.boundingBox())!;
+      await page.touchscreen.tap(cb.x + cb.width / 2, cb.y + cb.height / 2);
+      await expect.poll(async () => (await ev<any>(page, d => d.wizard().puzzle())).basket.carrot).toBe(1);
+    });
+  }
+
   test('fps with the tower, the light and the village in view, no console errors', async ({ page }) => {
     const errors: string[] = [];
     page.on('console', m => { if (m.type() === 'error') errors.push(m.text()); });

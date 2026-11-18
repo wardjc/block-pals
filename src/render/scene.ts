@@ -11,7 +11,8 @@ import { buildChunkGeometry, CHUNK_SIZE, type MeshArrays } from './mesher';
 const FOLLOW_K = 4; // exponential smoothing rate, per second
 /** The camera orbits his head: feet + EYE_HEIGHT (spec §7c). */
 export const EYE_HEIGHT = 1.6;
-const PICK_RANGE = 40;
+/** How far the pick ray looks for blocks (anything picked farther than this could be behind an unseen wall). */
+export const PICK_RANGE = 40;
 const MARKER_SECONDS = 0.9;
 // Three r155+ no longer pre-multiplies light intensity by PI, so scale to get the classic bright look.
 const LIGHT_SCALE = Math.PI;

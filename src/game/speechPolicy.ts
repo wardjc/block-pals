@@ -136,6 +136,17 @@ export class HeldPipLine {
     this.key = null;
   }
 
+  /**
+   * Offers the line to `say` when nobody is speaking and the break bubble is down. It is used up
+   * only when `say` really said it (true); refused (Pip's hush, his chatter gap), it is tried again.
+   */
+  offer(speaking: boolean, breakOpen: boolean, say: (key: string) => boolean): boolean {
+    if (this.key === null || speaking || breakOpen) return false;
+    if (!say(this.key)) return false;
+    this.key = null;
+    return true;
+  }
+
   /** The line to say now, once, or null while a voice is speaking or the break bubble is up. */
   take(speaking: boolean, breakOpen: boolean): string | null {
     if (this.key === null || speaking || breakOpen) return null;

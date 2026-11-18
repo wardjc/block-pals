@@ -286,7 +286,18 @@ export class WizardScreen {
 
   private newPuzzle(): void {
     const level = levelFor(this.deps.state().clean);
-    const p = makePuzzle(level, this.deps.rng, this.last, this.beforeLast);
+    this.play(makePuzzle(level, this.deps.rng, this.last, this.beforeLast));
+  }
+
+  /** Shows this puzzle now (the generator's next one; debug and layout tests can hand one in). */
+  play(p: Puzzle): void {
+    if (!this.open_) return;
+    if (this.tab_ !== 'puzzle') {
+      this.tab_ = 'puzzle';
+      this.tradeTab.classList.remove('on');
+      this.puzzleTab.classList.add('on');
+    }
+    this.nextIn = 0;
     this.beforeLast = this.last;
     this.last = p;
     this.sessionNow = new PuzzleSession(p);
@@ -506,6 +517,8 @@ export class WizardScreen {
     this.focusKey = WizardScreen.keyOf(t[this.focus]) || null;
     // The ring only shows once the controller is used, so it never looks like a second chosen tab.
     t.forEach((e, i) => e.classList.toggle('focus', this.padUsed && i === this.focus));
+    // The puzzle can be taller than a small screen: what the controller is on is always in view.
+    if (this.padUsed) t[this.focus].scrollIntoView?.({ block: 'nearest', inline: 'nearest' });
   }
 
   padMove(dx: number, dy: number): void {

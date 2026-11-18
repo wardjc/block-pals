@@ -671,7 +671,18 @@ html, body {
   font-size: 56px;
   cursor: pointer;
 }
-.wiz-body { flex: 1; display: flex; align-items: center; justify-content: center; width: 100%; min-height: 0; }
+.wiz-body {
+  flex: 1;
+  display: flex;
+  width: 100%;
+  min-height: 0;
+  /* A big basket can be taller than a small screen: the body scrolls (by touch too) and nothing is cut off. */
+  overflow-y: auto;
+  touch-action: pan-y;
+  overscroll-behavior: contain;
+}
+/* Centred when it fits, scrollable from its top edge when it does not. */
+.wiz-body > * { margin: auto; }
 .wiz-body.sparkle { animation: wiz-sparkle 1.2s ease; }
 .wiz-grid { display: grid; grid-template-columns: repeat(4, auto); gap: 14px; }
 .wiz-card {

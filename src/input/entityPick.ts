@@ -109,7 +109,11 @@ export function pickEntityAlongRay(o: V3, d: V3, boxes: readonly EntityBox[], bl
  * The wizard's 72 px disc may pick him only when nothing solid is in the way: neither along the
  * finger's ray nor along the ray from the camera to his middle (`dist` away) does a block come first.
  */
-export function discPickAllowed(fingerBlockT: number | null, centreBlockT: number | null, dist: number, slack = 0.7): boolean {
+export function discPickAllowed(
+  fingerBlockT: number | null, centreBlockT: number | null, dist: number, slack = 0.7, checkedTo = Infinity,
+): boolean {
+  // Past the distance blocks are looked for, "no block hit" proves nothing: never pick him there.
+  if (!(dist <= checkedTo)) return false;
   const clear = (t: number | null): boolean => t === null || t >= dist - slack;
   return clear(fingerBlockT) && clear(centreBlockT);
 }
