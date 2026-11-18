@@ -120,3 +120,38 @@ export class LockedHold {
     return false;
   }
 }
+
+/**
+ * One Pip line that must wait its turn (Pip's puzzle nudge while Orlo's screen is open): it never
+ * cuts a voice that is speaking (Orlo) or the break reminder. A newer line replaces an older one.
+ */
+export class HeldPipLine {
+  private key: string | null = null;
+
+  want(key: string): void {
+    this.key = key;
+  }
+
+  clear(): void {
+    this.key = null;
+  }
+
+  /**
+   * Offers the line to `say` when nobody is speaking and the break bubble is down. It is used up
+   * only when `say` really said it (true); refused (Pip's hush, his chatter gap), it is tried again.
+   */
+  offer(speaking: boolean, breakOpen: boolean, say: (key: string) => boolean): boolean {
+    if (this.key === null || speaking || breakOpen) return false;
+    if (!say(this.key)) return false;
+    this.key = null;
+    return true;
+  }
+
+  /** The line to say now, once, or null while a voice is speaking or the break bubble is up. */
+  take(speaking: boolean, breakOpen: boolean): string | null {
+    if (this.key === null || speaking || breakOpen) return null;
+    const k = this.key;
+    this.key = null;
+    return k;
+  }
+}

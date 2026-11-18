@@ -220,6 +220,10 @@ export const sfx = {
   craft: () => play(() => [523, 659, 784].forEach((f, i) => blip(f, i * 0.09, 0.18, 'triangle', 0.3))),
   cheer: () => play(() => [523, 659, 784, 1047].forEach((f, i) => blip(f, i * 0.08, 0.22, 'sine', 0.3))),
   tap: () => play(() => blip(660, 0, 0.06, 'sine', 0.25)),
+  /** The wizard's "not that one": one soft, low, friendly note (never a buzzer). */
+  nudge: once('nudge', () => blip(392, 0, 0.14, 'sine', 0.16, 349)),
+  /** A puzzle solved: a soft rising sparkle. */
+  solved: once('solved', () => [784, 988, 1175, 1568].forEach((f, i) => blip(f, i * 0.07, 0.22, 'sine', 0.2))),
   /** A quiet "off we go" for walk taps. */
   walk: () => play(() => blip(440, 0, 0.09, 'sine', 0.14, 560)),
   /** Gentle looping scrape while he holds to dig. Safe to call twice; silent with no AudioContext. */

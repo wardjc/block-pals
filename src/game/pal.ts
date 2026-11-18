@@ -34,6 +34,8 @@ export class Pal {
   private hasWood: () => boolean = () => true;
   private speed = SPEED;
   private hushUntil = 0;
+  /** True while someone Pip must never talk over is speaking (Orlo). */
+  private quiet: () => boolean = () => false;
   /** Lead mode: the route to walk and which index of it to head for (-1 = wait where he is). */
   private leadRoute: Cell[] | null = null;
   private leadIndex: () => number = () => -1;
@@ -46,6 +48,11 @@ export class Pal {
     private readonly now: () => number = () => performance.now(),
   ) {
     this.pos = { ...start };
+  }
+
+  /** Pip holds back every line (but the break reminder and his welcome) while this is true: Orlo is never cut off. */
+  setQuiet(fn: () => boolean): void {
+    this.quiet = fn;
   }
 
   /** Lets Pip know whether the player holds any wood (for the idle hint). */
@@ -136,6 +143,7 @@ export class Pal {
   /** True when the line was really said (not held back by the chatter gap or a hush). */
   private speak(key: LineKey, always = false): boolean {
     const t = this.now();
+    if (key !== 'breakTime' && key !== 'hello' && key !== 'welcomeBack' && this.quiet()) return false;
     if (!always && (t - this.lastSpoke < MIN_GAP_MS || t < this.hushUntil)) return false;
     this.lastSpoke = t;
     this.say(key);

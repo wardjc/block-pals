@@ -498,6 +498,25 @@ export function createAtlas(): Atlas {
   };
 
   let painted: ShimmerFrame = 0; // the atlas is drawn with frame 0
+  // Each shimmer frame is painted once into a list of plain fills and replayed after that: the
+  // painters' per-pixel colour maths never runs again in the frame loop (budget: under 0.5 ms a repaint).
+  type Op = [string, number, number, number, number];
+  const recorded = new Map<string, Op[]>();
+  const opsFor = (name: MythicalTile, frame: ShimmerFrame): Op[] => {
+    const key = `${name}:${frame}`;
+    let ops = recorded.get(key);
+    if (!ops) {
+      const list: Op[] = [];
+      const rec = {
+        fillStyle: '' as string | CanvasGradient | CanvasPattern,
+        fillRect(x: number, y: number, w: number, h: number): void { list.push([String(this.fillStyle), x, y, w, h]); },
+      };
+      paintMythical(name, rec, frame);
+      ops = list;
+      recorded.set(key, ops);
+    }
+    return ops;
+  };
   const shimmer = (timeSeconds: number): boolean => {
     const frame = shimmerFrame(timeSeconds);
     if (frame === painted) return false;
@@ -509,7 +528,11 @@ export function createAtlas(): Atlas {
       ctx.rect(0, 0, TILE, TILE);
       ctx.clip();
       ctx.clearRect(0, 0, TILE, TILE); // Magic mirror is partly see-through: never paint over the old frame
-      paintMythical(name, ctx, frame);
+      let style = '';
+      for (const [s, x, y, w, h] of opsFor(name, frame)) {
+        if (s !== style) { ctx.fillStyle = s; style = s; }
+        ctx.fillRect(x, y, w, h);
+      }
       ctx.restore();
     }
     painted = frame;
