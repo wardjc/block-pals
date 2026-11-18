@@ -164,10 +164,14 @@ export function turnTowards(from: number, to: number, rate: number, dt: number):
 }
 
 /** Glim's pastel colour at a moment: a slow hue drift, lightness at least 0.7 (brighter while he speaks). */
-export function glimColour(timeSeconds: number, speaking: boolean): { h: number; s: number; l: number } {
+export function glimColour(
+  timeSeconds: number, speaking: boolean, out: { h: number; s: number; l: number } = { h: 0, s: 0, l: 0 },
+): { h: number; s: number; l: number } {
   const t = Number.isFinite(timeSeconds) ? timeSeconds : 0;
-  const h = (((t / 20) % 1) + 1) % 1;
-  return { h, s: 0.75, l: speaking ? 0.88 : 0.78 };
+  out.h = (((t / 20) % 1) + 1) % 1;
+  out.s = 0.75;
+  out.l = speaking ? 0.88 : 0.78;
+  return out;
 }
 
 /** The wizard in the world: idles, faces him when he is near, and Glim circles his shoulder. */
@@ -177,9 +181,17 @@ export class WizardView {
   readonly group: THREE.Group;
   private readonly restYaw: number;
   private hop = 0;
+  /** How high he may hop: never so high that his hat meets the ceiling. */
+  private readonly hopHeight: number;
+  private readonly colour = { h: 0, s: 0, l: 0 };
   private readonly v = new THREE.Vector3();
 
-  constructor(private readonly scene: THREE.Scene, private readonly spot: { x: number; y: number; z: number }, facing?: { x: number; z: number }) {
+  /** `headroom`: blocks from his feet to the ceiling (the hop is capped so the hat never reaches it). */
+  constructor(
+    private readonly scene: THREE.Scene, private readonly spot: { x: number; y: number; z: number },
+    facing?: { x: number; z: number }, headroom = Infinity,
+  ) {
+    this.hopHeight = Math.max(0, Math.min(HOP_HEIGHT, headroom - WIZARD_HEIGHT - 0.02));
     const m = makeWizardModel();
     this.body = m.body;
     this.orb = m.orb;
@@ -219,13 +231,13 @@ export class WizardView {
       this.hop += step;
       const p = this.hop / HOP_SECONDS;
       if (p >= 1) this.hop = 0;
-      else y = Math.sin(p * Math.PI) * HOP_HEIGHT;
+      else y = Math.sin(p * Math.PI) * this.hopHeight;
     }
     this.group.position.y = this.spot.y + y;
     const a = (t / GLIM_PERIOD) * Math.PI * 2;
     this.orb.position.set(Math.cos(a) * GLIM_RADIUS, 1.5 + Math.sin(t * 1.7) * 0.06, Math.sin(a) * GLIM_RADIUS);
     this.orb.rotation.y = t * 0.8;
-    const c = glimColour(t, speaking);
+    const c = glimColour(t, speaking, this.colour);
     (this.orb.material as THREE.MeshBasicMaterial).color.setHSL(c.h, c.s, c.l);
     this.orb.scale.setScalar(speaking ? 1.2 : 1);
   }

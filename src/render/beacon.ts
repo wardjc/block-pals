@@ -46,19 +46,21 @@ export function beaconPixels(size = BEACON_TEXTURE_SIZE): Uint8Array {
 }
 
 /** The pulse at a moment: opacity 0.8..1.0 and size 1 ± 4%, on a 4 s sine. */
-export function beaconPulse(timeSeconds: number): { opacity: number; scale: number } {
+export function beaconPulse(
+  timeSeconds: number, out: { opacity: number; scale: number } = { opacity: 0, scale: 0 },
+): { opacity: number; scale: number } {
   const t = Number.isFinite(timeSeconds) ? timeSeconds : 0;
   const s = Math.sin((t / BEACON_PULSE_SECONDS) * Math.PI * 2);
-  return {
-    opacity: (BEACON_OPACITY_MIN + BEACON_OPACITY_MAX) / 2 + ((BEACON_OPACITY_MAX - BEACON_OPACITY_MIN) / 2) * s,
-    scale: 1 + BEACON_SIZE_SWING * s,
-  };
+  out.opacity = (BEACON_OPACITY_MIN + BEACON_OPACITY_MAX) / 2 + ((BEACON_OPACITY_MAX - BEACON_OPACITY_MIN) / 2) * s;
+  out.scale = 1 + BEACON_SIZE_SWING * s;
+  return out;
 }
 
 export class Beacon {
   readonly sprite: THREE.Sprite;
   private readonly at: THREE.Vector3;
   private readonly cam = new THREE.Vector3();
+  private readonly pulse = { opacity: 1, scale: 1 };
 
   constructor(scene: THREE.Scene, at: Vec3) {
     this.at = new THREE.Vector3(at.x, at.y, at.z);
@@ -89,7 +91,7 @@ export class Beacon {
     const s = this.sprite;
     if (d < BEACON_NEAR_HIDE) { s.visible = false; return; }
     s.visible = true;
-    const pulse = beaconPulse(timeSeconds);
+    const pulse = beaconPulse(timeSeconds, this.pulse);
     (s.material as THREE.SpriteMaterial).opacity = pulse.opacity;
     if (d > BEACON_CLAMP) {
       const k = BEACON_CLAMP / d;

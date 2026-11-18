@@ -774,9 +774,9 @@ html, body {
 }
 .wiz-option.faded { opacity: 0.15; pointer-events: none; }
 .wiz-option.right { border-color: #6fd27a; }
-.glow { animation: wiz-glow 1.4s ease-in-out infinite; }
-.wobble { animation: wiz-wobble 0.5s ease; }
-.focus { outline: 6px solid #ff9d00; outline-offset: 3px; }
+.wizard-screen .glow { animation: wiz-glow 1.4s ease-in-out infinite; }
+.wizard-screen .wobble { animation: wiz-wobble 0.5s ease; }
+.wizard-screen .focus { outline: 6px solid #ff9d00; outline-offset: 3px; }
 .wiz-sym { display: inline-block; width: 64px; height: 64px; position: relative; }
 .wiz-sym.big { width: 112px; height: 112px; }
 .wiz-q { display: inline-flex; align-items: center; justify-content: center; border: 4px dashed #9aa7c7; border-radius: 16px; box-sizing: border-box; font: 900 44px/1 system-ui, sans-serif; color: #556; }

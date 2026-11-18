@@ -112,6 +112,8 @@ export class WizardScreen {
   private padX = 0;
   private padY = 0;
   private padUsed = false;
+  /** What the controller is on (a tab, a card, a shelf picture...), so a redraw keeps it there. */
+  private focusKey: string | null = null;
   private openedAt = -Infinity;
   private readonly allow = createDebouncer(150);
   private readonly stock: WizardStock;
@@ -179,6 +181,7 @@ export class WizardScreen {
     if (!this.open_ || (!force && t === this.tab_ && (t === 'trade' || this.sessionNow))) return;
     this.tab_ = t;
     this.focus = 0;
+    this.focusKey = null;
     this.tradeTab.classList.toggle('on', t === 'trade');
     this.puzzleTab.classList.toggle('on', t === 'puzzle');
     this.puzzleTab.classList.remove('pulse');
@@ -290,6 +293,7 @@ export class WizardScreen {
     this.shownHint = 0;
     this.nudged = false;
     this.focus = 0;
+    this.focusKey = null;
     this.render();
     this.sayPuzzle();
   }
@@ -480,10 +484,26 @@ export class WizardScreen {
     return [...this.root.querySelectorAll<HTMLElement>('.wiz-tab, .wiz-card, .wiz-shelf-item, .wiz-item:not(.ghost), .wiz-option:not(.faded), .wiz-close')];
   }
 
+  /** A stable name for a target, so the focus survives a redraw (a new basket item or a faded card moves the order). */
+  private static keyOf(e: HTMLElement): string {
+    const d = e.dataset;
+    if (d.tab) return `tab:${d.tab}`;
+    if (d.kind) return `kind:${d.kind}`;
+    if (d.add) return `add:${d.add}`;
+    if (d.take) return `take:${d.take}`;
+    if (d.option) return `option:${d.option}`;
+    return e.className.includes('wiz-close') ? 'close' : '';
+  }
+
   private refreshFocus(): void {
     const t = this.targets();
     if (t.length === 0) return;
+    if (this.focusKey) {
+      const i = t.findIndex(e => WizardScreen.keyOf(e) === this.focusKey);
+      if (i >= 0) this.focus = i;
+    }
     this.focus = Math.max(0, Math.min(t.length - 1, this.focus));
+    this.focusKey = WizardScreen.keyOf(t[this.focus]) || null;
     // The ring only shows once the controller is used, so it never looks like a second chosen tab.
     t.forEach((e, i) => e.classList.toggle('focus', this.padUsed && i === this.focus));
   }
@@ -494,6 +514,7 @@ export class WizardScreen {
     this.padUsed = true;
     const step = dx + dy * (this.tab_ === 'trade' ? 4 : 1);
     this.focus = (this.focus + step + t.length * 4) % t.length;
+    this.focusKey = null; // the move itself decides where the focus is
     this.deps.sfx?.tap();
     this.refreshFocus();
   }

@@ -100,6 +100,12 @@ test.describe('the wizard\'s tower', () => {
     const marker = page.locator('.edge-marker');
     await expect(marker).toBeVisible();
     expect(await marker.evaluate(e => getComputedStyle(e).pointerEvents)).toBe('none');
+    // Pip's "what is that light?" is held while audio is locked: not saved as said until he really says it.
+    await page.waitForTimeout(1500);
+    expect((await wizardState(page)).hints).not.toContain('seeLight');
+    await ev(page, d => d.resumeAudio());
+    await page.touchscreen.tap(30, 300); // the first tap unlocks audio
+    await expect.poll(async () => (await wizardState(page)).hints, { timeout: 20_000 }).toContain('seeLight');
     // Into the tower: met, saved, marker gone; and still gone after a reload.
     await faceWizard(page);
     await expect.poll(async () => (await wizardState(page)).met).toBe(true);

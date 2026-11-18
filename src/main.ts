@@ -43,13 +43,13 @@ import type { Puzzle } from './core/puzzles';
 import { WIZARD_STOCK, newWizardState } from './game/wizardTrade';
 import { WizardVisit } from './game/wizardVisit';
 import { makeTowerLead } from './game/leadTower';
-import { mayWizardGreet, wizardSpeech } from './game/speechPolicy';
+import { HeldPipLine, mayWizardGreet, wizardSpeech } from './game/speechPolicy';
 import { WIZARD_ICONS, WIZARD_LINES, countSentence, pickWizardLine, wizardPartTexts, type WizardKey } from './content/wizard';
 import { WizardView } from './render/wizard';
 import { Beacon, beaconScreen, markerShown } from './render/beacon';
 import { EdgeMarker } from './ui/marker';
 import { WizardScreen } from './ui/wizard';
-import { pickEntity, pickEntityAlongRay, type EntityBox, type EntityType } from './input/entityPick';
+import { discPickAllowed, pickEntity, pickEntityAlongRay, type EntityBox, type EntityType } from './input/entityPick';
 import { WIZARD_REACH } from './input/tap';
 
 let storage: Storage | null = null;
@@ -113,7 +113,11 @@ for (const house of village.houses) {
   scene.add(emblem);
 }
 // Orlo stands on the ground floor of his tower facing the door; Glim circles his shoulder. Not solid (like Pip).
-const wizardView = new WizardView(scene.scene, { x: tower.wizardSpot[0], y: tower.wizardSpot[1], z: tower.wizardSpot[2] }, { x: tower.doorInside[0] + 0.5, z: tower.doorInside[2] + 0.5 });
+const wizardView = new WizardView(
+  scene.scene, { x: tower.wizardSpot[0], y: tower.wizardSpot[1], z: tower.wizardSpot[2] },
+  { x: tower.doorInside[0] + 0.5, z: tower.doorInside[2] + 0.5 },
+  tower.floors[0].ceilingY - tower.floors[0].y, // his hop never lifts the hat into the slab
+);
 const beacon = new Beacon(scene.scene, tower.beacon);
 const edgeMarker = new EdgeMarker(document.getElementById('ui')!);
 let pipHop = 0; // seconds into the happy hop; 0 = not hopping
@@ -324,23 +328,32 @@ const wizardVoice = wizardSpeech(() => hud.breakOpen, {
   countSentence: p => wizardCount(p as Puzzle),
   again: () => wizardAgain?.(),
 });
+/** Pip's line held while Orlo's screen is open, said only when nobody is speaking. */
+const pipHeld = new HeldPipLine();
 const wizardScreen = new WizardScreen(document.getElementById('ui')!, {
   inventory: game.inventory,
   state: () => wizard,
   save: () => saveNow(),
   iconFor: id => scene.atlas.iconDataUrl(id as BlockId),
   speak: { line: k => wizardVoice.line(k), countSentence: p => wizardVoice.countSentence(p), again: () => wizardVoice.again() },
-  pipNudge: () => { if (!hud.breakOpen) pal.react('puzzleStuck'); },
-  pipGot: () => react('gotMagicBlock'),
+  // Pip never talks over Orlo: his nudge waits until Orlo has finished, his "a magic block!" until the screen closes.
+  pipNudge: () => pipHeld.want('puzzleStuck'),
+  pipGot: () => { pendingPip ??= 'gotMagicBlock'; },
   rng: Math.random,
   celebrate: () => wizardView.celebrate(),
-  onOpenChange: open => { syncOverlays(); if (open) voice.prefetch(wizardPartTexts(), 'wizard'); },
+  onOpenChange: open => {
+    syncOverlays();
+    if (open) voice.prefetch(wizardPartTexts(), 'wizard');
+    else pipHeld.clear();
+  },
   sfx: { tap: () => sfx.tap(), gift: () => { sfx.gift(); renderHud(); }, nudge: () => sfx.nudge(), solved: () => sfx.solved() },
   stock: WIZARD_STOCK,
 });
 /** The screen opens only when no other overlay has the game paused. */
 function openWizard(): void {
   if (craftScreen.isOpen || grownUps.isOpen || bagTray.isOpen || wizardScreen.isOpen) return;
+  // A hello still held (audio locked, Pip talking) is given up: it must not play after "bye".
+  visit.skipCurrent();
   wizardScreen.open();
 }
 game.on(e => { if (e.type === 'talk') openWizard(); });
@@ -412,7 +425,9 @@ const entityAt = (clientX: number, clientY: number): { type: EntityType; id: num
   const s = tower.wizardSpot;
   const cam = scene.camera.position;
   const far = Math.hypot(s[0] + 0.5 - cam.x, s[1] + 1.2 - cam.y, s[2] + 0.5 - cam.z);
-  return r.t === null || r.t >= far - 0.7 ? disc : null;
+  // Both the finger's ray and the ray to his middle must reach him before any block (never through the tower wall).
+  const centre = scene.pickRay(c.sx, c.sy);
+  return discPickAllowed(r.t, centre.t, far) ? disc : null;
 };
 
 const holdNow = (hit: Hit) => resolveHold(hit, game.player.feetCell(), world, occupied(), pressEntity !== null);
@@ -665,7 +680,14 @@ function updateVillage(dt: number): void {
         hints.markSeen(said);
         flags.hints = hints.seen();
       }
-    } else sayLine(said);
+    } else {
+      sayLine(said);
+      // Pip's "what is that light?" counts as said only once it really was (then it never comes again).
+      if (said === 'seeTowerLight' && lineSpoken && !wizard.hints.includes('seeLight')) {
+        wizard.hints.push('seeLight');
+        saveNow();
+      }
+    }
     return;
   }
   const hello = greet.update(cell, village.houses, !mayGreet(speech));
@@ -773,10 +795,8 @@ function updateTowerLight(dt: number, seconds: number): void {
   const shown = markerShown(lastBeacon, wizard.met, hud.blockingOverlayOpen || hud.breakOpen);
   edgeMarker.update(lastBeacon, shown);
   if (shown && !wizard.hints.includes('seeLight') && pendingPip === null && !game.paused) {
-    wizard.hints.push('seeLight');
-    pendingPip = 'seeTowerLight';
-    pipLookFor = 2.5;
-    saveNow();
+    pendingPip = 'seeTowerLight'; // saved in wizard.hints when Pip has really said it
+    if (pipLookFor <= 0) pipLookFor = 2.5;
   }
 }
 
@@ -971,6 +991,10 @@ function frame(now: number): void {
   for (const v of villagers) idleVillager(v.model, now / 1000);
   // The puzzle's hint clock stands still while the break bubble is up.
   wizardScreen.update(hud.breakOpen ? 0 : dt);
+  if (wizardScreen.isOpen) {
+    const held = pipHeld.take(voice.speaking(), hud.breakOpen);
+    if (held) pal.react(held as LineKey);
+  }
   const wizardSpeaking = voice.speaking() && voice.last.key.startsWith('wizard/');
   wizardView.update(dt, now / 1000, game.player.pos, wizardSpeaking, scene.camera.position);
   if (pal.takeHop()) pipHop = 0.0001;
