@@ -295,9 +295,10 @@ const craftScreen = new CraftScreen(document.getElementById('ui')!, {
   tryCraft: id => game.tryCraft(id),
   iconFor: stackIcon,
   ...craftSpeech(() => hud.breakOpen, {
-    say: text => voice.say(text),
-    needMore: () => speakVariant('craftNeedMore'),
-    full: () => speakVariant('full'),
+    // Orlo is never talked over: crafting chatter waits while his line (his goodbye too) is still speaking.
+    say: text => { if (!(orloLast && voice.speaking())) voice.say(text); },
+    needMore: () => { if (!(orloLast && voice.speaking())) speakVariant('craftNeedMore'); },
+    full: () => { if (!(orloLast && voice.speaking())) speakVariant('full'); },
   }),
   sfxTap: () => sfx.tap(),
   sfxCraft: () => sfx.craft(),
