@@ -512,6 +512,10 @@ html, body {
 .gu-options { display: flex; flex-wrap: wrap; gap: 8px; }
 .gu-opt { min-width: 88px; height: 88px; border: 2px solid #99a; border-radius: 12px; background: #fff; font-size: 16px; cursor: pointer; }
 .gu-opt.on { background: #ff9d00; border-color: #c77700; font-weight: 700; }
+/* View distance: four big buttons that wrap to two rows of two on a narrow window. */
+.gu-note { margin: 0 0 6px; }
+.gu-view { gap: 12px; }
+.gu-view .gu-opt { flex: 1 1 88px; min-width: 88px; min-height: 88px; }
 .gu-action { display: block; margin: 12px 8px 0 0; min-height: 88px; padding: 0 24px; border: 0; border-radius: 12px; background: #e6ebf5; font-size: 16px; cursor: pointer; }
 .gu-confirm .gu-action { display: inline-block; }
 .gu-danger { background: #f3c3be; }

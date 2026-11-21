@@ -29,7 +29,7 @@ type Dbg = {
   saveNow(): void;
   teleport(x: number, y: number, z: number): boolean;
   setCamera(yaw: number, pitch: number): void;
-  stats(): { chunks: number; visible: number; triangles: number; drawCalls: number; fps: number; worldTriangles: number };
+  stats(): { chunks: number; visible: number; frustumVisible: number; triangles: number; drawCalls: number; fps: number; worldTriangles: number };
   worldSize(): { x: number; y: number; z: number };
   game: {
     applyIntent(i: { kind: 'walk'; to: Cell } | { kind: 'place'; cell: Cell } | { kind: 'dig'; cell: Cell }): void;
@@ -288,7 +288,7 @@ test.describe('the village', () => {
     console.log(`spawn view: ${JSON.stringify(st)}`);
     expect(st.worldTriangles).toBeLessThan(600_000); // the whole bigger world; in view:
     expect(st.triangles).toBeLessThan(110_000);
-    expect(st.chunks).toBe(144);
+    expect(st.frustumVisible).toBeLessThanOrEqual(70); // 16-block sections, built lazily (chunk B)
     expect(errors).toEqual([]);
   });
 

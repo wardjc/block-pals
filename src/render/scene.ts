@@ -4,8 +4,9 @@ import { createAtlas } from './atlas';
 import { CameraRig, clearance } from './cameraRig';
 import { castVoxelRay, type VoxelHit } from './voxelRay';
 import { DirtySections, sectionKey } from './chunkDirty';
-import { cameraZone, FOG_FAR, radialFactor, SectionQueue, visibleSections, type CameraZone } from './chunkCull';
-import { CAMERA_FAR, NEAR_MAX, cameraNear, easeNear } from './depthPolicy';
+import { cameraZone, CULL_MARGIN, FOG_FAR, radialFactor, SectionQueue, visibleSections, type CameraZone } from './chunkCull';
+import { CAMERA_FAR, NEAR_MAX, cameraFar, cameraNear, easeNear, nearMaxFor, setCurrentCameraFar } from './depthPolicy';
+import { viewFog } from './viewDistance';
 import { buildSectionGeometry, CHUNK_SIZE, SECTION_HEIGHT, sectionsPerColumn, type MeshArrays } from './mesher';
 
 const FOLLOW_K = 4; // exponential smoothing rate, per second
@@ -45,6 +46,20 @@ export const LAZY_MS = 6;
 /** A section more than this far off the view direction builds after the ones he looks at (priority + OFF_VIEW_PENALTY). */
 const OFF_VIEW_DEG = 70;
 const OFF_VIEW_PENALTY = 20;
+/** A new view distance eases the fog and the draw radius over this long (the haze edge slides, never jumps). */
+export const VIEW_EASE_S = 1.5;
+/** No frame moves the fog end by more than this. */
+const VIEW_EASE_MAX_STEP = 8;
+/**
+ * Memory: a built section farther than the draw reach plus DISPOSE_SLACK is freed after DISPOSE_GRACE_S
+ * (a quick regrow does not rebuild), at most DISPOSE_PER_FRAME a frame, farthest first. Over
+ * MAX_BUILT_SECTIONS (sections holding geometry) the farthest ones outside the draw set go first.
+ * (The plan said "distance + 32"; at Far the draw reach is wider than that, so the slack is added to the reach.)
+ */
+export const DISPOSE_SLACK = 32;
+export const DISPOSE_GRACE_S = 20;
+export const DISPOSE_PER_FRAME = 4;
+export const MAX_BUILT_SECTIONS = 160;
 
 const parseKey = (key: string): [number, number, number] => {
   const [a, b, c] = key.split(',');
@@ -75,8 +90,19 @@ export class GameScene {
   private shown: Set<string> | null = null;
   private zone: CameraZone = 'outdoors';
   private mouths: ReadonlyArray<readonly [number, number, number]> = [];
-  /** The fog end the draw rule uses (FOG_FAR until the view distance is wired in). */
+  /** The fog end the draw rule uses: the larger of the eased fog and the target, so new land is built ahead of the haze. */
   private fogEnd = FOG_FAR;
+  /** The view distance asked for (Task 10b), and the fog end as it eases toward it. */
+  private viewTarget = FOG_FAR;
+  private viewEased = FOG_FAR;
+  private easeFrom = FOG_FAR;
+  private easeT = VIEW_EASE_S;
+  /** Fog values the view gives (the cave look and the water override start from these). */
+  private readonly viewFogNow = { near: 20, far: FOG_FAR };
+  private clock = 0;
+  /** When each built section was first seen beyond the dispose reach (scene seconds). */
+  private readonly farSince = new Map<string, number>();
+  private meshed = 0;
   /** Camera pose of the last cull, so a still camera does not recompute the set. */
   private readonly lastCull = { x: NaN, y: NaN, z: NaN, fx: NaN, fy: NaN, fz: NaN, fog: NaN, zone: '', floors: -1, keep: '' };
   /** Highest solid y per world column, and per 16 x 16 column its lowest ground top (for the outdoor floor rule). */
@@ -214,6 +240,7 @@ export class GameScene {
       this.scene.add(m);
     }
     this.chunks.set(key, { solid, trans, cx, sy, cz });
+    if (solid || trans) this.meshed++;
     this.queue.markBuilt(key);
     if (geo.hasShimmer) this.shimmerChunks.add(key);
     else this.shimmerChunks.delete(key);
@@ -222,6 +249,7 @@ export class GameScene {
   private disposeSection(key: string): void {
     const old = this.chunks.get(key);
     if (!old) return;
+    if (old.solid || old.trans) this.meshed--;
     for (const m of [old.solid, old.trans]) {
       if (!m) continue;
       this.scene.remove(m);
@@ -229,6 +257,96 @@ export class GameScene {
     }
     this.chunks.delete(key);
     this.shimmerChunks.delete(key);
+    this.farSince.delete(key);
+  }
+
+  /** Frees a built section for good (memory); it is built again lazily if the view comes back. */
+  private freeSection(key: string): void {
+    this.disposeSection(key);
+    this.queue.requeue(key);
+    if (this.shown?.has(key)) {
+      const [cx, sy, cz] = parseKey(key);
+      this.queue.enqueue(key, this.priority(cx, sy, cz, this.rig.position, this.rig.forward));
+    }
+  }
+
+  /**
+   * The view distance (fog end in blocks, 40..96) from the controller. The fog and the draw radius ease
+   * to it over VIEW_EASE_S; the far plane moves at once to cover the larger of the two.
+   */
+  setViewDistance(distance: number): void {
+    if (!Number.isFinite(distance)) return;
+    const d = Math.max(FOG_FAR, Math.min(96, distance));
+    if (d === this.viewTarget) return;
+    this.viewTarget = d;
+    this.easeFrom = this.viewEased;
+    this.easeT = 0;
+  }
+
+  /** The view distance asked for, the fog end now, and the far plane. */
+  view(): { target: number; fogEnd: number; fogNear: number; cameraFar: number; drawFogEnd: number } {
+    return { target: this.viewTarget, fogEnd: this.viewEased, fogNear: this.viewFogNow.near, cameraFar: this.camera.far, drawFogEnd: this.fogEnd };
+  }
+
+  /** The fog the view distance gives right now (before any cave or water look is laid over it). */
+  get viewFogValues(): { near: number; far: number } {
+    return this.viewFogNow;
+  }
+
+  private updateView(dt: number): void {
+    if (this.easeT < VIEW_EASE_S) {
+      this.easeT = Math.min(VIEW_EASE_S, this.easeT + Math.max(0, Math.min(0.1, dt)));
+      const want = this.easeFrom + (this.viewTarget - this.easeFrom) * (this.easeT / VIEW_EASE_S);
+      const step = Math.max(-VIEW_EASE_MAX_STEP, Math.min(VIEW_EASE_MAX_STEP, want - this.viewEased));
+      this.viewEased = this.easeT >= VIEW_EASE_S ? this.viewTarget : this.viewEased + step;
+    }
+    // viewFog's rule (near is half the far), unrounded while it eases so the haze slides smoothly.
+    this.viewFogNow.near = this.easeT >= VIEW_EASE_S ? viewFog(this.viewEased).near : this.viewEased / 2;
+    this.viewFogNow.far = this.viewEased;
+    const f = this.scene.fog as THREE.Fog;
+    f.near = this.viewFogNow.near;
+    f.far = this.viewFogNow.far;
+    this.fogEnd = Math.max(this.viewEased, this.viewTarget);
+    // The far plane covers the whole ease in one move (to the larger end), not a change every frame.
+    const easing = this.easeT < VIEW_EASE_S;
+    const far = cameraFar(Math.max(this.viewTarget, easing ? Math.max(this.easeFrom, this.viewEased) : this.viewTarget));
+    if (this.camera.far !== far) {
+      this.camera.far = far;
+      this.camera.updateProjectionMatrix();
+      setCurrentCameraFar(far);
+    }
+  }
+
+  /** Frees built sections that are far outside the draw reach (after a grace), and keeps the built count under the cap. */
+  private disposeFar(): void {
+    const c = this.rig.position;
+    const reach = (this.fogEnd + CULL_MARGIN) * radialFactor(FOV, this.camera.aspect) + DISPOSE_SLACK;
+    const due: Array<{ key: string; d: number }> = [];
+    const outside: Array<{ key: string; d: number }> = [];
+    for (const [key, s] of this.chunks) {
+      const hx = Math.max(s.cx * CHUNK_SIZE - c.x, 0, c.x - (s.cx + 1) * CHUNK_SIZE);
+      const hz = Math.max(s.cz * CHUNK_SIZE - c.z, 0, c.z - (s.cz + 1) * CHUNK_SIZE);
+      const d = Math.hypot(hx, hz);
+      if (d > reach) {
+        const since = this.farSince.get(key);
+        if (since === undefined) this.farSince.set(key, this.clock);
+        else if (this.clock - since >= DISPOSE_GRACE_S) due.push({ key, d });
+      } else {
+        this.farSince.delete(key);
+      }
+      if (this.meshed > MAX_BUILT_SECTIONS && (s.solid || s.trans) && !this.shown?.has(key)) outside.push({ key, d });
+    }
+    let budget = DISPOSE_PER_FRAME;
+    due.sort((a, b) => b.d - a.d);
+    for (const { key } of due) {
+      if (budget-- <= 0) return;
+      this.freeSection(key);
+    }
+    outside.sort((a, b) => b.d - a.d);
+    for (const { key } of outside) {
+      if (budget-- <= 0 || this.meshed <= MAX_BUILT_SECTIONS) return;
+      if (this.chunks.has(key)) this.freeSection(key);
+    }
   }
 
   /** Build order: horizontal distance to the section's centre, plus a penalty when it is well off to the side or behind. */
@@ -297,24 +415,28 @@ export class GameScene {
   /** Section, draw and queue numbers for the debug panel and the budget checks. */
   stats(): {
     chunks: number; visible: number; frustumVisible: number; triangles: number; drawCalls: number;
-    shimmerRepaints: number; chunkBuilds: number; queued: number; dirty: number; zone: CameraZone; fogEnd: number;
+    shimmerRepaints: number; chunkBuilds: number; queued: number; dirty: number; zone: CameraZone; fogEnd: number; meshed: number;
   } {
     let visible = 0;
-    let frustumVisible = 0;
-    this.camera.updateMatrixWorld();
-    this.projScreen.multiplyMatrices(this.camera.projectionMatrix, this.camera.matrixWorldInverse);
-    this.frustum.setFromProjectionMatrix(this.projScreen);
-    for (const c of this.chunks.values()) {
-      const meshes = [c.solid, c.trans].filter((m): m is THREE.Mesh => !!m && m.visible);
-      if (meshes.length === 0) continue;
-      visible++;
-      if (meshes.some(m => this.frustum.intersectsObject(m))) frustumVisible++;
-    }
+    for (const c of this.chunks.values()) if (c.solid?.visible || c.trans?.visible) visible++;
+    const frustumVisible = this.frustumSections();
     return {
       chunks: this.chunks.size, visible, frustumVisible, triangles: this.renderer.info.render.triangles, drawCalls: this.renderer.info.render.calls,
       shimmerRepaints: this.shimmerRepaints, chunkBuilds: this.chunkBuilds, queued: this.queue.size, dirty: this.dirty.size,
-      zone: this.zone, fogEnd: this.fogEnd,
+      zone: this.zone, fogEnd: this.viewEased, meshed: this.meshed,
     };
+  }
+
+  /** Drawn sections (holding geometry) that the camera's frustum sees: the number every section budget counts. */
+  frustumSections(): number {
+    this.camera.updateMatrixWorld();
+    this.projScreen.multiplyMatrices(this.camera.projectionMatrix, this.camera.matrixWorldInverse);
+    this.frustum.setFromProjectionMatrix(this.projScreen);
+    let n = 0;
+    for (const c of this.chunks.values()) {
+      if ((c.solid?.visible && this.frustum.intersectsObject(c.solid)) || (c.trans?.visible && this.frustum.intersectsObject(c.trans))) n++;
+    }
+    return n;
   }
 
   /** Sections still waiting for their first build (the view-distance controller waits for this to be 0). */
@@ -372,6 +494,8 @@ export class GameScene {
    * and his real head, it snaps to his head so the camera never orbits a point inside the ground.
    */
   followTarget(pos: THREE.Vector3, dt: number): void {
+    if (Number.isFinite(dt) && dt > 0) this.clock += Math.min(dt, 1);
+    this.updateView(dt);
     const real = this.realEye.set(pos.x, pos.y + EYE_HEIGHT, pos.z);
     const first = !this.followed;
     if (first) {
@@ -391,8 +515,11 @@ export class GameScene {
     this.camera.position.set(c.x, c.y, c.z);
     this.camera.lookAt(this.lookPoint.set(c.x + f.x, c.y + f.y, c.z + f.z));
     this.cullSections(c, f, pos.x, pos.z);
-    if (first) this.buildInFrustum();
-    const near = easeNear(this.camera.near, cameraNear(clearance(this.world, c.x, c.y, c.z)), dt);
+    if (first) {
+      this.buildInFrustum();
+      Object.assign(this.disposePose, { x: c.x, z: c.z, fog: this.fogEnd }); // nothing built yet can be far
+    }
+    const near = easeNear(this.camera.near, cameraNear(clearance(this.world, c.x, c.y, c.z), nearMaxFor(this.viewEased)), dt);
     if (Math.abs(near - this.camera.near) > 1e-3) {
       this.camera.near = near;
       this.camera.updateProjectionMatrix();
@@ -491,7 +618,19 @@ export class GameScene {
         this.rebuildSection(...parseKey(key));
       }
     }
+    // Only when something can have become far: he moved, the view shrank, a grace is running, or over the cap.
+    const dp = this.disposePose, c = this.rig.position;
+    const wanted = Math.hypot(c.x - dp.x, c.z - dp.z) > 4 || this.fogEnd < dp.fog || this.farSince.size > 0 || this.meshed > MAX_BUILT_SECTIONS;
+    if (this.followed && wanted && this.clock - this.lastDisposeCheck >= 0.25) {
+      this.lastDisposeCheck = this.clock;
+      dp.x = c.x; dp.z = c.z; dp.fog = this.fogEnd;
+      this.disposeFar();
+    }
     if (this.anyVisibleShimmer() && this.atlas.shimmer(timeSeconds)) this.shimmerRepaints++;
     this.renderer.render(this.scene, this.camera);
   }
+
+  private lastDisposeCheck = -Infinity;
+  /** Where the camera was, and the draw fog end, at the last dispose check (set at the first frame). */
+  private readonly disposePose = { x: NaN, z: NaN, fog: -Infinity };
 }

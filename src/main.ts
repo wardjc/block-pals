@@ -21,6 +21,8 @@ import { createDebouncer, resolveHold, resolveTap } from './input/tap';
 import { animatePalTrot, animatePlayerWalk, idleVillager, makeWalkState, makeEmblem, makePalModel, makePlayerModel, makeVillagerModel, placeEmblem, setEatPose } from './render/characters';
 import { pipHiddenFor } from './render/cameraRig';
 import { GameScene, PICK_RANGE } from './render/scene';
+import { ViewDistance, type ViewSetting } from './render/viewDistance';
+import { loadViewSetting } from './render/viewSetting';
 import { sfx } from './audio/sfx';
 import { CraftScreen } from './ui/craft';
 import { BagTray } from './ui/bag';
@@ -74,6 +76,13 @@ if (loaded) herd.restore(loaded.animals, village.farm.herdSpawns, world, roam, l
 else herd.populate(village.farm.herdSpawns);
 game.herd = herd;
 const scene = new GameScene(document.getElementById('game')!, world);
+// How far he can see (Task 10b): Auto starts at 40 and grows with the tablet's speed; a grown-up can pin it.
+// The clock has an offset only the ?viewtest feed moves (fake frame times in the e2e test).
+let viewClockOffset = 0;
+const viewDistance = new ViewDistance(() => performance.now() + viewClockOffset);
+viewDistance.setSetting(loadViewSetting(storage));
+viewDistance.pause(3); // loading and the first frames
+scene.setViewDistance(viewDistance.distance);
 const animalView = new AnimalView(scene.scene);
 const sparkles = new Sparkles(scene.scene);
 const flags = loaded?.flags ?? { ledToVillage: false };
@@ -387,13 +396,18 @@ const grownUps = new GrownUps(document.getElementById('ui')!, {
   stopAutosave: () => autosave.stop(),
   resumeAutosave: () => autosave.resume(),
   onOpenChange: syncOverlays,
+  getViewSetting: () => viewDistance.currentSetting,
+  onViewSettingSaved: s => viewDistance.setSetting(s),
 });
 
 const flushUsage = (): void => usage.flush();
 setInterval(flushUsage, 15_000);
 document.addEventListener('visibilitychange', () => {
   if (document.visibilityState === 'hidden') flushUsage();
-  else last = performance.now();
+  else {
+    last = performance.now();
+    viewDistance.pause(2); // the first frames back are not the tablet's real speed
+  }
 });
 window.addEventListener('pagehide', flushUsage);
 
@@ -867,6 +881,27 @@ if (debugOn) {
     worldSize: () => ({ x: world.sizeX, y: world.sizeY, z: world.sizeZ }),
     deep: () => game.isDeep(),
     goHome: () => game.goHome(),
+    sections: () => {
+      const s = scene.stats();
+      return { built: s.chunks, meshed: s.meshed, visible: s.visible, frustum: s.frustumVisible, queued: s.queued, zone: s.zone };
+    },
+    view: () => ({
+      distance: viewDistance.distance, setting: viewDistance.currentSetting, pinned: viewDistance.pinned,
+      emaMs: viewDistance.emaMs, ...scene.view(),
+    }),
+    setViewSetting: (s: ViewSetting) => viewDistance.setSetting(s),
+    ...(location.search.includes('viewtest') ? {
+      /** Test only: drives the controller with fake frame times on a fake clock for `seconds` (real frames ignored meanwhile). */
+      viewFeed: (ms: number, seconds: number, ctx?: { backlog?: number; drawCalls?: number; sections?: number }) => {
+        viewFeeding = true;
+        for (let t = 0; t < seconds * 1000; t += ms) {
+          viewClockOffset += ms;
+          viewDistance.frame(ms, ctx ?? { backlog: 0, drawCalls: 50, sections: 30 });
+        }
+        return viewDistance.distance;
+      },
+      viewFeedEnd: () => { viewFeeding = false; },
+    } : {}),
     saveNow,
     eating: () => ({ active: game.eating.active, progress: game.eating.progress, bite: game.eating.bite, food: game.eating.food }),
     layoutFarm: () => ({ beds: village.farm.beds, pool: village.farm.pool, irrigation: village.farm.irrigation, pasture, gate: village.farm.gate, fence: village.farm.fence, path: village.farm.path }),
@@ -936,6 +971,10 @@ if (debugOn) {
 }
 
 let usageMs = 0;
+let viewFrames = 0;
+let viewSections = 0;
+/** True while the ?viewtest feed drives the view controller (real frames are then ignored). */
+let viewFeeding = false;
 let pipGone = false;
 let debugHidePlayer = false; // ?debug screenshots only
 // Walk cycles advance by the distance actually moved each frame (blocked, paused or standing = 0 = ease to rest).
@@ -1036,6 +1075,10 @@ function frame(now: number): void {
   scene.updateMarker(dt);
   updateTowerLight(dt, now / 1000);
   scene.render();
+  // The view distance watches the real frame time and the budgets (the frustum count every 10 frames).
+  if (++viewFrames % 10 === 0) viewSections = scene.frustumSections();
+  if (!viewFeeding) viewDistance.frame(rawMs, { backlog: scene.backlog, drawCalls: scene.renderer.info.render.calls, sections: viewSections });
+  scene.setViewDistance(viewDistance.distance);
 
   // Redraw the hotbar only when a count or the selection changed.
   const rev = game.inventory.revision;
