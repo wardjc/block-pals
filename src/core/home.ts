@@ -1,6 +1,5 @@
 import { BLOCKS, BlockId } from './blocks';
 import { insideWall } from './bounds';
-import type { CaveLayout } from './caves';
 import { canStep, isStandable, type Cell } from './pathfind';
 import type { WorldCells } from './shifted';
 import type { Rect, VillageLayout } from './village';
@@ -12,6 +11,9 @@ export const DEEP_EXIT = 5;
 export const GROUND_RING = 4;
 /** How far the Home lift looks for open ground around his column. */
 export const HOME_RADIUS = 24;
+
+/** All the Home lift and the way home need of the caves: the mouths' outer (surface) cells. */
+export interface HomeCaves { mouths: ReadonlyArray<{ cell: Cell }> }
 
 const RING: ReadonlyArray<readonly [number, number]> = [
   [GROUND_RING, 0], [-GROUND_RING, 0], [0, GROUND_RING], [0, -GROUND_RING],
@@ -71,7 +73,7 @@ function openTop(world: WorldCells, x: number, z: number, avoid: readonly Rect[]
  * the nearest cave mouth's outer cell; if there is none, `fallback` (the spawn).
  */
 export function homeSpot(
-  world: WorldCells, feet: Cell, caves: CaveLayout, village: VillageLayout | null,
+  world: WorldCells, feet: Cell, caves: HomeCaves, village: VillageLayout | null,
   fallback: Cell, extraAvoid: readonly Rect[] = [],
 ): Cell {
   const [px, py, pz] = feet;
@@ -101,7 +103,7 @@ export function homeSpot(
   if (best) return best;
   let mouth: Cell | null = null;
   let mouthDist = Infinity;
-  for (const m of caves.mouths) {
+  for (const { cell: m } of caves.mouths) {
     const d = Math.hypot(m[0] - px, m[2] - pz);
     if (d < mouthDist && isStandable(world, m)) { mouth = m; mouthDist = d; }
   }
@@ -113,11 +115,11 @@ export function homeSpot(
  * be walked back) from `from` to the nearest cave mouth. null when there is no mouth or no way.
  * The cave tasks give it the trail to follow; with no caves it simply finds the nearest mouth.
  */
-export function routeHome(world: WorldCells, from: Cell, caves: CaveLayout, maxNodes = 60_000): Cell[] | null {
+export function routeHome(world: WorldCells, from: Cell, caves: HomeCaves, maxNodes = 60_000): Cell[] | null {
   if (caves.mouths.length === 0 || !isStandable(world, from)) return null;
   const sx = world.sizeX, sxz = world.sizeX * world.sizeZ;
   const key = (c: Cell): number => c[0] + sx * c[2] + sxz * c[1];
-  const goals = new Set(caves.mouths.map(key));
+  const goals = new Set(caves.mouths.map(m => key(m.cell)));
   const parent = new Map<number, number>([[key(from), -1]]);
   const cells = new Map<number, Cell>([[key(from), [...from]]]);
   const queue: number[] = [key(from)];

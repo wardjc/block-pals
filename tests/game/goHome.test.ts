@@ -120,7 +120,7 @@ describe('homeSpot', () => {
     }
     expect(homeSpot(w, [40, 10, 40], EMPTY_CAVES, null, [5, 10, 5])).toEqual([5, 10, 5]);
     const mouth: Cell = [75, 10, 40];
-    expect(homeSpot(w, [40, 10, 40], { mouths: [[2, 10, 2], mouth] }, null, [5, 10, 5])).toEqual(mouth);
+    expect(homeSpot(w, [40, 10, 40], { mouths: [{ cell: [2, 10, 2] }, { cell: mouth }] }, null, [5, 10, 5])).toEqual(mouth);
   });
 });
 
@@ -212,7 +212,7 @@ describe('routeHome (no caves yet: the nearest mouth, ordinary steps only)', () 
     expect(isStandable(w, bottom)).toBe(true);
     expect(routeHome(w, bottom, EMPTY_CAVES)).toBeNull();
     const mouth: Cell = [9, 21, 20];
-    const route = routeHome(w, bottom, { mouths: [mouth] })!;
+    const route = routeHome(w, bottom, { mouths: [{ cell: mouth }] })!;
     expect(route).not.toBeNull();
     expect(route.at(-1)).toEqual(mouth);
     let prev = bottom;
