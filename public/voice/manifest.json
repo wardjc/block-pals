@@ -149,6 +149,11 @@
   "text": "I'll wait for you. Come along!",
   "duration": 2.52
  },
+ "pip/0bc4f3e04f03": {
+  "file": "pip/0bc4f3e04f03.ogg",
+  "text": "Here we are, back in the sunshine.",
+  "duration": 1.93
+ },
  "pip/0d16a4cb94a9": {
   "file": "pip/0d16a4cb94a9.ogg",
   "text": "Brilliant! You made it!",
@@ -264,6 +269,11 @@
   "text": "Super! That one's in your bag!",
   "duration": 2.54
  },
+ "pip/281a74a341a6": {
+  "file": "pip/281a74a341a6.ogg",
+  "text": "A shiny gem for your bag.",
+  "duration": 1.75
+ },
  "pip/293f3438b325": {
   "file": "pip/293f3438b325.ogg",
   "text": "What shall we build today?",
@@ -284,6 +294,11 @@
   "text": "Carrots are good for you.",
   "duration": 1.41
  },
+ "pip/2e86ff5ccacd": {
+  "file": "pip/2e86ff5ccacd.ogg",
+  "text": "This cave is full of shiny things.",
+  "duration": 2.05
+ },
  "pip/2e8fb1609440": {
   "file": "pip/2e8fb1609440.ogg",
   "text": "There are neighbours to meet. Come with me!",
@@ -298,6 +313,11 @@
   "file": "pip/31265d7a7c14.ogg",
   "text": "A very happy animal!",
   "duration": 1.39
+ },
+ "pip/35e0d1dac1e9": {
+  "file": "pip/35e0d1dac1e9.ogg",
+  "text": "Back in the daylight. That was a good trip.",
+  "duration": 3.11
  },
  "pip/3733edb720f2": {
   "file": "pip/3733edb720f2.ogg",
@@ -338,6 +358,11 @@
   "file": "pip/45976ee5d280.ogg",
   "text": "Come along. Slowly does it!",
   "duration": 2.56
+ },
+ "pip/45daac6e1cc0": {
+  "file": "pip/45daac6e1cc0.ogg",
+  "text": "An old base! Let's tidy it up.",
+  "duration": 2.75
  },
  "pip/473ef4c43738": {
   "file": "pip/473ef4c43738.ogg",
@@ -399,6 +424,11 @@
   "text": "Time for a little rest! Wiggle your toes!",
   "duration": 2.99
  },
+ "pip/5c1138a6e6a9": {
+  "file": "pip/5c1138a6e6a9.ogg",
+  "text": "Look what was in the chest.",
+  "duration": 1.59
+ },
  "pip/5ec8d8303a5b": {
   "file": "pip/5ec8d8303a5b.ogg",
   "text": "Your own cottage. How lovely!",
@@ -409,10 +439,20 @@
   "text": "What a funny little potato!",
   "duration": 1.75
  },
+ "pip/611a3e92fefa": {
+  "file": "pip/611a3e92fefa.ogg",
+  "text": "What a lovely old hideout!",
+  "duration": 1.57
+ },
  "pip/62cb907e00b8": {
   "file": "pip/62cb907e00b8.ogg",
   "text": "Wool can be made into coloured blocks.",
   "duration": 2.09
+ },
+ "pip/62e3d5b7e87b": {
+  "file": "pip/62e3d5b7e87b.ogg",
+  "text": "Somebody lived here once. We could fix it up.",
+  "duration": 3.33
  },
  "pip/62e4f706b0ef": {
   "file": "pip/62e4f706b0ef.ogg",
@@ -469,10 +509,25 @@
   "text": "Seeds grow into plants. Shall we plant some?",
   "duration": 3.27
  },
+ "pip/6e0e67567e7c": {
+  "file": "pip/6e0e67567e7c.ogg",
+  "text": "What a bright, sparkly cave!",
+  "duration": 1.57
+ },
+ "pip/731d3324caa0": {
+  "file": "pip/731d3324caa0.ogg",
+  "text": "Follow me. I know the way up.",
+  "duration": 2.68
+ },
  "pip/73acac114d2c": {
   "file": "pip/73acac114d2c.ogg",
   "text": "You got some wool!",
   "duration": 1.13
+ },
+ "pip/73cf53090530": {
+  "file": "pip/73cf53090530.ogg",
+  "text": "The way home is this way.",
+  "duration": 1.65
  },
  "pip/744ce6e3148a": {
   "file": "pip/744ce6e3148a.ogg",
@@ -488,6 +543,16 @@
   "file": "pip/7513acfadf8a.ogg",
   "text": "You have a gem. The wizard likes gems.",
   "duration": 3.13
+ },
+ "pip/763a46a63539": {
+  "file": "pip/763a46a63539.ogg",
+  "text": "A treasure chest, full of nice things!",
+  "duration": 1.97
+ },
+ "pip/7721a37dade4": {
+  "file": "pip/7721a37dade4.ogg",
+  "text": "Shall we dig down and look for a cave?",
+  "duration": 2.07
  },
  "pip/790510d0b04e": {
   "file": "pip/790510d0b04e.ogg",
@@ -533,6 +598,16 @@
   "file": "pip/848e18d7e860.ogg",
   "text": "Wow, lots of those! Let's build with them.",
   "duration": 3.11
+ },
+ "pip/84ed015f46cf": {
+  "file": "pip/84ed015f46cf.ogg",
+  "text": "A gem! Well spotted.",
+  "duration": 2.26
+ },
+ "pip/868ca75b5d1f": {
+  "file": "pip/868ca75b5d1f.ogg",
+  "text": "There might be sparkly caves down below.",
+  "duration": 2.21
  },
  "pip/8b60ffde4469": {
   "file": "pip/8b60ffde4469.ogg",
@@ -714,6 +789,16 @@
   "text": "Whoops! Let me help you up!",
   "duration": 2.18
  },
+ "pip/b65bdaa44cfc": {
+  "file": "pip/b65bdaa44cfc.ogg",
+  "text": "Back up top again. What a lovely trip!",
+  "duration": 3.03
+ },
+ "pip/b6bafb261c3c": {
+  "file": "pip/b6bafb261c3c.ogg",
+  "text": "Up we come! It is lovely up here.",
+  "duration": 2.68
+ },
  "pip/b7e505e1f223": {
   "file": "pip/b7e505e1f223.ogg",
   "text": "This way, follow me!",
@@ -723,6 +808,11 @@
   "file": "pip/b8dabd1632cc.ogg",
   "text": "Someone has a light on a hill.",
   "duration": 1.79
+ },
+ "pip/bdb7627272a7": {
+  "file": "pip/bdb7627272a7.ogg",
+  "text": "Let's walk up to the daylight.",
+  "duration": 1.73
  },
  "pip/be05c367eeb3": {
   "file": "pip/be05c367eeb3.ogg",
@@ -749,10 +839,20 @@
   "text": "A crunchy little potato!",
   "duration": 1.73
  },
+ "pip/c41648a1c6c5": {
+  "file": "pip/c41648a1c6c5.ogg",
+  "text": "Let's dig down and find caves.",
+  "duration": 1.93
+ },
  "pip/c47a010be57a": {
   "file": "pip/c47a010be57a.ogg",
   "text": "What are you making?",
   "duration": 1.25
+ },
+ "pip/c4d8a58df938": {
+  "file": "pip/c4d8a58df938.ogg",
+  "text": "You opened a treasure chest!",
+  "duration": 1.63
  },
  "pip/c56c96a02642": {
   "file": "pip/c56c96a02642.ogg",
@@ -769,10 +869,35 @@
   "text": "It's ready! Press and hold to pick it.",
   "duration": 2.72
  },
+ "pip/ca9c7fe37988": {
+  "file": "pip/ca9c7fe37988.ogg",
+  "text": "Shall we go back up to the sunshine?",
+  "duration": 2.07
+ },
+ "pip/cd791cacf6bd": {
+  "file": "pip/cd791cacf6bd.ogg",
+  "text": "You found a gem! It is so shiny.",
+  "duration": 2.77
+ },
+ "pip/d00bb211c262": {
+  "file": "pip/d00bb211c262.ogg",
+  "text": "I wonder what is under the ground. Let's dig!",
+  "duration": 3.21
+ },
+ "pip/d13d421f42c2": {
+  "file": "pip/d13d421f42c2.ogg",
+  "text": "So many things glow here. How pretty!",
+  "duration": 3.11
+ },
  "pip/d293ee33a54c": {
   "file": "pip/d293ee33a54c.ogg",
   "text": "Hiya! I'm Pip. Let's go exploring!",
   "duration": 3.74
+ },
+ "pip/d387fd658afd": {
+  "file": "pip/d387fd658afd.ogg",
+  "text": "Such a cosy old hideout. We can build here.",
+  "duration": 3.61
  },
  "pip/d44c764c662c": {
   "file": "pip/d44c764c662c.ogg",
@@ -839,6 +964,11 @@
   "text": "Apples grow on trees.",
   "duration": 1.61
  },
+ "pip/ea4c42878c19": {
+  "file": "pip/ea4c42878c19.ogg",
+  "text": "Treasure for your bag!",
+  "duration": 1.31
+ },
  "pip/ed29850853f5": {
   "file": "pip/ed29850853f5.ogg",
   "text": "I'll show you the way!",
@@ -858,6 +988,11 @@
   "file": "pip/f0e8bf952324.ogg",
   "text": "That's plenty of those! Let's use some.",
   "duration": 2.91
+ },
+ "pip/f16d255a1efd": {
+  "file": "pip/f16d255a1efd.ogg",
+  "text": "Look at that gem sparkle!",
+  "duration": 1.53
  },
  "pip/f2915b4ee66f": {
   "file": "pip/f2915b4ee66f.ogg",
@@ -883,6 +1018,11 @@
   "file": "pip/f7ffd26bdb48.ogg",
   "text": "A magic block! Where will you put it?",
   "duration": 2.95
+ },
+ "pip/f8b5f7751934": {
+  "file": "pip/f8b5f7751934.ogg",
+  "text": "Look at all the glowing things!",
+  "duration": 1.67
  },
  "pip/f9296dfd9799": {
   "file": "pip/f9296dfd9799.ogg",
