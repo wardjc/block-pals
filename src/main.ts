@@ -386,6 +386,9 @@ const grownUps = new GrownUps(document.getElementById('ui')!, {
   onMappingSaved: m => { pad = new GamepadInput(m); },
   stopAutosave: () => autosave.stop(),
   resumeAutosave: () => autosave.resume(),
+  // "Save a copy" never hands out stale progress: write the game now, else copy the live game.
+  flushSave: () => !autosave.frozen && saveGame(),
+  snapshotSave: () => JSON.stringify(serialise(game, seed, flags, Date.now(), herd.toJSON(), wizard)),
   onOpenChange: syncOverlays,
 });
 

@@ -17,6 +17,10 @@ export interface TransferSectionDeps {
   host: TransferHost;
   stopAutosave: () => void;
   resumeAutosave?: () => void;
+  /** Writes the running game first; see buildBundle. */
+  flush?: () => boolean;
+  /** The running game as a v3 save; see buildBundle. */
+  snapshot?: () => string;
   reload: () => void;
   /** False once the grown-up session this section belongs to has ended; late results are then dropped. */
   isCurrent?: () => boolean;
@@ -91,7 +95,7 @@ export function createTransferSection(d: TransferSectionDeps, initialNote = ''):
   input.hidden = true;
   input.dataset.testid = 'transfer-file';
 
-  const make = async () => buildBundle({ storage: d.storage, now: d.now, sha256: d.sha256, app: d.app });
+  const make = async () => buildBundle({ storage: d.storage, now: d.now, sha256: d.sha256, app: d.app, flush: d.flush, snapshot: d.snapshot });
   const done = (): void => {
     const iso = new Date(d.now()).toISOString();
     writeTransferNote(d.storage, iso);

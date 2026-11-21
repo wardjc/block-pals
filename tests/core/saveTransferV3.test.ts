@@ -172,33 +172,69 @@ describe('a copy made by this build (the v3 key)', () => {
   });
 });
 
-describe('export on a device where the move to v3 has not been written yet', () => {
-  test('with no v3 save, the v2 save is copied byte for byte under the v2 key, and it loads into a v3 game', async () => {
+describe('export never hands out stale progress (review finding 3)', () => {
+  /** The running game: his new block at (130, 60, 140) is in memory only. */
+  const liveText = (): string => {
+    const game = new Game(generateWorld(2026));
+    game.world.set(130, 60, 140, BlockId.MoonBlock);
+    return JSON.stringify(serialise(game, 2026, { ledToVillage: true }, 5));
+  };
+
+  test('when the save cannot be written (quota) and only the old v2 is stored, the copy is the live game, not the v2', async () => {
     const device = new FakeStorage();
     device.data.set(V2_SAVE_KEY, liveV2);
-    const made = await buildBundle(deps(device));
+    const live = liveText();
+    const made = await buildBundle({ ...deps(device), flush: () => false, snapshot: () => live });
     if (!made.ok) throw new Error(made.reason);
-    expect(made.bundle.keys).toEqual({ [V2_SAVE_KEY]: liveV2 });
+    expect(made.bundle.keys).toEqual({ [SAVE_KEY]: live });
+    expect(inspectSave(made.bundle.keys[SAVE_KEY], [3])!.data.edits).toContainEqual([130, 60, 140, BlockId.MoonBlock]);
     expect(device.writes).toEqual([]);
-    const other = new FakeStorage();
-    const r = await parseBundle(made.text, deps(other));
-    if (!r.ok) throw new Error(r.reason);
-    expect(inspectSave(r.raw, [3])!.data.edits).toEqual(liveEdits.map(up));
   });
 
-  test('the current game on the device is counted from the v2 key when there is no v3 yet', async () => {
+  test('when a stored v3 exists but the latest write failed, the copy is the live game', async () => {
+    const device = new FakeStorage();
+    const old = new Game(generateWorld(2026));
+    storeSave(device, serialise(old, 2026, { ledToVillage: false }, 1));
+    const live = liveText();
+    const made = await buildBundle({ ...deps(device), flush: () => false, snapshot: () => live });
+    if (!made.ok) throw new Error(made.reason);
+    expect(made.bundle.keys[SAVE_KEY]).toBe(live);
+  });
+
+  test('when the save is written first, the copy is the stored v3, byte for byte', async () => {
+    const device = new FakeStorage();
+    let flushed = false;
+    const live = liveText();
+    const made = await buildBundle({ ...deps(device), flush: () => { device.data.set(SAVE_KEY, live); flushed = true; return true; }, snapshot: () => 'never used' });
+    if (!made.ok) throw new Error(made.reason);
+    expect(flushed).toBe(true);
+    expect(made.bundle.keys).toEqual({ [SAVE_KEY]: live });
+  });
+
+  test('with no live game to copy, a stale or missing v3 is refused with a gentle grown-ups message (never the old v2)', async () => {
+    const device = new FakeStorage();
+    device.data.set(V2_SAVE_KEY, liveV2);
+    const r = await buildBundle(deps(device));
+    expect(r).toMatchObject({ ok: false, reason: 'stale' });
+    if (!r.ok) expect(r.message).toMatch(/not been saved/);
+    const failing = await buildBundle({ ...deps(device), flush: () => false });
+    expect(failing).toMatchObject({ ok: false, reason: 'stale' });
+  });
+
+  test('a damaged v3 save is still refused for export (never swapped for the older v2 or a fresh game)', async () => {
+    const device = new FakeStorage();
+    device.data.set(SAVE_KEY, '{nope');
+    device.data.set(V2_SAVE_KEY, liveV2);
+    expect(await buildBundle(deps(device))).toMatchObject({ ok: false, reason: 'invalid' });
+    expect(await buildBundle({ ...deps(device), flush: () => false, snapshot: liveText })).toMatchObject({ ok: false, reason: 'invalid' });
+  });
+
+  test('the current game on the device is counted from the v2 key when there is no v3 yet (import preview)', async () => {
     const device = new FakeStorage();
     device.data.set(V2_SAVE_KEY, liveV2);
     const r = await parseBundle(await oldBuildBundle(saveFixtureRaw('v2-extremes')), deps(device));
     if (!r.ok) throw new Error(r.reason);
     expect(r.preview.currentEdits).toBe(liveEdits.length);
-  });
-
-  test('a damaged v3 save is still refused for export (never silently replaced by the older v2)', async () => {
-    const device = new FakeStorage();
-    device.data.set(SAVE_KEY, '{nope');
-    device.data.set(V2_SAVE_KEY, liveV2);
-    expect(await buildBundle(deps(device))).toMatchObject({ ok: false, reason: 'invalid' });
   });
 });
 
