@@ -578,6 +578,8 @@ function preserveBad(storage: Storage, raw: string): boolean {
  * `gen` is never lowered, and neither is anything the wizard fields record (a true flag, a
  * counter, a hint): see `mergeWizard`.
  */
+// Review ruling #2: the read, merge ("never lower") and write below run in one synchronous task;
+// in real browsers localStorage work in one task cannot interleave with another tab's, so no lock.
 export function storeSave(storage: Storage | null, data: SaveData): boolean {
   if (!storage) return false;
   try {
@@ -626,7 +628,12 @@ function parseExisting(raw: string | null): Record<string, unknown> | null {
   }
 }
 
-/** Copies a raw old payload once. An existing backup is never overwritten; failure is harmless. */
+/**
+ * Copies a raw old payload once. An existing backup is never overwritten; failure is harmless.
+ * The one documented exception to "the old keys are never written" (review ruling #4): the
+ * additive `.v2.backup` / `.v1.backup` copies are created once during a migration. The v1 and v2
+ * MAIN keys themselves are never written or removed.
+ */
 function backupOnce(storage: Storage, key: string, raw: string): void {
   try {
     if (storage.getItem(key) === null) storage.setItem(key, raw);
@@ -635,7 +642,8 @@ function backupOnce(storage: Storage, key: string, raw: string): void {
 
 /**
  * Reads v3 first (valid edits are kept even if some entries are damaged; a damaged v3 is copied to
- * a `.bad` key, and is only ever replaced once that copy exists). With no usable v3, migrates the
+ * a `.bad` key, and is only ever replaced once that copy exists). Only when the v3 key is ABSENT does
+ * it migrate an older save: a present-but-unusable v3 means a fresh world in memory. With no v3, migrates the
  * v2 save: the raw v2 payload is backed up (first time only), checked in the 96 box, shifted by
  * +48 once, and written to the v3 key. With no usable v2 either, migrates v1 the same way (v1 backup
  * as before, then v1 to v2 to v3). The v1 and v2 keys stay byte-identical. If a key cannot be READ,
@@ -653,6 +661,16 @@ export function readSave(storage: Storage | null): SaveData | null {
       if (current.skipped > 0) preserveBad(storage, v3.raw as string); // retried by storeSave if it fails now
       return current.data;
     }
+    // Migration happens ONLY when the v3 key is ABSENT. A v3 that is present but unusable (damaged,
+    // a newer version, an old payload under the new key) is never replaced by the older v2 or v1
+    // game: a newer version is never touched at all; a damaged one is copied to a .bad slot (the
+    // existing rule, so a later save may replace it only once that copy exists). He plays a fresh
+    // world in memory and the old keys keep his older game untouched.
+    if (v3.raw !== null) {
+      const stored = parseExisting(v3.raw);
+      if (!(stored && typeof stored.version === 'number' && stored.version > 3)) preserveBad(storage, v3.raw);
+      return null;
+    }
     for (const [key, backup] of [[V2_SAVE_KEY, BACKUP_V2_KEY], [LEGACY_SAVE_KEY, BACKUP_KEY]] as const) {
       const old = readKey(storage, key);
       if (!old.ok) { session.mode = 'unreadable'; return null; }
@@ -661,7 +679,6 @@ export function readSave(storage: Storage | null): SaveData | null {
       // The v2 key only ever held v1 or v2 payloads; the v1 key only v1.
       const migrated = inspectSave(old.raw, key === V2_SAVE_KEY ? [1, 2] : [1]);
       if (!migrated) continue; // a corrupt v2 falls back to v1, as the step 2 build did
-      if (v3.raw !== null) preserveBad(storage, v3.raw);
       session.pendingMigration = true;
       storeSave(storage, migrated.data); // refused (and retried by the autosave) if a damaged v3 could not be kept
       return migrated.data;

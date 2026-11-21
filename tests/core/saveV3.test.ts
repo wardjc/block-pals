@@ -3,7 +3,7 @@ import { afterEach, beforeEach, describe, expect, test, vi } from 'vitest';
 import { BlockId } from '../../src/core/blocks';
 import {
   ALL_SAVE_KEYS, BACKUP_KEY, BACKUP_V2_KEY, BAD_V3_KEY, LEGACY_SAVE_KEY, SAVE_KEY, V2_SAVE_KEY, applySave, inspectSave, parseSave,
-  readSave, serialise, storeSave, type SaveData,
+  hasPendingMigration, readSave, serialise, storeSave, type SaveData,
 } from '../../src/core/save';
 import { GEN_VERSION, generateWorld } from '../../src/core/worldgen';
 import { Game } from '../../src/game/game';
@@ -128,15 +128,38 @@ describe('save v3: damaged, newer and unreadable', () => {
     expect(localStorage.getItem(BAD_V3_KEY)).toBe(raw);
   });
 
-  test('a stored version above 3 is never overwritten and never crashes; the v2 save is played instead', () => {
+  // Migration from v2 happens ONLY when the v3 key is absent. A present-but-unusable v3 is never
+  // replaced by the older v2 game (review finding 1).
+  test('a stored version above 3 plus a valid v2: plays a fresh world, the v3 is never touched and never replaced by v2', () => {
     const newer = JSON.stringify({ ...v3(), version: 4, extra: 'later' });
+    const v2raw = saveFixtureRaw('v2-extremes');
     localStorage.setItem(SAVE_KEY, newer);
-    localStorage.setItem(V2_SAVE_KEY, saveFixtureRaw('v2-extremes'));
-    const data = readSave(localStorage)!;
-    expect(data.migratedFrom).toBe(2);
-    expect(storeSave(localStorage, data)).toBe(false);
+    localStorage.setItem(V2_SAVE_KEY, v2raw);
+    const write = vi.spyOn(Storage.prototype, 'setItem');
+    expect(readSave(localStorage)).toBeNull();
+    expect(write).not.toHaveBeenCalled();
+    expect(storeSave(localStorage, serialise(new Game(generateWorld(2026)), 2026))).toBe(false);
     expect(localStorage.getItem(SAVE_KEY)).toBe(newer);
-    expect(localStorage.getItem(V2_SAVE_KEY)).toBe(saveFixtureRaw('v2-extremes'));
+    expect(localStorage.getItem(V2_SAVE_KEY)).toBe(v2raw);
+    expect(localStorage.getItem(BAD_V3_KEY)).toBeNull();
+  });
+
+  test('a damaged v3 plus a valid v2: the v3 is copied to .bad, nothing is written over it by the load, and v2 is NOT migrated', () => {
+    const v2raw = saveFixtureRaw('v2-extremes');
+    localStorage.setItem(SAVE_KEY, '{damaged v3');
+    localStorage.setItem(V2_SAVE_KEY, v2raw);
+    expect(readSave(localStorage)).toBeNull(); // a fresh world in memory, not the older v2 game
+    expect(localStorage.getItem(SAVE_KEY)).toBe('{damaged v3');
+    expect(localStorage.getItem(BAD_V3_KEY)).toBe('{damaged v3');
+    expect(localStorage.getItem(V2_SAVE_KEY)).toBe(v2raw);
+    expect(hasPendingMigration(localStorage)).toBe(false);
+  });
+
+  test('a damaged v3 plus a valid v1: v1 is not migrated either', () => {
+    localStorage.setItem(SAVE_KEY, 'nope');
+    localStorage.setItem(LEGACY_SAVE_KEY, saveFixtureRaw('v1-extremes'));
+    expect(readSave(localStorage)).toBeNull();
+    expect(localStorage.getItem(SAVE_KEY)).toBe('nope');
   });
 
   test('a version 2 payload under the v3 key is not shifted again: it is kept as damaged', () => {

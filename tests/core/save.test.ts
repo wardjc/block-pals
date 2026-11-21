@@ -457,13 +457,14 @@ describe('save v3 and migration from v1', () => {
     expect(again.edits.some(e => e[0] === 89)).toBe(true);
   });
 
-  test('a corrupt v3 falls back to migrating v1', () => {
-    const { raw, edits } = legacySave();
+  test('a corrupt v3 does NOT fall back to migrating v1: kept, copied to .bad, a fresh world in memory', () => {
+    const { raw } = legacySave();
     localStorage.setItem(LEGACY_SAVE_KEY, raw);
     localStorage.setItem(SAVE_KEY, '{oops');
-    expect(readSave(localStorage)!.edits).toEqual(edits.map(shift));
-    expect(parseSave(localStorage.getItem(SAVE_KEY))!.edits).toEqual(edits.map(shift));
+    expect(readSave(localStorage)).toBeNull();
+    expect(localStorage.getItem(SAVE_KEY)).toBe('{oops');
     expect(localStorage.getItem(BAD_V3_KEY)).toBe('{oops');
+    expect(localStorage.getItem(LEGACY_SAVE_KEY)).toBe(raw);
   });
 
   test('the backup is never overwritten', () => {
@@ -501,11 +502,11 @@ describe('save v3 and migration from v1', () => {
     expect(JSON.parse(localStorage.getItem(SAVE_KEY)!).gen).toBe(5);
   });
 
-  test('a bad v3 payload is backed up once when v1 is used instead', () => {
+  test('a bad v3 payload is backed up once (v1 is not used instead)', () => {
     const { raw } = legacySave();
     localStorage.setItem(LEGACY_SAVE_KEY, raw);
     localStorage.setItem(SAVE_KEY, '{"version":3,"broken":true}');
-    expect(readSave(localStorage)).not.toBeNull();
+    expect(readSave(localStorage)).toBeNull();
     expect(localStorage.getItem(BAD_V3_KEY)).toBe('{"version":3,"broken":true}');
     // A second bad v3 never overwrites the first backup.
     localStorage.setItem(SAVE_KEY, 'garbage');
@@ -591,7 +592,7 @@ describe('save safety: damaged, unreadable and failing storage', () => {
     localStorage.setItem(LEGACY_SAVE_KEY, legacySave().raw);
     throwOn([BAD_V3_KEY, `${BAD_V3_KEY}.2`, `${BAD_V3_KEY}.3`, `${BAD_V3_KEY}.4`], 'setItem');
     const data = readSave(localStorage);
-    expect(data).not.toBeNull(); // he still plays (in memory)
+    expect(data).toBeNull(); // he still plays (a fresh world in memory); the older v1 is never loaded over it
     expect(localStorage.getItem(SAVE_KEY)).toBe('{"version":3,"broken":true}');
   });
 
