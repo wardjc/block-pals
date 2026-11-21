@@ -193,6 +193,19 @@ export class Pal {
       return;
     }
 
+    // More than a step above or below him (Pip shared his cell in a shaft and he climbed out, or Pip
+    // waits on a stair above him): being close sideways is not "there". Walk to a spot at his height;
+    // if there is no way within a second, appear beside him.
+    if (Math.abs(player.pos.y - this.pos.y) > 1) {
+      if (!this.pathLeadsNear(player) && this.repathCooldown <= 0) this.repath(world, player);
+      const before = { ...this.pos };
+      this.follow(world, player, dt);
+      if (Math.hypot(this.pos.x - before.x, this.pos.z - before.z) > SPEED * dt * 0.2) this.stuckFor = 0;
+      else this.stuckFor += dt;
+      if (this.stuckFor >= 1) this.teleport(world, player);
+      return;
+    }
+
     if (dist <= REPATH_DIST) {
       this.stuckFor = 0;
       if (dist <= 2.2) this.path = [];
