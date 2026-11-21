@@ -75,6 +75,63 @@ describe('review of PR #32 (chunk B)', () => {
     expect(BLOCKS[w.get(c[0], c[1], c[2])].solid || BLOCKS[w.get(c[0], c[1] + 1, c[2])].solid).toBe(false);
   });
 
+  it('recheck 1: with no open top within 24, a deep mouth is refused and a buried spawn is settled, the result is still standable and not deep', () => {
+    const w = new World(60, 40, 60);
+    for (let x = 0; x < 60; x++) for (let z = 0; z < 60; z++) for (let y = 0; y < 20; y++) w.set(x, y, z, BlockId.Stone);
+    // A RoofTile cap over the middle 50 x 50 (no open ground within 24 of the centre), grass outside it.
+    for (let x = 0; x < 60; x++) for (let z = 0; z < 60; z++) w.set(x, 20, z, Math.max(Math.abs(x - 30), Math.abs(z - 30)) <= 25 ? BlockId.RoofTile : BlockId.Grass);
+    for (let y = 8; y < 11; y++) w.set(30, y, 30, BlockId.Air);
+    const spot = homeSpot(w, [30, 8, 30], { mouths: [{ cell: [30, 8, 30] }] }, null, [30, 10, 31]);
+    expect(spot).not.toEqual([30, 8, 30]);
+    expect(isStandable(w, spot)).toBe(true);
+    expect(isDeep(w, spot, true)).toBe(false);
+  });
+
+  it('final 1: a spawn on a deep shaft floor whose column top is deep too still gives a standable, non-deep spot', () => {
+    const w = new World(60, 40, 60);
+    for (let x = 0; x < 60; x++) for (let z = 0; z < 60; z++) for (let y = 0; y < 20; y++) w.set(x, y, z, BlockId.Stone);
+    for (let x = 0; x < 60; x++) for (let z = 0; z < 60; z++) w.set(x, 20, z, Math.max(Math.abs(x - 30), Math.abs(z - 30)) <= 25 ? BlockId.RoofTile : BlockId.Grass);
+    for (let y = 8; y < 11; y++) w.set(30, y, 30, BlockId.Air);
+    // The spawn column is an open shaft: its floor (y 10) is also its column top, and deep.
+    for (let y = 10; y <= 20; y++) w.set(30, y, 32, BlockId.Air);
+    const spawn: Cell = [30, 10, 32];
+    expect(isStandable(w, spawn)).toBe(true);
+    expect(isDeep(w, spawn, false)).toBe(true);
+    const spot = homeSpot(w, [30, 8, 30], { mouths: [] }, null, spawn);
+    expect(isStandable(w, spot)).toBe(true);
+    expect(isDeep(w, spot, true)).toBe(false);
+  });
+
+  it('final 2: after sharing his cell in a shaft, Pip follows him back up the stairs (never left at the bottom)', () => {
+    const w = meadow();
+    // A one-cell shaft 3 deep at (20, 20) with a staircase going up east: (21,19), (22,20), surface at x 23.
+    for (let y = 18; y <= 20; y++) w.set(20, y, 20, BlockId.Air);
+    w.set(21, 19, 20, BlockId.Air); w.set(21, 20, 20, BlockId.Air);
+    w.set(22, 20, 20, BlockId.Air);
+    // Headroom for the steps.
+    const player = new Player({ x: 20.5, y: 18, z: 20.5 });
+    const pal = new Pal({ x: 26.5, y: 21, z: 20.5 }, () => undefined, () => 0);
+    for (let i = 0; i < 120; i++) pal.update(w, player, 1 / 30);
+    expect(Math.abs(pal.pos.y - player.pos.y)).toBeLessThanOrEqual(1); // joined him below
+    // He climbs out to the surface just east of the stairs.
+    player.pos = { x: 24.5, y: 21, z: 20.5 };
+    for (let i = 0; i < 600; i++) pal.update(w, player, 1 / 30);
+    expect(Math.abs(pal.pos.y - player.pos.y)).toBeLessThanOrEqual(1);
+    expect(Math.hypot(pal.pos.x - player.pos.x, pal.pos.z - player.pos.z)).toBeLessThanOrEqual(3.5);
+  });
+
+  for (const depth of [2, 3, 4]) {
+    it(`recheck 3: Pip joins him in a one-cell shaft ${depth} deep (never stuck at the rim)`, () => {
+      const w = meadow();
+      for (let y = 21 - depth; y <= 20; y++) w.set(20, y, 20, BlockId.Air);
+      const player = new Player({ x: 20.5, y: 21 - depth, z: 20.5 });
+      const pal = new Pal({ x: 22.5, y: 21, z: 20.5 }, () => undefined, () => 0);
+      for (let i = 0; i < 600; i++) pal.update(w, player, 1 / 30);
+      expect(Math.abs(pal.pos.y - player.pos.y)).toBeLessThanOrEqual(1);
+      expect(Math.hypot(pal.pos.x - player.pos.x, pal.pos.z - player.pos.z)).toBeLessThanOrEqual(3);
+    });
+  }
+
   it('3. underground, a floor the camera looks straight down at inside the fog is kept, beyond the +-20 window', () => {
     // Camera at y 54.81 over the world centre looking straight down; the floor is at y 31 (section 1).
     const set = visibleSections(192, 68, 192, 96.5, 54.81, 96.5, 0, -1, 0, 'underground', 96.5, 96.5, 36);

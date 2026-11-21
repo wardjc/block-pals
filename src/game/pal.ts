@@ -186,6 +186,26 @@ export class Pal {
       return;
     }
 
+    // He is down a narrow hole Pip cannot walk into (no spot beside him at his height): Pip joins him
+    // rather than waiting at the rim (a rim spot within 3 sideways is never "done" while he is below).
+    if (Math.abs(player.pos.y - this.pos.y) > 1 && this.spots(world, player, [1, 2, 3], player.pos).length === 0) {
+      this.teleport(world, player);
+      return;
+    }
+
+    // More than a step above or below him (Pip shared his cell in a shaft and he climbed out, or Pip
+    // waits on a stair above him): being close sideways is not "there". Walk to a spot at his height;
+    // if there is no way within a second, appear beside him.
+    if (Math.abs(player.pos.y - this.pos.y) > 1) {
+      if (!this.pathLeadsNear(player) && this.repathCooldown <= 0) this.repath(world, player);
+      const before = { ...this.pos };
+      this.follow(world, player, dt);
+      if (Math.hypot(this.pos.x - before.x, this.pos.z - before.z) > SPEED * dt * 0.2) this.stuckFor = 0;
+      else this.stuckFor += dt;
+      if (this.stuckFor >= 1) this.teleport(world, player);
+      return;
+    }
+
     if (dist <= REPATH_DIST) {
       this.stuckFor = 0;
       if (dist <= 2.2) this.path = [];
@@ -351,7 +371,7 @@ export class Pal {
 
   /**
    * Beside him: the usual spots (rings 1 to 3 at his height +-1); else the nearest standable cell within
-   * 4 blocks sideways and 4 up or down (any column but his); else, in a one-cell shaft he glided into,
+   * 4 blocks sideways at his height +-1 (any column but his); else, in a one-cell shaft he glided into,
    * Pip shares his column so he is never left at the rim.
    */
   private teleport(world: World, player: Player): void {
@@ -373,7 +393,8 @@ export class Pal {
     for (let dx = -4; dx <= 4; dx++) for (let dz = -4; dz <= 4; dz++) {
       if (dx === 0 && dz === 0) continue;
       if (!this.insideWall(world, [px + dx, 0, pz + dz])) continue;
-      for (let dy = -4; dy <= 4; dy++) {
+      // Only cells at his height (+-1): a spot on the rim above him is not beside him.
+      for (let dy = -1; dy <= 1; dy++) {
         const cell: Cell = [px + dx, py + dy, pz + dz];
         const d = Math.hypot(dx, dz) + Math.abs(dy) * 1.5;
         if (d < bestD && isStandable(world, cell)) { best = cell; bestD = d; }

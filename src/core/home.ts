@@ -1,6 +1,6 @@
 import { BLOCKS, BlockId } from './blocks';
 import { insideWall } from './bounds';
-import { canStep, isStandable, type Cell } from './pathfind';
+import { canStep, isStandable, settleCell, type Cell } from './pathfind';
 import type { WorldCells } from './shifted';
 import type { Rect, VillageLayout } from './village';
 
@@ -101,13 +101,39 @@ export function homeSpot(
     }
   }
   if (best) return best;
+  // Every way out must be safe: standable (free body, solid floor) and not deep.
+  const safe = (c: Cell): boolean => isStandable(world, c) && depthBelowGround(world, c) <= DEEP_EXIT;
   let mouth: Cell | null = null;
   let mouthDist = Infinity;
   for (const { cell: m } of caves.mouths) {
     const d = Math.hypot(m[0] - px, m[2] - pz);
-    if (d < mouthDist && isStandable(world, m)) { mouth = m; mouthDist = d; }
+    if (d < mouthDist && safe(m)) { mouth = m; mouthDist = d; }
   }
-  return mouth ? [...mouth] : [...fallback];
+  if (mouth) return [...mouth];
+  if (safe(fallback)) return [...fallback];
+  // The spawn is blocked (he built there): the nearest safe cell to it, first on its own top, then settled.
+  const top: Cell = [fallback[0], world.topSolidY(fallback[0], fallback[2]) + 1, fallback[2]];
+  if (safe(top)) return top;
+  const settled = settleCell(world, fallback);
+  if (safe(settled)) return settled;
+  // Last resort: the nearest column top anywhere that is standable and not deep (rings out from the spawn).
+  const maxR = Math.max(world.sizeX, world.sizeZ);
+  for (let r = 1; r <= maxR; r++) {
+    let pick: Cell | null = null;
+    let pickD = Infinity;
+    for (let dx = -r; dx <= r; dx++) {
+      for (let dz = -r; dz <= r; dz++) {
+        if (Math.max(Math.abs(dx), Math.abs(dz)) !== r) continue;
+        const x = fallback[0] + dx, z = fallback[2] + dz;
+        if (!world.inBounds(x, 0, z)) continue;
+        const c: Cell = [x, world.topSolidY(x, z) + 1, z];
+        const d = Math.hypot(dx, dz);
+        if (d < pickD && safe(c)) { pick = c; pickD = d; }
+      }
+    }
+    if (pick) return pick;
+  }
+  return settled; // a world with no open, standable ground at all: the safest body cell there is
 }
 
 /**
