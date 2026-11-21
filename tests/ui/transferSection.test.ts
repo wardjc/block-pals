@@ -34,7 +34,7 @@ function setup(opts: { canShare?: boolean; share?: (f: File) => Promise<void>; f
     storage: localStorage, now: () => NOW, host, sha256,
     stopAutosave: vi.fn(), resumeAutosave: vi.fn(), reload: vi.fn(),
     download: (name: string, text: string) => { downloads.push({ name, text }); },
-    canShareFiles: () => opts.canShare ?? false, shareFile: opts.share, flush: opts.flush, snapshot: opts.snapshot,
+    canShareFiles: () => opts.canShare ?? false, shareFile: opts.share, flush: opts.flush ?? (() => true), snapshot: opts.snapshot,
   };
   const box = createTransferSection(d);
   document.body.replaceChildren(box);

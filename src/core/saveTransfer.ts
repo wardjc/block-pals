@@ -1,4 +1,4 @@
-import { applySave, hasPendingMigration, inspectSave, LEGACY_SAVE_KEY, SAVE_KEY, V2_SAVE_KEY } from './save';
+import { applySave, inspectSave, LEGACY_SAVE_KEY, SAVE_KEY, V2_SAVE_KEY } from './save';
 
 /**
  * "Save a copy / load a copy": moves his saved game between devices as a plain file.
@@ -103,12 +103,11 @@ export type ExportResult = { ok: true; bundle: Bundle; text: string; fileName: s
 const STALE = 'The latest play has not been saved on this device yet, so no copy was made. Close this, play for a moment and try again. Nothing has been changed.';
 
 /**
- * Never hands out stale progress (review finding 3). For the real main key: the running game is
- * written first (`flush`); if that worked the stored v3 is copied byte for byte. If it did not (a
- * full storage, a migration still waiting to be written), the live game itself (`snapshot`) is
- * copied. With neither, a missing v3 or one waiting on a migration is refused with a gentle
- * message: the older v2 on the device is never exported in its place. A damaged v3 is always
- * refused (never swapped for the v2 or a fresh game).
+ * Never hands out stale progress (review finding 3 and its recheck). For the real main key: the
+ * running game is written first (`flush`); only if that worked is the stored v3 copied, byte for
+ * byte. Otherwise (a full storage, a migration still waiting, no flush given) the live game itself
+ * (`snapshot`) is copied. With neither, nothing is assumed fresh: a gentle message, no file. The
+ * older v2 is never exported in its place, and a damaged v3 is always refused.
  */
 export async function buildBundle(deps: TransferDeps): Promise<ExportResult> {
   const mainKey = deps.mainKey ?? SAVE_KEY;
@@ -124,25 +123,27 @@ export async function buildBundle(deps: TransferDeps): Promise<ExportResult> {
   if (raw !== null && !inspectSave(raw, only)) return invalid;
   let text: string | null = raw;
   if (mainKey === SAVE_KEY) {
-    let fresh: boolean;
+    // The stored save is trusted as current ONLY when the running game was just written to it.
+    let flushed = false;
     if (deps.flush) {
-      try { fresh = deps.flush() === true; } catch { fresh = false; }
-      if (fresh) {
-        try { raw = read(); } catch { raw = null; fresh = false; }
+      try { flushed = deps.flush() === true; } catch { flushed = false; }
+      if (flushed) {
+        try { raw = read(); } catch { raw = null; flushed = false; }
         if (raw !== null && !inspectSave(raw, only)) return invalid;
       }
-    } else {
-      fresh = !hasPendingMigration(storage);
     }
-    text = fresh ? raw : null;
-    if (text === null && deps.snapshot) {
+    if (flushed) {
+      text = raw;
+    } else if (deps.snapshot) {
+      // Not written (or no way to write): the live game is the copy, never the possibly older stored one.
       try { text = deps.snapshot(); } catch { text = null; }
       if (text === null || !inspectSave(text, [3])) return invalid;
-    }
-    if (text === null) {
-      let older = false;
-      try { older = sourcesFor(mainKey).slice(1).some(([key]) => storage.getItem(key) !== null) || storage.getItem(LEGACY_SAVE_KEY) !== null; } catch { older = true; }
-      if (raw !== null || older || deps.flush) return fail('stale', STALE);
+    } else {
+      // No way to know the stored save is current: say so gently rather than assume it.
+      let anything = raw !== null;
+      try { anything ||= sourcesFor(mainKey).slice(1).some(([key]) => storage.getItem(key) !== null) || storage.getItem(LEGACY_SAVE_KEY) !== null; } catch { anything = true; }
+      if (anything) return fail('stale', STALE);
+      text = null;
     }
   }
   if (text === null) return fail('nosave', 'There is no saved game on this device yet. Play for a little while first, then try again.');

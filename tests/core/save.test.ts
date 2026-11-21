@@ -166,12 +166,12 @@ describe('save data', () => {
     const restored = applySave(data);
     const spawn = generateWorld(1234).spawn;
     if (kind.startsWith('edited') || kind === 'removed support') {
-      // His saved spot IS the spawn here, so the spawn itself is now buried or over a hole: it is
-      // lifted (or lowered) to a free standing cell in the same column, never left inside a block.
+      // His saved spot IS the spawn here, so the spawn itself is now buried or over a hole: it moves
+      // to the nearest free standing cell (a block or two away), never left inside a block.
       const c: [number, number, number] = [Math.floor(restored.spawn.x), restored.spawn.y, Math.floor(restored.spawn.z)];
       expect(isStandable(restored.world, c)).toBe(true);
-      expect([restored.spawn.x, restored.spawn.z]).toEqual([spawn.x, spawn.z]);
-      expect(restored.spawn.y).not.toBe(spawn.y);
+      expect(c).not.toEqual([Math.floor(spawn.x), spawn.y, Math.floor(spawn.z)]);
+      expect(Math.hypot(c[0] - spawn.x, c[1] - spawn.y, c[2] - spawn.z)).toBeLessThan(4);
     } else {
       expect(restored.spawn).toEqual(spawn);
     }

@@ -144,7 +144,7 @@ describe('a copy made by this build (the v3 key)', () => {
     const device = new FakeStorage();
     expect(storeSave(device, serialise(game, 2026, { ledToVillage: true }, 5))).toBe(true);
     const raw = device.data.get(SAVE_KEY)!;
-    const made = await buildBundle(deps(device));
+    const made = await buildBundle({ ...deps(device), flush: () => true });
     if (!made.ok) throw new Error(made.reason);
     expect(Object.keys(made.bundle.keys)).toEqual([SAVE_KEY]);
     const other = new FakeStorage();
@@ -199,6 +199,24 @@ describe('export never hands out stale progress (review finding 3)', () => {
     const made = await buildBundle({ ...deps(device), flush: () => false, snapshot: () => live });
     if (!made.ok) throw new Error(made.reason);
     expect(made.bundle.keys[SAVE_KEY]).toBe(live);
+  });
+
+  test('with a snapshot but no flush, a stale stored v3 is never assumed fresh: the live snapshot is the copy', async () => {
+    const device = new FakeStorage();
+    storeSave(device, serialise(new Game(generateWorld(2026)), 2026, { ledToVillage: false }, 1)); // zero edits stored
+    const live = liveText();
+    let called = 0;
+    const made = await buildBundle({ ...deps(device), snapshot: () => { called++; return live; } });
+    if (!made.ok) throw new Error(made.reason);
+    expect(called).toBe(1);
+    expect(made.bundle.keys[SAVE_KEY]).toBe(live);
+  });
+
+  test('with no flush and no snapshot, a stored v3 is not assumed fresh: a gentle message instead', async () => {
+    const device = new FakeStorage();
+    storeSave(device, serialise(new Game(generateWorld(2026)), 2026, { ledToVillage: false }, 1));
+    const r = await buildBundle(deps(device));
+    expect(r).toMatchObject({ ok: false, reason: 'stale' });
   });
 
   test('when the save is written first, the copy is the stored v3, byte for byte', async () => {

@@ -2,7 +2,7 @@ import { describe, expect, test } from 'vitest';
 import { BLOCKS, BlockId } from '../../src/core/blocks';
 import { isStandable, settleCell, type Cell } from '../../src/core/pathfind';
 import { applySave, type SaveData } from '../../src/core/save';
-import type { World } from '../../src/core/world';
+import { World } from '../../src/core/world';
 import { generateWorld } from '../../src/core/worldgen';
 
 /**
@@ -33,13 +33,15 @@ describe('settleCell', () => {
 describe('bodies after his edits replay', () => {
   const s = cellOf(gen.spawn);
 
-  test('a saved spot inside the tower falls back to the spawn, and a spawn filled with Bricks is lifted to a free cell above', () => {
+  test('a saved spot inside the tower falls back to the spawn, and a spawn filled with Bricks moves to the nearest free cell', () => {
     const [wx, wy, wz] = gen.tower.wizardSpot;
     const a = applySave(base({ edits: fill(s), player: { x: wx + 1.5, y: wy, z: wz + 0.5 } }));
     const at = cellOf(a.spawn);
     free(a.world, at);
-    expect([at[0], at[2]]).toEqual([s[0], s[2]]);
-    expect(at[1]).toBe(s[1] + 2);
+    // The nearest free standing cell: beside his 2-high pillar on the same ground (1 sideways)
+    // rather than on top of it (2 up).
+    expect(Math.max(Math.abs(at[0] - s[0]), Math.abs(at[2] - s[2]))).toBe(1);
+    expect(Math.abs(at[1] - s[1])).toBeLessThanOrEqual(1);
   });
 
   test('a block in his own saved cell never leaves him inside it', () => {
@@ -73,5 +75,36 @@ describe('bodies after his edits replay', () => {
     const pip: Cell = [s[0] + 1, s[1], s[2] + 1];
     const a = applySave(base({ edits: fill(pip) }));
     free(a.world, settleCell(a.world, pip));
+  });
+});
+
+describe('settleCell is total (recheck findings 1 and 2)', () => {
+  test('a neighbour standing cell at the ORIGINAL height is found (pillar to the ceiling beside a flat floor)', () => {
+    const w = new World(9, 10, 9);
+    for (let x = 0; x < 9; x++) for (let z = 0; z < 9; z++) { w.set(x, 0, z, BlockId.Bedrock); w.set(x, 1, z, BlockId.Stone); }
+    for (let y = 2; y < 10; y++) w.set(4, y, 4, BlockId.Bricks);
+    const c = settleCell(w, [4, 2, 4]);
+    free(w, c);
+    expect(c[1]).toBe(2);
+    expect(Math.max(Math.abs(c[0] - 4), Math.abs(c[2] - 4))).toBe(1);
+  });
+
+  test('a flooded spawn area (every column round the spawn filled to the sky) still gives a free cell', () => {
+    const s = cellOf(gen.spawn);
+    const edits: Array<[number, number, number, number]> = [];
+    for (let dx = -9; dx <= 9; dx++) for (let dz = -9; dz <= 9; dz++) {
+      for (let y = 49; y < 68; y++) edits.push([s[0] + dx, y, s[2] + dz, BlockId.Bricks]);
+    }
+    const a = applySave(base({ edits, player: { x: s[0] + 0.5, y: s[1], z: s[2] + 0.5 } }));
+    free(a.world, cellOf(a.spawn));
+    free(a.world, settleCell(a.world, [s[0] + 1, s[1], s[2] + 1])); // Pip's start
+  });
+
+  test('a world with no free cell anywhere near returns a non-solid cell, never the buried input', () => {
+    const w = new World(5, 6, 5);
+    for (let x = 0; x < 5; x++) for (let z = 0; z < 5; z++) for (let y = 0; y < 6; y++) w.set(x, y, z, BlockId.Stone);
+    const c = settleCell(w, [2, 2, 2]);
+    expect(solid(w, c)).toBe(false);
+    expect(solid(w, [c[0], c[1] + 1, c[2]])).toBe(false);
   });
 });
