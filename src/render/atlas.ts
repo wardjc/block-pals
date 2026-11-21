@@ -1,14 +1,16 @@
 import * as THREE from 'three';
 import { BLOCKS, BlockId } from '../core/blocks';
 import type { Face } from './mesher';
+import { CAVE_TILES, paintCave, type CaveTile } from './caveTiles';
 import { MYTHICAL_TILES, paintMythical, SHIMMER_TILES, type MythicalTile, type ShimmerFrame } from './mythicalTiles';
 
+export { CAVE_TILES, paintCave, type CaveTile } from './caveTiles';
 export { MYTHICAL_TILES, paintMythical, SHIMMER_TILES, type MythicalTile, type Paint, type ShimmerFrame } from './mythicalTiles';
 
 const TILE = 16;
 const COLS = 4;
-/** 12 rows since the mythical blocks (46 tiles). New tiles are appended; existing positions never move. */
-const ROWS = 12;
+/** 12 rows since the mythical blocks, 14 since the caves (56 tiles). New tiles are appended; existing positions never move. */
+const ROWS = 14;
 
 export type TileName =
   | 'grassTop' | 'grassSide' | 'dirt' | 'stone' | 'woodSide' | 'woodTop' | 'leaves'
@@ -18,7 +20,8 @@ export type TileName =
   | 'wheat0' | 'wheat1' | 'wheat2' | 'wheat3'
   | 'carrot0' | 'carrot1' | 'carrot2' | 'carrot3'
   | 'potato0' | 'potato1' | 'potato2' | 'potato3'
-  | MythicalTile;
+  | MythicalTile
+  | CaveTile;
 
 export const TILE_NAMES: TileName[] = [
   'grassTop', 'grassSide', 'dirt', 'stone', 'woodSide', 'woodTop', 'leaves',
@@ -29,6 +32,7 @@ export const TILE_NAMES: TileName[] = [
   'carrot0', 'carrot1', 'carrot2', 'carrot3',
   'potato0', 'potato1', 'potato2', 'potato3',
   ...MYTHICAL_TILES,
+  ...CAVE_TILES,
 ];
 export const ATLAS_COLS = COLS;
 export const ATLAS_ROWS = ROWS;
@@ -149,10 +153,15 @@ function potatoTile(ctx: CanvasRenderingContext2D, stage: number): void {
 }
 
 const isMythicalTile = (name: TileName): name is MythicalTile => (MYTHICAL_TILES as readonly string[]).includes(name);
+const isCaveTile = (name: TileName): name is CaveTile => (CAVE_TILES as readonly string[]).includes(name);
 
 function drawTile(ctx: CanvasRenderingContext2D, name: TileName): void {
   if (isMythicalTile(name)) {
     paintMythical(name, ctx, 0);
+    return;
+  }
+  if (isCaveTile(name)) {
+    paintCave(name, ctx);
     return;
   }
   switch (name) {
@@ -424,6 +433,15 @@ export function tileFor(id: BlockId, face: Face): TileName {
     case BlockId.DragonScaleBlock: return 'dragonScale';
     case BlockId.StarBlock: return 'star';
     case BlockId.MagicMirror: return 'mirror';
+    case BlockId.GlowMushroom: return 'glowMushroom';
+    case BlockId.CrystalBlue: return 'crystalBlue';
+    case BlockId.CrystalPink: return 'crystalPink';
+    case BlockId.CrystalGreen: return 'crystalGreen';
+    case BlockId.RuinCrystal: return 'ruinCrystal';
+    case BlockId.GemOre: return 'gemOre';
+    case BlockId.MossyBricks: return 'mossyBricks';
+    case BlockId.Chest: return face === 'top' || face === 'bottom' ? 'chestTop' : 'chestSide';
+    case BlockId.ChestOpen: return face === 'top' ? 'chestOpenTop' : face === 'bottom' ? 'chestTop' : 'chestSide';
     default: return 'dirt';
   }
 }
@@ -481,7 +499,7 @@ export function createAtlas(): Atlas {
     out.width = out.height = 64;
     const octx = out.getContext('2d')!;
     octx.imageSmoothingEnabled = false;
-    const name = tileFor(id, id === BlockId.Grass || id === BlockId.Farmland ? 'top' : 'south');
+    const name = tileFor(id, id === BlockId.Grass || id === BlockId.Farmland || id === BlockId.ChestOpen ? 'top' : 'south');
     if (isMythicalTile(name)) {
       // Painted fresh (not copied from the atlas, which may be mid-shimmer), so the icon is always frame 0.
       octx.save();

@@ -13,7 +13,7 @@ import { TARGET_MIN_PX, WIZ_PX, WizardScreen } from '../../src/ui/wizard';
 
 const GEM = WIZARD_STOCK.gem;
 
-/** A bag like the real one (99 a stack) that already knows the gem (the grumps step adds it to Inventory). */
+/** A bag like the real one (99 a stack), for the screen's own tests; the real Inventory is checked below. */
 class FakeBag implements Bag {
   readonly m = new Map<number, number>();
   count(id: number): number { return this.m.get(id) ?? 0; }
@@ -148,7 +148,7 @@ describe('WizardScreen: the welcome gift and trades', () => {
     expect(total(bag)).toBe(1);
   });
 
-  it('the gift needs no gem at all and works with the real (gemless) Inventory', () => {
+  it('the gift needs no gem at all and works with the real Inventory', () => {
     const inv = new Inventory();
     const { screen, root, state } = setup({ bag: inv });
     screen.open();
@@ -171,6 +171,18 @@ describe('WizardScreen: the welcome gift and trades', () => {
     expect(said).toContain('bought');
     expect(counts.save).toBe(1);
     expect(state.bought).toBe(1);
+  });
+
+  it('buying works with the real Inventory and real Gems (the caves add the Gem item)', () => {
+    const state = newWizardState();
+    state.gift = true;
+    const inv = new Inventory();
+    expect(inv.add(GEM, 2)).toBe(2);
+    const { screen, root } = setup({ bag: inv, state });
+    screen.open();
+    cards(root)[MYTHICAL.indexOf(BlockId.CloudBlock)].click();
+    expect(inv.count(BlockId.CloudBlock)).toBe(4);
+    expect(inv.count(GEM)).toBe(1);
   });
 
   it('without enough gems nothing changes: a gentle wobble, the wizard says needGem and the puzzle tab pulses (nothing red, no error)', () => {

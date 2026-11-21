@@ -27,7 +27,7 @@ describe('atlas', () => {
   });
 
   it('tile rows fit: every tile sits inside the atlas and names are unique', () => {
-    expect(ATLAS_ROWS).toBe(12); // 10 for the farm, +2 for the mythical blocks
+    expect(ATLAS_ROWS).toBe(14); // 10 for the farm, +2 for the mythical blocks, +2 for the caves
     expect(TILE_NAMES.length).toBeLessThanOrEqual(ATLAS_COLS * ATLAS_ROWS);
     expect(new Set(TILE_NAMES).size).toBe(TILE_NAMES.length);
   });

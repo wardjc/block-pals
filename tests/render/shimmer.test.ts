@@ -140,11 +140,11 @@ describe('Atlas.shimmer', () => {
     expect(uvs()).toEqual(a);
   });
 
-  test('upload size is the whole atlas, 64 × 192 pixels (about 48 KB)', () => {
+  test('upload size is the whole atlas, 64 × 224 pixels (about 56 KB since the cave rows)', () => {
     const atlas = createAtlas();
     const img = atlas.texture.image as HTMLCanvasElement;
     expect([img.width, img.height]).toEqual([16 * ATLAS_COLS, 16 * ATLAS_ROWS]);
-    expect(img.width * img.height * 4).toBe(49_152);
+    expect(img.width * img.height * 4).toBe(57_344);
   });
 });
 

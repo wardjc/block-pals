@@ -582,7 +582,7 @@ const lockedHold = new LockedHold();
 const lead = new LeadToVillage(village.route, village.square, flags.ledToVillage, village.pad);
 // Pip's second walk: to the wizard, once per save, only once he has a gem and the village walk is done.
 const leadTower = makeTowerLead(tower, towerRoute, towerPad, wizard.led, {
-  hasGem: () => game.inventory.count(WIZARD_STOCK.gem as StackId) > 0,
+  hasGem: () => game.inventory.count(ItemId.Gem) > 0,
   ledToVillage: () => flags.ledToVillage,
   villageLeading: () => lead.state === 'leading',
   villagePad: village.pad,
@@ -972,7 +972,7 @@ if (debugOn) {
       },
       entityAt: (x: number, y: number) => entityAt(x, y),
     }),
-    giveGem: (n: number) => { game.inventory.add(WIZARD_STOCK.gem as StackId, n); renderHud(); return game.inventory.count(WIZARD_STOCK.gem as StackId); },
+    giveGem: (n: number) => { game.inventory.add(ItemId.Gem, n); renderHud(); return game.inventory.count(ItemId.Gem); },
     beacon: () => ({ ...lastBeacon, markerVisible: edgeMarker.visible, spriteVisible: beacon.sprite.visible }),
     leadTowerState: () => leadTower.state,
     depthBits: () => {

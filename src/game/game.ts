@@ -1,4 +1,4 @@
-import { BlockId, dropFor, isCarriable, isPlantBlock } from '../core/blocks';
+import { BlockId, isPlantBlock, yieldOf } from '../core/blocks';
 import { insideWall } from '../core/bounds';
 import { canCraft, craft } from '../core/crafting';
 import { cropOf, yields } from '../core/crops';
@@ -20,7 +20,8 @@ import { Farm } from './farm';
 import { Player } from './player';
 
 export type GameEvent =
-  | { type: 'collected'; id: BlockId }
+  /** A dig put this in the bag (a block, or a Gem from gem stone). */
+  | { type: 'collected'; id: StackId }
   | { type: 'placed'; id: BlockId }
   | { type: 'crafted'; recipe: string }
   | { type: 'full'; id: StackId }
@@ -345,8 +346,9 @@ export class Game {
       }
       return;
     }
-    const id = dropFor(here); // tilled soil gives plain dirt
-    if (!isCarriable(id)) return;
+    // Tilled soil gives plain dirt, gem stone one Gem; a closed chest or bedrock gives nothing (and stays).
+    const id = yieldOf(here);
+    if (id === null) return;
     if (this.inventory.add(id, 1) === 0) {
       this.emit({ type: 'full', id });
       return;

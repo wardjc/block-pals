@@ -126,7 +126,7 @@ describe('wizard step budgets (Tab A8)', () => {
     expect(beaconMs).toBeLessThan(0.02);
   });
 
-  it('shimmer repaint costs under 0.5 ms and runs at most 2.5 times a second; the atlas stays 64×192', () => {
+  it('shimmer repaint costs under 0.5 ms and runs at most 2.5 times a second; the atlas stays 64×224 (14 rows since the caves)', () => {
     // A canvas that records nothing, so the time is our painting code (the browser's fillRect is native and fast).
     const noop = (): void => {};
     const quiet = { fillStyle: '', imageSmoothingEnabled: false, fillRect: noop, clearRect: noop, beginPath: noop, rect: noop, clip: noop, save: noop, restore: noop, translate: noop };
@@ -134,7 +134,7 @@ describe('wizard step budgets (Tab A8)', () => {
     const atlas = createAtlas();
     spy.mockRestore();
     expect(ATLAS_COLS * 16).toBe(64);
-    expect(ATLAS_ROWS * 16).toBeLessThanOrEqual(192);
+    expect(ATLAS_ROWS * 16).toBeLessThanOrEqual(224);
     for (let f = 0; f < 200; f++) atlas.shimmer(f * 0.4); // warm up (JIT)
     let repaints = 0;
     const times: number[] = [];
