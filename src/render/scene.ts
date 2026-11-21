@@ -7,6 +7,10 @@ import { DirtySections, sectionKey } from './chunkDirty';
 import { cameraZone, CULL_MARGIN, FOG_FAR, radialFactor, SectionQueue, visibleSections, type CameraZone } from './chunkCull';
 import { CAMERA_FAR, NEAR_MAX, cameraFar, cameraNear, easeNear, nearMaxFor, setCurrentCameraFar } from './depthPolicy';
 import { viewFog } from './viewDistance';
+import { caveLook, luminance, OUTDOOR_LOOK, type CaveLook } from './caveLook';
+
+/** The cave look takes about this long to ease in or out as the camera's zone changes. */
+const CAVE_EASE_S = 1;
 import { buildSectionGeometry, CHUNK_SIZE, SECTION_HEIGHT, sectionsPerColumn, type MeshArrays } from './mesher';
 
 const FOLLOW_K = 4; // exponential smoothing rate, per second
@@ -100,6 +104,11 @@ export class GameScene {
   /** Fog values the view gives (the cave look and the water override start from these). */
   private readonly viewFogNow = { near: 20, far: FOG_FAR };
   private clock = 0;
+  private readonly hemi: THREE.HemisphereLight;
+  /** 0 outdoors .. 1 deep: eases toward the camera's zone; drives caveLook. */
+  private caveDepth = 0;
+  private look: CaveLook = OUTDOOR_LOOK;
+  private lookColour = OUTDOOR_LOOK.fogColor;
   /** When each built section was first seen beyond the dispose reach (scene seconds). */
   private readonly farSince = new Map<string, number>();
   private meshed = 0;
@@ -137,7 +146,8 @@ export class GameScene {
 
     this.scene.background = new THREE.Color(0x78c6ff);
     this.scene.fog = new THREE.Fog(0x78c6ff, 20, FOG_FAR);
-    this.scene.add(new THREE.HemisphereLight(0xffffff, 0x88aa66, 1.0 * LIGHT_SCALE));
+    this.hemi = new THREE.HemisphereLight(0xffffff, OUTDOOR_LOOK.groundColor, OUTDOOR_LOOK.hemiIntensity * LIGHT_SCALE);
+    this.scene.add(this.hemi);
     const sun = new THREE.DirectionalLight(0xffffff, 0.6 * LIGHT_SCALE);
     sun.position.set(0.5, 1, 0.3);
     this.scene.add(sun);
@@ -288,6 +298,15 @@ export class GameScene {
     return { target: this.viewTarget, fogEnd: this.viewEased, fogNear: this.viewFogNow.near, cameraFar: this.camera.far, drawFogEnd: this.fogEnd };
   }
 
+  /** The look now (debug and the brightness checks): fog colour and its luminance, depth factor, fog range. */
+  lookNow(): { fogColor: number; luminance: number; depthFactor: number; fogNear: number; fogFar: number; hemiIntensity: number; zone: CameraZone } {
+    const l = this.look;
+    return {
+      fogColor: l.fogColor, luminance: luminance(l.fogColor), depthFactor: this.caveDepth,
+      fogNear: l.fogNear, fogFar: l.fogFar, hemiIntensity: l.hemiIntensity, zone: this.zone,
+    };
+  }
+
   /** The fog the view distance gives right now (before any cave or water look is laid over it). */
   get viewFogValues(): { near: number; far: number } {
     return this.viewFogNow;
@@ -303,9 +322,22 @@ export class GameScene {
     // viewFog's rule (near is half the far), unrounded while it eases so the haze slides smoothly.
     this.viewFogNow.near = this.easeT >= VIEW_EASE_S ? viewFog(this.viewEased).near : this.viewEased / 2;
     this.viewFogNow.far = this.viewEased;
+    // The cave look eases in over about a second underground and back out again; it never darkens.
+    const want = this.zone === 'underground' ? 1 : 0;
+    const step = Math.max(0, Math.min(0.1, Number.isFinite(dt) ? dt : 0)) / CAVE_EASE_S;
+    this.caveDepth = want > this.caveDepth ? Math.min(want, this.caveDepth + step) : Math.max(want, this.caveDepth - step);
+    const look = caveLook(this.caveDepth, this.viewFogNow);
+    this.look = look;
     const f = this.scene.fog as THREE.Fog;
-    f.near = this.viewFogNow.near;
-    f.far = this.viewFogNow.far;
+    f.near = look.fogNear;
+    f.far = look.fogFar;
+    if (this.lookColour !== look.fogColor) {
+      this.lookColour = look.fogColor;
+      f.color.setHex(look.fogColor);
+      (this.scene.background as THREE.Color).setHex(look.background);
+      this.hemi.groundColor.setHex(look.groundColor);
+      this.hemi.intensity = look.hemiIntensity * LIGHT_SCALE;
+    }
     this.fogEnd = Math.max(this.viewEased, this.viewTarget);
     // The far plane covers the whole ease in one move (to the larger end), not a change every frame.
     const easing = this.easeT < VIEW_EASE_S;

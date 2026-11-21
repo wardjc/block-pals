@@ -10,7 +10,7 @@ import { isStandable, type Cell } from './pathfind';
 import type { TowerInfo } from './tower';
 import type { Rect, VillageLayout } from './village';
 import type { World } from './world';
-import { GEN_VERSION, generateWorld } from './worldgen';
+import { GEN_VERSION, generateWorld, type GeneratedWorld } from './worldgen';
 
 /**
  * Version 3 (the bigger, deeper world) lives under its OWN key. The v1 and v2 keys are never
@@ -487,9 +487,14 @@ export interface Applied {
   offlineMs: number;
 }
 
-export function applySave(data: SaveData, now: number = Date.now()): Applied {
+/**
+ * `generated` is the freshly generated world for `data.seed` when the caller already made it (the
+ * generation worker at boot); it must be untouched (no edits). Without it the world is generated here.
+ */
+export function applySave(data: SaveData, now: number = Date.now(), generated?: GeneratedWorld): Applied {
   // Stamps first, then his edits: whatever he built or dug always wins over generated houses and paths.
-  const { world, spawn, village, tower, towerRoute, towerPad } = generateWorld(data.seed);
+  const fresh = generated && generated.world.edits().length === 0 ? generated : generateWorld(data.seed);
+  const { world, spawn, village, tower, towerRoute, towerPad } = fresh;
   for (const [x, y, z, id] of data.edits) world.replayEdit(x, y, z, id);
   // Replayed edits must remain in every later save, even while the world is clean.
   world.markClean();

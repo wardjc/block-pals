@@ -190,6 +190,33 @@ describe('the scene follows the view distance', () => {
     for (const k of set40) if (!inner(scene).chunks.has(k)) expect(inner(scene).queue.pending.has(k)).toBe(true);
   });
 
+  test('underground the look eases to the brighter cave haze over about a second, and back out again', async () => {
+    const { scene, g, feet, step } = await sceneAt();
+    step();
+    expect(scene.lookNow()).toMatchObject({ depthFactor: 0, fogColor: 0x78c6ff, zone: 'outdoors' });
+    // A room deep in the rock: the camera is inside the ground mass.
+    for (let x = 88; x < 106; x++) for (let z = 88; z < 106; z++) for (let y = 20; y < 27; y++) g.world.set(x, y, z, BlockId.Air);
+    feet.set(96.5, 20, 96.5);
+    const outdoorLum = scene.lookNow().luminance;
+    let prev = outdoorLum;
+    for (let i = 0; i < 40; i++) {
+      step();
+      const l = scene.lookNow();
+      expect(l.luminance).toBeGreaterThanOrEqual(prev - 1e-9); // never darker on the way in
+      prev = l.luminance;
+    }
+    const deep = scene.lookNow();
+    expect(deep.zone).toBe('underground');
+    expect(deep.depthFactor).toBe(1);
+    expect(deep.luminance).toBeGreaterThanOrEqual(0.62);
+    expect(deep.fogFar).toBe(36);
+    expect((scene.scene.fog as { far: number }).far).toBe(36);
+    expect((scene.scene.background as { getHex(): number }).getHex()).toBe(deep.fogColor);
+    feet.set(96.5, g.world.topSolidY(96, 96) + 1, 96.5);
+    for (let i = 0; i < 40; i++) step();
+    expect(scene.lookNow()).toMatchObject({ depthFactor: 0, fogColor: 0x78c6ff, zone: 'outdoors' });
+  });
+
   test('160 meshed sections is a hard cap for sections outside the draw set', async () => {
     const { MAX_BUILT_SECTIONS } = await import('../../src/render/scene');
     expect(MAX_BUILT_SECTIONS).toBe(160);

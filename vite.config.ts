@@ -3,6 +3,8 @@ import { VitePWA } from 'vite-plugin-pwa';
 
 export default defineConfig({
   base: '/block-pals/',
+  // The world generator runs in a module worker (src/render/genWorker.ts); its chunk is precached like the rest.
+  worker: { format: 'es' },
   build: {
     rollupOptions: {
       output: {

@@ -2,7 +2,7 @@ import './ui/styles.css';
 import { BLOCKS, BlockId } from './core/blocks';
 import type { Cell } from './core/pathfind';
 import { applySave, readSave, serialise, startAutosave, storeSave } from './core/save';
-import { generateWorld } from './core/worldgen';
+import { generateAsync } from './render/genWorker';
 import { GrowthClock } from './core/growth';
 import { cropBlock, seedFor, type CropKind } from './core/crops';
 import { Game } from './game/game';
@@ -57,8 +57,13 @@ try { storage = window.localStorage; } catch { /* Storage may be blocked. */ }
 const saved = readSave(storage);
 export const hadSave: boolean = saved !== null; // for Pip's welcome-back line (Task 10)
 const seed = saved?.seed ?? 2026;
-const loaded = saved ? applySave(saved) : null;
-const initial = loaded ?? generateWorld(seed);
+// The world is made in a worker behind the loading picture (the main thread stays free to animate it);
+// without a worker the same generator runs here. His saved edits then replay on top, as before.
+const genStart = performance.now();
+const generated = await generateAsync(seed, { onFallback: reason => console.warn(`Block Pals: generating on the main thread (${reason})`) });
+const genMs = performance.now() - genStart;
+const loaded = saved ? applySave(saved, Date.now(), generated) : null;
+const initial = loaded ?? generated;
 const { world, spawn, village, tower, towerRoute, towerPad } = initial;
 const game = new Game(initial);
 // Plants are blocks; the farm keeps their timers. Offline growth (capped at 8 h) is applied, and any
@@ -881,6 +886,9 @@ if (debugOn) {
     worldSize: () => ({ x: world.sizeX, y: world.sizeY, z: world.sizeZ }),
     deep: () => game.isDeep(),
     goHome: () => game.goHome(),
+    genMs: () => genMs,
+    look: () => scene.lookNow(),
+    loading: () => !!document.getElementById('loading') && !document.getElementById('loading')!.classList.contains('done'),
     sections: () => {
       const s = scene.stats();
       return { built: s.chunks, meshed: s.meshed, visible: s.visible, frustum: s.frustumVisible, queued: s.queued, zone: s.zone };
@@ -971,6 +979,15 @@ if (debugOn) {
 }
 
 let usageMs = 0;
+/** The loading picture fades once the first frame of the world is drawn. */
+let loadingHidden = false;
+function hideLoading(): void {
+  loadingHidden = true;
+  const el = document.getElementById('loading');
+  if (!el) return;
+  el.classList.add('done');
+  window.setTimeout(() => el.remove(), 450);
+}
 let viewFrames = 0;
 let viewSections = 0;
 /** True while the ?viewtest feed drives the view controller (real frames are then ignored). */
@@ -1079,6 +1096,7 @@ function frame(now: number): void {
   if (++viewFrames % 10 === 0) viewSections = scene.frustumSections();
   if (!viewFeeding) viewDistance.frame(rawMs, { backlog: scene.backlog, drawCalls: scene.renderer.info.render.calls, sections: viewSections });
   scene.setViewDistance(viewDistance.distance);
+  if (!loadingHidden) hideLoading();
 
   // Redraw the hotbar only when a count or the selection changed.
   const rev = game.inventory.revision;
