@@ -60,7 +60,7 @@ Marked **(my call)** where the spec or the parent left room. The parent can over
 | Vertical layout | Bedrock plane y = 0. Old meadow ground (old y 5 to 11) is now **y 53 to 59** (`SURFACE_BASE_Y = 53`). The old bedrock row (old y = 0, now y = 48) becomes Stone so he can dig past it. Deep crystal caves: floors y 8..16, rooms 7 to 10 high. Shallow mushroom caves: floors y 38..42, rooms 5 to 8 high. **Nothing is carved above y = 48 except cave mouths (`CARVE_MAX_Y = 48`)**, so no cell of the old region at y >= 49 changes and a cave never sits under his old pits closer than 1 block. There is always at least 5 blocks of rock (y 49..53+) between the surface and a cave ceiling. |
 | Depth | "About 48 blocks": 48 blocks are added below the old bottom; from the meadow top (53) to bedrock (0) is 53 blocks. |
 | World height | 68 = 20 + 48 so every roof and the wizard's later tower (top at old y 19 = y 67) fit unchanged. |
-| Generation structure | Seven stages, each its own seeded stream, none consuming another's: (0) deep fill (whole layers at once); (1) the old region, **the unchanged existing generator run on `ShiftedWorld`** (old streams `seed`, `seed ^ 0x5eed`); (2) outer ring terrain (`seed ^ 0x0071e2`); (3) outer trees and edge ring (`seed ^ 0x7ee5`); (4) caves (`seed ^ 0xca7e5`, sub-streams per step); (5) treasure rooms and the ruin; (6) markers, lights, ore. `GEN_VERSION` goes 2 to **3**. |
+| Generation structure | Seven stages, each its own seeded stream, none consuming another's: (0) deep fill (whole layers at once); (1) the old region, **the unchanged existing generator run on `ShiftedWorld`** (old streams `seed`, `seed ^ 0x5eed`); (2) outer ring terrain (`seed ^ 0x0071e2`); (3) outer trees and edge ring (`seed ^ 0x7ee5`); (4) caves (`seed ^ 0xca7e5`, sub-streams per step); (5) treasure rooms and the ruin; (6) markers, lights, ore. `GEN_VERSION` goes to **4** (main took 3 for the wizard's tower; never lowered). |
 | Documented differences from the old world | The complete list the compare test allows: (D1) old row y = 0 (now 48) Stone instead of Bedrock, or cave air where a cave reaches it; (D2) the footprints of the two stamped cave mouths in the old region (hill flank and quarry); (D3) nothing else. New trees stay at least 4 cells outside the old rectangle. |
 | Outer terrain | The old height formula keeps rolling outward (`heightAt(seed, lx, lz)` with negative or large meadow coordinates; the value noise already handles them) so there is no seam. Added only outside the old rectangle plus 6: 5 to 7 extra hills (same cone shape as the old hill, slope at most 1 per block, peak at most y 59), 3 to 4 still ponds (sand bank, static water, no flow), and a **rolling edge**: within 7 blocks of the world edge the ground rises gently up to +3 (at most y 60) so the world ends in soft hills, with a thick ring of trees and the soft invisible wall 1 block inside the edge (unchanged rule), and fog hides the rest. Trees: edge ring of 24 anchors per side, plus a scatter of about 70 trees, spacing at least 5, none within 4 of the old rectangle. |
 | Water | Static water blocks only (no flow; water flow is a later step). Pond depth and bank copy the old pond. |
@@ -82,7 +82,7 @@ Marked **(my call)** where the spec or the parent left room. The parent can over
 | Draw rule | A section is drawn only if (a) it passes the existing view-depth rule (`FOG_FAR` 40 along the camera's forward) and (b) the vertical zone rule: outdoors only sections with y >= 48; underground (camera below the local ground by more than 1, or within 24 blocks of a cave mouth) sections whose y-range overlaps camera y +/- 20. Fails open (every section) on bad numbers. |
 | Generation off the main thread | **A module Web Worker generates the world and posts back the cell buffer (transferred, zero copy) and the layout (my call).** Main thread keeps the animated loading screen. If `Worker` is missing or throws, the same function runs on the main thread (still works, just a still loading screen). The generator is the same pure `generateWorld(seed)` the tests call. |
 | Loading | At load only the ~60 sections within the fog radius of spawn are meshed before the first frame; the rest are built lazily at most 2 per frame, nearest first. |
-| Save v3 | `version: 3`, `gen: 3`, plus `origin: [48, 48, 48]` (where meadow cell 0,0,0 sits, written always, informational: a v3 save is never shifted again), `migratedFrom?: 1 | 2`, and flags `cavesSeen`, `ruinFound` (booleans). Chests need no field (the open chest is an edit). New hint names `digDown`, `gemFound`. Reading: v3 first; else v2 (raw copied once to `blockpals.save.v2.backup`, shifted, written to v3); else v1 (raw copied once to the v1 backup as before, migrated, shifted, written to v3). Nothing ever writes the v1 or v2 key. |
+| Save v3 | `version: 3`, `gen: 4` (a migrated save keeps its own gen, 1 to 3, until the first write), plus `origin: [48, 48, 48]` (where meadow cell 0,0,0 sits, written always, informational: a v3 save is never shifted again), `migratedFrom?: 1 | 2`, and flags `cavesSeen`, `ruinFound` (booleans). Chests need no field (the open chest is an edit). New hint names `digDown`, `gemFound`. Reading: v3 first; else v2 (raw copied once to `blockpals.save.v2.backup`, shifted, written to v3); else v1 (raw copied once to the v1 backup as before, migrated, shifted, written to v3). Nothing ever writes the v1 or v2 key. |
 | Pip underground | Pip follows with the existing rules (he teleports to him when 10+ blocks away, 4+ blocks above or below, stuck, or after a Home lift). Underground he uses the same follow pathing with gentle drops allowed. He leads home along the trail on request (Task 21). |
 | Villagers, animals | Stay on the surface. Test: no entity y is below ground minus 3. |
 
@@ -128,7 +128,7 @@ src/core/shifted.ts         NEW  WorldCells interface, ShiftedWorld view, shiftL
 src/core/world.ts           CHG  beginBulk/endBulk, fromBuffer, buffer, raw index helpers, WorldCells
 src/core/blocks.ts          CHG  ids 56..63, BlockDef.light, yieldOf(), isCarriable excludes GemOre/Chest
 src/core/items.ts           CHG  ItemId.Gem = 123
-src/core/worldgen.ts        CHG  GEN_VERSION 3; stages; legacy region on the view; outer ring
+src/core/worldgen.ts        CHG  GEN_VERSION 4; stages; legacy region (village AND tower) on the view; outer ring
 src/core/outer.ts           NEW  outer-ring terrain, ponds, trees, soft edge
 src/core/caves.ts           NEW  rooms, tunnels, repair, mouths, stairs, trail, CaveLayout
 src/core/caveDress.ts       NEW  lights, mushrooms, crystals, gem ore, light coverage
@@ -144,7 +144,7 @@ src/game/game.ts            CHG  openChest, goHome, collect yields (gem), deep p
 src/game/leadHome.ts        NEW  LeadHome state machine
 src/game/hints.ts           CHG  digDown, gemFound once-hints
 src/content/lines.ts        CHG  7 new Pip keys
-src/render/atlas.ts         CHG  ROWS up to 12, 9 new tiles
+src/render/atlas.ts         CHG  ROWS from 12 (mythical rows) up to 14, 9 new tiles after them
 src/render/mesher.ts        CHG  buildSectionGeometry, fast path, no outside-wall faces
 src/render/chunkCull.ts     CHG  visibleSections(), zones, mouths
 src/render/viewDistance.ts  NEW  pure ViewDistance controller (40..96), viewFog()
@@ -233,11 +233,11 @@ Why: at 2.5 M cells, recording every generated `set` in `changedCells` would all
 
 ### Task 4: Generation stages 0 and 1: deep fill and the old region on the view
 
-**Files:** Modify `src/core/worldgen.ts` (`GEN_VERSION = 3`; `generateWorld`; `generateMeadowStage` takes a target `WorldCells` and returns the same shape). Test `tests/core/legacyIdentical.test.ts`.
+**Files:** Modify `src/core/worldgen.ts` (`GEN_VERSION = 4`, see the reconciliation note; `generateWorld`; `generateMeadowStage` takes a target `WorldCells` and returns the same shape). Test `tests/core/legacyIdentical.test.ts`.
 
 **Interfaces:**
 ```ts
-export const GEN_VERSION = 3;
+export const GEN_VERSION = 4; // 3 is main's tower
 export interface GeneratedWorld {
   world: World; spawn: Cell3; village: VillageLayout /* world coordinates */;
   caves: CaveLayout;          // from Task 18; an empty layout until then
@@ -311,6 +311,18 @@ export function migrateV1(v1: SaveDataV1): SaveDataV2; // unchanged (no shift)
 - [ ] **Step 4:** `npm test`. Commit `feat(save): version 3 under a new key; old saves are shifted, never lost`.
 
 **Gate A (see chunks): the parent can load any of the fixtures in a dev build and see the same village at the same relative place.**
+
+### Chunk A reconciliation with main (2026-11-21: the wizard's tower, mythical blocks, save transfer)
+
+Chunk A was built before the wizard step merged; `origin/main` (b6d77d7) was then merged in. What changed, and why:
+
+- **The old region is main's gen 3 world, tower included.** `generateMeadowWorld` runs the village AND `buildTower` (its hill, tower and path) on the `ShiftedWorld` view; `shiftTowerLayout` moves the tower layout (rects, door, floors, stairs, lamps, windows, wizard spot, beacon, route cells) by ORIGIN. In world coordinates the tower stands at x 81..87, z 126..132, floor y 57, top lamp y 67 (still the top block of the world), beacon y 69.5 (above the world). `GeneratedWorld` gains `towerPad` (TOWER_PLAN.pad + ORIGIN) because `main.ts` used the meadow-coordinate `TOWER_PLAN.pad` and `VILLAGE_PLAN.pad` for Pip's tower walk; both now come from the shifted layout. No runtime code reads a meadow-coordinate plan constant any more.
+- **`GEN_VERSION` is 4** (2 village step 2, 3 the tower on main, 4 the big world). Never lowered.
+- **Fixtures.** `village-world-gen3-2026.json` (frozen from main b6d77d7 by `tests/fixtures/make-fixtures-gen3.mjs`) is now the ground truth of the old-region compare; it also records the tower layout. The gen 2 fixture stays: a test pins that gen 2 and gen 3 differ only inside the tower's stamped rectangles or by a stage 4 tree (the scatter shares one stream). `saves/v2-gen3-tower.json` is a save as the live game writes it today (gen 3, edits round the tower, the wizard's fields, mythical blocks). Gen 2 and gen 3 v2 saves both migrate (validated in the 96 box, shifted +48 once, replayed after the stamps so his edits win).
+- **Save v3 carries `wizard`** with main's rules: cleaned field by field for v2 and v3, copied unchanged by `shiftV2` (it has no coordinates), merged by `storeSave` so a true flag, a counter or a hint is never lowered.
+- **Save a copy / load a copy** (`saveTransfer.ts`): a copy from the old build (the v2 key) is accepted, migrated by the same parser and written to the v3 key as the migrated v3 save; a v3 copy round-trips byte for byte; a v3 key holding an old payload is refused; with no v3 save yet the device's v2 save is copied as it is; a damaged v3 is never swapped for the older v2. The reset also clears the old build's v2 pre-import slots. Only the v3 key and its pre-import slots are ever written.
+- **Ids and atlas (unchanged plan, now pinned by a test):** mythical 40..47 (48..55 spare), caves 56..64 (65..71 reserved), atlas rows 12 today so cave tiles start at row 12; `BlockDef.light` exists on main and is reused.
+- Main's tower, wizard, beacon and camera tests read the meadow through `tests/helpers/legacy.ts` (which now also moves the tower back by -ORIGIN) or use the shifted layout; the budget tests keep their old figures for the middle 6 x 6 chunks.
 
 ## Chunk B: The engine for a tall world.
 
@@ -504,7 +516,7 @@ ItemId.Gem = 123                          // 💎, kind 'gift', not edible, not 
 // collectable: Chest false (it opens instead); GemOre true.
 // atlas tiles: glowMushroom, crystalBlue, crystalPink, crystalGreen, ruinCrystal, gemOre, mossyBricks, chestSide, chestTop, chestOpenTop
 ```
-Art (original, 16 x 16 procedural, all bright): **GlowMushroom** warm cream cap with soft orange spots on a lighter ring, a tiny glow border; **crystals** faceted cubes in sky blue, soft pink and mint, white glints, light border; **GemOre** grey stone with three or four big bright facets (white, cyan, pink) and tiny sparkle pixels; **RuinCrystal** warm amber core fading to rose, a white four-point star glint, pale gold glowing border (mean luminance at least 0.65); **MossyBricks** the brick tile with green moss patches; **Chest** warm wood with a gold band and clasp (same side tile on all four sides), lid top; **ChestOpen** the same with a lighter lid showing a soft gold glow inside. `ATLAS_ROWS` grows from 10 to 12 (48 tiles); `tileFor(id, face)` maps them.
+Art (original, 16 x 16 procedural, all bright): **GlowMushroom** warm cream cap with soft orange spots on a lighter ring, a tiny glow border; **crystals** faceted cubes in sky blue, soft pink and mint, white glints, light border; **GemOre** grey stone with three or four big bright facets (white, cyan, pink) and tiny sparkle pixels; **RuinCrystal** warm amber core fading to rose, a white four-point star glint, pale gold glowing border (mean luminance at least 0.65); **MossyBricks** the brick tile with green moss patches; **Chest** warm wood with a gold band and clasp (same side tile on all four sides), lid top; **ChestOpen** the same with a lighter lid showing a soft gold glow inside. `ATLAS_ROWS` grows from 12 (the mythical rows, already on main) to 14 (56 tiles), the cave tiles after the mythical ones; `tileFor(id, face)` maps them.
 
 - [ ] **Step 1:** Tests: `ids 0..39 unchanged and 56..64 pinned; 40..55 and 65..71 unused`; `Gem is 123, a gift item, not edible, not a feed, not placeable, and ids 111..119 and 120..122 are free`; `GemOre and Chest are not carriable; ChestOpen and the crystals are`; `yieldOf(GemOre) is the Gem item and yieldOf(Stone) is Stone`; `light flag is exactly the five glow blocks (mushroom, three crystals, RuinCrystal)`; `RuinCrystal is solid, collectable, carriable and placeable, and no wizard recipe or price table refers to it`; **`no tile is dark: mean luminance at least 0.45 for every new tile (RuinCrystal at least 0.65) and the darkest pixel at least 0.15`; `glow tiles (mushroom, crystals, ruin crystal) stay at least 0.6 mean luminance after multiplying by the darkest face factor the scene applies (computed from the hemisphere and sun lights for normals up, down and sideways)`; `Stone, Dirt and Bricks, shaded by the darkest face, have mean luminance at least 0.30 once caveLook(1) is applied`** (caves are mostly stone: this is the "dark" guard); `the Lamp and path tiles still meet the old brightness test`; `old save inventory with ids below 40 loads`; `a bag with a Gem serialises under items only (as step 2 items)`.
 - [ ] **Step 2:** Run, implement, pass. Commit `feat: glow blocks, gem ore, chest, mossy bricks and the Gem item`.
@@ -611,7 +623,7 @@ Layout: carve a hall 17 x 13 x 8 at the world centre in the deep layer (the plac
 Stage order in `generateWorld` (all in bulk mode): 0 deep fill; 1 old region on the view; 2 outer terrain; 3 outer trees; **4 rooms (avoiding the ruin hall), tunnels, repair; 5 mouths, stairs; 6 treasure rooms; 7 ruin; 8 trail; 9 dressing (lights, ore) with the trail, mouths, treasure and ruin cells protected**; 10 final: Bedrock row, `clearEdits()`, `markClean()`. `GeneratedWorld.caves` is the `CaveLayout`. Total generation time is part of the budget (Task 23).
 
 - [ ] **Step 1:** Tests over four seeds: `the documented-difference compare passes: every old cell equals the fixture at +48 except D1 (row y 48) and D2 (stampedRects)`; `old region columns at y >= 49 are never carved except inside stampedRects`; `no creature, villager or animal position is below ground minus 3` (layout herd spawns and house floors); **`everything in the world that a player can reach is lit: darkStretches is empty`**; `the whole network is connected on foot from spawn: spawn to every mouth (surface), every mouth to every room centre, treasure room and the ruin (maxDrop 1, maxNodes 400000)`; `every cave air cell has a walkable route home: routeHome succeeds from 200 sampled cave floor cells`; `no cell of Water, Lava-like, Sand or Gravel exists underground (nothing falls, nothing floods)`; `no block with id 40..55 or 65..255 exists anywhere`; `RuinCrystal exists only in the ruin corners and chest R`; `bedrock only at y 0`; `blocks at the bounding box faces: nothing at x 0 or 191, z 0 or 191 is carved`; `deterministic hash for each of 4 seeds, pinned for seed 2026 as a golden number`; `generation under 1.5 s per seed in Vitest, printed`.
-- [ ] **Step 2:** Run, implement, pass. Commit `feat(worldgen): caves, treasure rooms and the ruin join the world (GEN_VERSION 3)`.
+- [ ] **Step 2:** Run, implement, pass. Commit `feat(worldgen): caves, treasure rooms and the ruin join the world (GEN_VERSION 5 if chunk A has shipped as 4, else 4)`.
 
 **Gate C (see chunks): a dev build on the tablet where the parent walks the six mouths, the trail and the ruin.**
 
