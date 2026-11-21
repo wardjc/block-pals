@@ -1,4 +1,4 @@
-import { applySave, inspectSave, SAVE_KEY, V2_SAVE_KEY } from './save';
+import { applySave, inspectSave, LEGACY_SAVE_KEY, SAVE_KEY, V2_SAVE_KEY } from './save';
 
 /**
  * "Save a copy / load a copy": moves his saved game between devices as a plain file.
@@ -10,7 +10,7 @@ import { applySave, inspectSave, SAVE_KEY, V2_SAVE_KEY } from './save';
  * Across the move to the big world (save v3): a copy made by the build before holds the v2 key; it
  * is accepted, checked in its own 96 box and shifted +48 once by the same migration the game loads
  * with, and the migrated v3 save is what gets written. On a device whose v2 save has not reached
- * the v3 key yet (a refused or failed write), "save a copy" copies the v2 save as it is.
+ * the v3 key yet (a refused or failed write), "save a copy" copies the LIVE game (see buildBundle).
  */
 
 export const BUNDLE_FORMAT = 'blockpals-save-bundle';
@@ -79,6 +79,13 @@ export interface TransferDeps {
   sha256?: Sha256;
   app?: string;
   mainKey?: string;
+  /**
+   * Writes the running game to the main key now (the same forced save the game makes). True only
+   * when the write succeeded, so the stored save is exactly the game being played.
+   */
+  flush?: () => boolean;
+  /** The running game, serialised as a v3 save (used when the stored save could not be brought up to date). */
+  snapshot?: () => string;
 }
 
 const pad2 = (n: number): string => String(n).padStart(2, '0');
@@ -93,18 +100,55 @@ const fail = (reason: string, message: string): Failure => ({ ok: false, reason,
 
 export type ExportResult = { ok: true; bundle: Bundle; text: string; fileName: string } | Failure;
 
+const STALE = 'The latest play has not been saved on this device yet, so no copy was made. Close this, play for a moment and try again. Nothing has been changed.';
+
+/**
+ * Never hands out stale progress (review finding 3 and its recheck). For the real main key: the
+ * running game is written first (`flush`); only if that worked is the stored v3 copied, byte for
+ * byte. Otherwise (a full storage, a migration still waiting, no flush given) the live game itself
+ * (`snapshot`) is copied. With neither, nothing is assumed fresh: a gentle message, no file. The
+ * older v2 is never exported in its place, and a damaged v3 is always refused.
+ */
 export async function buildBundle(deps: TransferDeps): Promise<ExportResult> {
   const mainKey = deps.mainKey ?? SAVE_KEY;
-  if (!deps.storage) return fail('storage', 'This browser is not letting the game keep anything, so there is nothing to copy.');
-  let found: ReturnType<typeof firstSaved>;
-  try { found = firstSaved(deps.storage, mainKey); } catch {
+  const storage = deps.storage;
+  if (!storage) return fail('storage', 'This browser is not letting the game keep anything, so there is nothing to copy.');
+  const only: Versions = mainKey === SAVE_KEY ? [3] : [1, 2, 3];
+  const read = (): string | null => storage.getItem(mainKey);
+  let raw: string | null;
+  try { raw = read(); } catch {
     return fail('storage', 'The saved game could not be read just now, so no copy was made. Nothing has been changed.');
   }
-  if (found === null) return fail('nosave', 'There is no saved game on this device yet. Play for a little while first, then try again.');
-  // A damaged v3 is refused, never quietly swapped for an older v2 copy.
-  if (!inspectSave(found.raw, found.only)) return fail('invalid', 'The saved game on this device could not be read, so it was not copied. Nothing has been changed.');
+  const invalid = fail('invalid', 'The saved game on this device could not be read, so it was not copied. Nothing has been changed.');
+  if (raw !== null && !inspectSave(raw, only)) return invalid;
+  let text: string | null = raw;
+  if (mainKey === SAVE_KEY) {
+    // The stored save is trusted as current ONLY when the running game was just written to it.
+    let flushed = false;
+    if (deps.flush) {
+      try { flushed = deps.flush() === true; } catch { flushed = false; }
+      if (flushed) {
+        try { raw = read(); } catch { raw = null; flushed = false; }
+        if (raw !== null && !inspectSave(raw, only)) return invalid;
+      }
+    }
+    if (flushed) {
+      text = raw;
+    } else if (deps.snapshot) {
+      // Not written (or no way to write): the live game is the copy, never the possibly older stored one.
+      try { text = deps.snapshot(); } catch { text = null; }
+      if (text === null || !inspectSave(text, [3])) return invalid;
+    } else {
+      // No way to know the stored save is current: say so gently rather than assume it.
+      let anything = raw !== null;
+      try { anything ||= sourcesFor(mainKey).slice(1).some(([key]) => storage.getItem(key) !== null) || storage.getItem(LEGACY_SAVE_KEY) !== null; } catch { anything = true; }
+      if (anything) return fail('stale', STALE);
+      text = null;
+    }
+  }
+  if (text === null) return fail('nosave', 'There is no saved game on this device yet. Play for a little while first, then try again.');
   try {
-    const keys = { [found.key]: found.raw };
+    const keys = { [mainKey]: text };
     const checksum = await (deps.sha256 ?? webCryptoSha256)(canonicalKeys(keys));
     const createdAt = new Date(deps.now()).toISOString();
     const bundle: Bundle = { format: BUNDLE_FORMAT, formatVersion: BUNDLE_VERSION, createdAt, ...(deps.app ? { app: deps.app } : {}), keys, checksum };

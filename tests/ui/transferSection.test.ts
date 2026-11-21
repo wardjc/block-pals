@@ -24,7 +24,7 @@ function save(seed: number): string {
   return m.get(SAVE_KEY) as string;
 }
 
-function setup(opts: { canShare?: boolean; share?: (f: File) => Promise<void> } = {}) {
+function setup(opts: { canShare?: boolean; share?: (f: File) => Promise<void>; flush?: () => boolean; snapshot?: () => string } = {}) {
   localStorage.clear();
   const presented: HTMLElement[] = [];
   const backs: Array<string | undefined> = [];
@@ -34,7 +34,7 @@ function setup(opts: { canShare?: boolean; share?: (f: File) => Promise<void> } 
     storage: localStorage, now: () => NOW, host, sha256,
     stopAutosave: vi.fn(), resumeAutosave: vi.fn(), reload: vi.fn(),
     download: (name: string, text: string) => { downloads.push({ name, text }); },
-    canShareFiles: () => opts.canShare ?? false, shareFile: opts.share,
+    canShareFiles: () => opts.canShare ?? false, shareFile: opts.share, flush: opts.flush ?? (() => true), snapshot: opts.snapshot,
   };
   const box = createTransferSection(d);
   document.body.replaceChildren(box);
@@ -169,5 +169,24 @@ describe('transfer section', () => {
     expect(localStorage.getItem(SAVE_KEY)).toBe(mine);
     expect(b.d.resumeAutosave).toHaveBeenCalled();
     expect(b.d.reload).not.toHaveBeenCalled();
+  });
+
+  test('when the game cannot be written (quota) with only the old v2 stored, the file is the live game; never the stale v2', async () => {
+    const live = save(9);
+    const t = setup({ flush: () => false, snapshot: () => live });
+    localStorage.setItem('blockpals.save.v2', 'stale v2');
+    t.btn('.gu-save').click();
+    await flush();
+    expect(t.downloads).toHaveLength(1);
+    expect(JSON.parse(t.downloads[0].text).keys).toEqual({ [SAVE_KEY]: live });
+  });
+
+  test('with no live game to copy, a v2-only device gets a gentle message and no file', async () => {
+    const t = setup({ flush: () => false });
+    localStorage.setItem('blockpals.save.v2', 'stale v2');
+    t.btn('.gu-save').click();
+    await flush();
+    expect(t.downloads).toEqual([]);
+    expect(t.status()).toContain('not been saved');
   });
 });

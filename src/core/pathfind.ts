@@ -102,6 +102,50 @@ function checkStep(
     }));
 }
 
+/**
+ * A body (him, Pip, Orlo, a villager, an animal) placed at `cell` after his edits replayed: never
+ * buried, never in the void, never inside a block. TOTAL: it always returns a cell whose two body
+ * cells are not solid.
+ *  - A standable cell is returned as it is.
+ *  - Otherwise every column is scanned top to bottom (including the original height, and the cell
+ *    on top of the world's highest block), ring by rings outwards, to the whole world if needed;
+ *    the nearest standable cell wins (blocks moved sideways plus blocks moved up or down; a buried
+ *    body prefers going up, one over a hole prefers going down).
+ *  - Only if no standable cell exists anywhere: the cell above the highest solid block of its own
+ *    column (two non-solid body cells, as the world's roof is open air).
+ */
+export function settleCell(world: WorldCells, cell: Cell): Cell {
+  if (isStandable(world, cell)) return cell;
+  const [x, y, z] = cell;
+  const buried = BLOCKS[world.get(x, y, z)].solid || BLOCKS[world.get(x, y + 1, z)].solid;
+  // Smaller is better: blocks moved sideways (ring) plus blocks moved up or down, then the preferred direction.
+  const vert = (cy: number): number => Math.abs(cy - y) * 2 + ((buried ? cy < y : cy > y) ? 1 : 0);
+  const bestIn = (cx: number, cz: number): Cell | null => {
+    let best: Cell | null = null;
+    for (let cy = 1; cy <= world.sizeY; cy++) {
+      if (isStandable(world, [cx, cy, cz]) && (!best || vert(cy) < vert(best[1]))) best = [cx, cy, cz];
+    }
+    return best;
+  };
+  const maxR = Math.max(world.sizeX, world.sizeZ);
+  let best: Cell | null = null;
+  let bestCost = Infinity;
+  for (let r = 0; r <= maxR && 2 * r <= bestCost; r++) {
+    for (let dx = -r; dx <= r; dx++) {
+      for (let dz = -r; dz <= r; dz++) {
+        if (Math.max(Math.abs(dx), Math.abs(dz)) !== r || !world.inBounds(x + dx, 0, z + dz)) continue;
+        const c = bestIn(x + dx, z + dz);
+        const cost = c ? 2 * r + vert(c[1]) : Infinity;
+        if (c && cost < bestCost) { best = c; bestCost = cost; }
+      }
+    }
+  }
+  if (best) return best;
+  const cx = world.inBounds(x, 0, z) ? x : 0;
+  const cz = world.inBounds(x, 0, z) ? z : 0;
+  return [cx, world.topSolidY(cx, cz) + 1, cz];
+}
+
 export function nearestStandable(world: WorldCells, x: number, z: number): Cell | null {
   const cell: Cell = [x, world.topSolidY(x, z) + 1, z];
   return isStandable(world, cell) ? cell : null;

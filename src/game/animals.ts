@@ -1,6 +1,6 @@
 import type { Rect } from '../core/houses';
 import { FEEDS, GIFT, type ItemId, type StackId } from '../core/items';
-import { canStep, isStandable, type Cell } from '../core/pathfind';
+import { canStep, isStandable, settleCell, type Cell } from '../core/pathfind';
 import type { SavedAnimalTuple } from '../core/save';
 import type { World } from '../core/world';
 
@@ -152,8 +152,9 @@ export class Herd {
     const elapsed = Number.isFinite(elapsedSeconds) ? Math.max(0, elapsedSeconds) : 0;
     const placement = (): Cell => this.spawn(world, roam, [])
       ?? this.nearest(world, roam, [], roam.x0, spawns[0]?.[1] ?? 1, roam.z0)
-      // Retain the full herd even when every surface has been filled in.
-      ?? spawns[0] ?? [roam.x0, 1, roam.z0];
+      // Retain the full herd even when every pasture surface has been filled in: never inside a
+      // block, the nearest free standing cell of the whole world (settleCell is total).
+      ?? settleCell(world, spawns[0] ?? [roam.x0, 1, roam.z0]);
     for (const entry of saved) {
       if (!Array.isArray(entry) || entry.length !== 6 || !entry.every(n => typeof n === 'number' && Number.isFinite(n))) continue;
       const [k, x, y, z, giftIn, variant] = entry;

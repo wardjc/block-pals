@@ -21,6 +21,10 @@ export interface GrownUpsDeps {
   stopAutosave(): void;
   /** Starts autosave again when a load-a-copy is abandoned after autosave was stopped. */
   resumeAutosave?(): void;
+  /** Writes the running game now (true when it was written): "save a copy" then copies the stored save. */
+  flushSave?(): boolean;
+  /** The running game as a v3 save, copied when it could not be written first (never stale progress). */
+  snapshotSave?(): string;
   onOpenChange(open: boolean): void;
   /** The grown-ups' "View distance" choice (stored by the panel under blockpals.view.v1). */
   getViewSetting?(): ViewSetting;
@@ -253,6 +257,8 @@ export class GrownUps {
       },
       stopAutosave: this.deps.stopAutosave,
       resumeAutosave: this.deps.resumeAutosave,
+      flush: this.deps.flushSave ? () => this.deps.flushSave!() : undefined,
+      snapshot: this.deps.snapshotSave ? () => this.deps.snapshotSave!() : undefined,
       reload: this.deps.reload ?? (() => location.reload()),
       app: 'block-pals',
       sha256: this.deps.sha256,

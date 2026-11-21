@@ -164,7 +164,17 @@ describe('save data', () => {
     if (kind === 'removed support') data.edits.push([x, y - 1, z, BlockId.Air]);
     expect(parseSave(JSON.stringify(data))).toEqual(data);
     const restored = applySave(data);
-    expect(restored.spawn).toEqual(generateWorld(1234).spawn);
+    const spawn = generateWorld(1234).spawn;
+    if (kind.startsWith('edited') || kind === 'removed support') {
+      // His saved spot IS the spawn here, so the spawn itself is now buried or over a hole: it moves
+      // to the nearest free standing cell (a block or two away), never left inside a block.
+      const c: [number, number, number] = [Math.floor(restored.spawn.x), restored.spawn.y, Math.floor(restored.spawn.z)];
+      expect(isStandable(restored.world, c)).toBe(true);
+      expect(c).not.toEqual([Math.floor(spawn.x), spawn.y, Math.floor(spawn.z)]);
+      expect(Math.hypot(c[0] - spawn.x, c[1] - spawn.y, c[2] - spawn.z)).toBeLessThan(4);
+    } else {
+      expect(restored.spawn).toEqual(spawn);
+    }
     expect(restored.world.edits()).toEqual(data.edits);
   });
 
@@ -457,13 +467,14 @@ describe('save v3 and migration from v1', () => {
     expect(again.edits.some(e => e[0] === 89)).toBe(true);
   });
 
-  test('a corrupt v3 falls back to migrating v1', () => {
-    const { raw, edits } = legacySave();
+  test('a corrupt v3 does NOT fall back to migrating v1: kept, copied to .bad, a fresh world in memory', () => {
+    const { raw } = legacySave();
     localStorage.setItem(LEGACY_SAVE_KEY, raw);
     localStorage.setItem(SAVE_KEY, '{oops');
-    expect(readSave(localStorage)!.edits).toEqual(edits.map(shift));
-    expect(parseSave(localStorage.getItem(SAVE_KEY))!.edits).toEqual(edits.map(shift));
+    expect(readSave(localStorage)).toBeNull();
+    expect(localStorage.getItem(SAVE_KEY)).toBe('{oops');
     expect(localStorage.getItem(BAD_V3_KEY)).toBe('{oops');
+    expect(localStorage.getItem(LEGACY_SAVE_KEY)).toBe(raw);
   });
 
   test('the backup is never overwritten', () => {
@@ -501,11 +512,11 @@ describe('save v3 and migration from v1', () => {
     expect(JSON.parse(localStorage.getItem(SAVE_KEY)!).gen).toBe(5);
   });
 
-  test('a bad v3 payload is backed up once when v1 is used instead', () => {
+  test('a bad v3 payload is backed up once (v1 is not used instead)', () => {
     const { raw } = legacySave();
     localStorage.setItem(LEGACY_SAVE_KEY, raw);
     localStorage.setItem(SAVE_KEY, '{"version":3,"broken":true}');
-    expect(readSave(localStorage)).not.toBeNull();
+    expect(readSave(localStorage)).toBeNull();
     expect(localStorage.getItem(BAD_V3_KEY)).toBe('{"version":3,"broken":true}');
     // A second bad v3 never overwrites the first backup.
     localStorage.setItem(SAVE_KEY, 'garbage');
@@ -591,7 +602,7 @@ describe('save safety: damaged, unreadable and failing storage', () => {
     localStorage.setItem(LEGACY_SAVE_KEY, legacySave().raw);
     throwOn([BAD_V3_KEY, `${BAD_V3_KEY}.2`, `${BAD_V3_KEY}.3`, `${BAD_V3_KEY}.4`], 'setItem');
     const data = readSave(localStorage);
-    expect(data).not.toBeNull(); // he still plays (in memory)
+    expect(data).toBeNull(); // he still plays (a fresh world in memory); the older v1 is never loaded over it
     expect(localStorage.getItem(SAVE_KEY)).toBe('{"version":3,"broken":true}');
   });
 

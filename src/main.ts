@@ -35,7 +35,7 @@ import { LeadToVillage } from './game/lead';
 import { GreetTracker } from './game/villagers';
 import { DeferredOnce, LockedHold, allowLine, craftSpeech, helperDt, leadPaused, mayGreet, mayPipSpeakQueued, type SpeechContext } from './game/speechPolicy';
 import { DOOR_EMBLEMS, FERN_LINES, VILLAGERS, VILLAGER_LINES, pickVillagerLine, type VillagerId } from './content/villagers';
-import { isStandable } from './core/pathfind';
+import { isStandable, settleCell } from './core/pathfind';
 import { UsageTracker } from './core/usage';
 import { GrownUps } from './ui/grownups';
 import { createAutosaveControl } from './game/autosaveControl';
@@ -172,8 +172,10 @@ const sayLine = (key: LineKey): void => {
   clearTimeout(bubbleTimer);
   bubbleTimer = window.setTimeout(() => hud.hideBubble(), 3000);
 };
+// Pip starts beside him, in a free cell of the replayed world (never inside a block he placed).
+const pipStart = settleCell(world, [Math.floor(spawn.x + 1.8), Math.floor(spawn.y), Math.floor(spawn.z + 1.2)]);
 const pal = new Pal(
-  { x: Math.floor(spawn.x + 1.8) + 0.5, y: spawn.y, z: Math.floor(spawn.z + 1.2) + 0.5 },
+  { x: pipStart[0] + 0.5, y: pipStart[1], z: pipStart[2] + 0.5 },
   sayLine,
 );
 pal.setHasWood(() => game.inventory.count(BlockId.Wood) > 0);
@@ -400,6 +402,9 @@ const grownUps = new GrownUps(document.getElementById('ui')!, {
   onMappingSaved: m => { pad = new GamepadInput(m); },
   stopAutosave: () => autosave.stop(),
   resumeAutosave: () => autosave.resume(),
+  // "Save a copy" never hands out stale progress: write the game now, else copy the live game.
+  flushSave: () => !autosave.frozen && saveGame(),
+  snapshotSave: () => JSON.stringify(serialise(game, seed, flags, Date.now(), herd.toJSON(), wizard)),
   onOpenChange: syncOverlays,
   getViewSetting: () => viewDistance.currentSetting,
   onViewSettingSaved: s => viewDistance.setSetting(s),
