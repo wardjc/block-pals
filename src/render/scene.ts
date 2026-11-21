@@ -338,7 +338,10 @@ export class GameScene {
       this.hemi.groundColor.setHex(look.groundColor);
       this.hemi.intensity = look.hemiIntensity * LIGHT_SCALE;
     }
-    this.fogEnd = Math.max(this.viewEased, this.viewTarget);
+    // The draw rule's fog end: outdoors the larger of the view and its target (new land is built before
+    // the haze reaches it); underground the cave haze actually drawn (14..36 when deep), so a cave
+    // never builds or draws sections hidden in its close bright haze.
+    this.fogEnd = this.zone === 'underground' ? look.fogFar : Math.max(this.viewEased, this.viewTarget);
     // The far plane covers the whole ease in one move (to the larger end), not a change every frame.
     const easing = this.easeT < VIEW_EASE_S;
     const far = cameraFar(Math.max(this.viewTarget, easing ? Math.max(this.easeFrom, this.viewEased) : this.viewTarget));

@@ -50,7 +50,7 @@ export async function frames(page: Page, n = 5): Promise<void> {
 
 export async function ready(page: Page): Promise<void> {
   await page.goto(URL);
-  await expect(page.locator('canvas')).toBeVisible();
+  await expect(page.locator('canvas')).toBeVisible({ timeout: 30_000 }); // the world is made in a worker behind the loading picture
   await page.waitForFunction(() => !!(window as unknown as { __debug?: unknown }).__debug);
   await frames(page, 10);
 }

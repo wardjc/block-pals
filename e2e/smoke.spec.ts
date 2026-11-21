@@ -91,7 +91,7 @@ async function frames(page: Page, frames = 5): Promise<void> {
 
 async function ready(page: Page): Promise<void> {
   await page.goto(URL);
-  await expect(page.locator('canvas')).toBeVisible();
+  await expect(page.locator('canvas')).toBeVisible({ timeout: 30_000 }); // the world is made in a worker behind the loading picture
   await page.waitForFunction(() => !!window.__debug);
   // Let Pip settle beside the player.
   await expect.poll(() => page.evaluate(() => {
@@ -105,7 +105,7 @@ test('loads with canvas and hotbar and no console errors', async ({ page }) => {
   page.on('console', m => { if (m.type() === 'error') errors.push(m.text()); });
   page.on('pageerror', e => errors.push(String(e)));
   await page.goto(URL);
-  await expect(page.locator('canvas')).toBeVisible();
+  await expect(page.locator('canvas')).toBeVisible({ timeout: 30_000 }); // the world is made in a worker behind the loading picture
   await expect(page.locator('.hotbar')).toBeVisible();
   await page.waitForFunction(() => !!window.__debug);
   await frames(page, 60);
@@ -114,7 +114,7 @@ test('loads with canvas and hotbar and no console errors', async ({ page }) => {
 
 test('tap on ground moves the player', async ({ page }) => {
   await page.goto(URL);
-  await expect(page.locator('canvas')).toBeVisible();
+  await expect(page.locator('canvas')).toBeVisible({ timeout: 30_000 }); // the world is made in a worker behind the loading picture
   await page.waitForFunction(() => !!window.__debug);
   await frames(page);
   const before = await page.evaluate(() => window.__debug.playerPos());
@@ -205,7 +205,7 @@ test('craft planks via debug inventory', async ({ page }) => {
 
 test('works offline after first load', async ({ page, context }) => {
   await page.goto(URL);
-  await expect(page.locator('canvas')).toBeVisible();
+  await expect(page.locator('canvas')).toBeVisible({ timeout: 30_000 }); // the world is made in a worker behind the loading picture
   await page.evaluate(() => navigator.serviceWorker.ready.then(() => true));
   // Reload once so the service worker controls the page.
   await page.reload();
@@ -213,7 +213,7 @@ test('works offline after first load', async ({ page, context }) => {
   await context.setOffline(true);
   const response = await page.reload();
   expect(response?.fromServiceWorker()).toBe(true);
-  await expect(page.locator('canvas')).toBeVisible();
+  await expect(page.locator('canvas')).toBeVisible({ timeout: 30_000 }); // the world is made in a worker behind the loading picture
   await expect(page.locator('.hotbar')).toBeVisible();
   // The service worker cache served this reload, not the HTTP cache.
   expect(await page.evaluate(() => navigator.serviceWorker.controller !== null)).toBe(true);
@@ -227,7 +227,7 @@ test('Pip speaks from a pre-generated clip, also offline', async ({ page, contex
   page.on('response', r => { if (r.url().endsWith('.ogg')) clipOk.push(r.ok()); });
 
   await page.goto(URL);
-  await expect(page.locator('canvas')).toBeVisible();
+  await expect(page.locator('canvas')).toBeVisible({ timeout: 30_000 }); // the world is made in a worker behind the loading picture
   await page.evaluate(() => navigator.serviceWorker.ready.then(() => true));
   await page.reload();
   await page.waitForFunction(() => !!navigator.serviceWorker.controller);
@@ -242,7 +242,7 @@ test('Pip speaks from a pre-generated clip, also offline', async ({ page, contex
   const fromSw: boolean[] = [];
   page.on('response', r => { if (r.url().endsWith('.ogg')) fromSw.push(r.fromServiceWorker()); });
   await page.reload();
-  await expect(page.locator('canvas')).toBeVisible();
+  await expect(page.locator('canvas')).toBeVisible({ timeout: 30_000 }); // the world is made in a worker behind the loading picture
   await page.locator('canvas').click({ position: { x: 640, y: 120 } });
   await expect.poll(() => page.evaluate(() => window.__debug.voiceLast().source), { timeout: 15_000 }).toBe('clip');
   expect(fromSw.length).toBeGreaterThan(0);
