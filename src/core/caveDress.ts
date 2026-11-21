@@ -159,6 +159,7 @@ export function dressCaves(world: World, seed: number, carved: Uint8Array, stamp
     for (let n = 0, tries = 0; n < extra && tries < 6; tries++) {
       const [dx, dy, dz] = N6[Math.floor(rng() * 6)];
       const nx = at[0] + dx, ny = at[1] + dy, nz = at[2] + dz;
+      if ((ny >= SHALLOW_FROM) !== (at[1] >= SHALLOW_FROM)) continue; // a cluster stays in its own layer's kind
       if (exposure(c, nx, ny, nz)?.side || exposure(c, nx, ny, nz)?.below) { place(nx, ny, nz, id); n++; }
     }
   }
