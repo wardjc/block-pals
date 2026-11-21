@@ -854,3 +854,56 @@ html, body {
   .wiz-sym.big { width: 88px; height: 88px; }
   .wiz-sym { width: 52px; height: 52px; }
 }
+
+/* What came out of a treasure chest: big bright cards, a picture, a digit and dots (plan Task 19). */
+.chest-reveal {
+  position: fixed;
+  inset: 0;
+  z-index: 55;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+  gap: 16px;
+  background: rgba(255, 244, 200, 0.82);
+  animation: chest-in 0.25s ease-out;
+}
+.chest-reveal[hidden] { display: none; }
+.chest-lid { font-size: 96px; line-height: 1; animation: chest-bob 1.2s ease-in-out infinite; }
+.chest-row {
+  display: flex;
+  flex-wrap: wrap;
+  justify-content: center;
+  gap: 14px;
+  max-width: min(94vw, 1200px);
+}
+.chest-card {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  min-width: 120px;
+  min-height: 150px;
+  padding: 10px 8px;
+  border: 5px solid #ffcf4a;
+  border-radius: 22px;
+  background: #fffdf2;
+  box-shadow: 0 0 24px 6px rgba(255, 207, 74, 0.6);
+  animation: chest-card-in 0.35s ease-out both;
+}
+.chest-pic {
+  box-sizing: content-box;
+  width: 72px;
+  height: 72px;
+  padding: 4px;
+  border-radius: 14px;
+  image-rendering: pixelated;
+  pointer-events: none;
+}
+.chest-pic.pic-item { display: flex; align-items: center; justify-content: center; font-size: 56px; line-height: 1; }
+.chest-card .pic-badge { font-size: 28px; }
+.chest-digit { font: 900 44px/1 system-ui, sans-serif; color: #223; margin-top: 4px; }
+.chest-dots { display: flex; flex-wrap: wrap; justify-content: center; gap: 3px; max-width: 110px; min-height: 12px; margin-top: 4px; }
+.chest-dots i { width: 10px; height: 10px; border-radius: 50%; background: #2e9e44; }
+@keyframes chest-in { from { opacity: 0; } to { opacity: 1; } }
+@keyframes chest-card-in { from { transform: scale(0.6); opacity: 0; } to { transform: scale(1); opacity: 1; } }
+@keyframes chest-bob { 0%, 100% { transform: translateY(0); } 50% { transform: translateY(-8px); } }

@@ -26,6 +26,7 @@ import { ViewDistance, type ViewSetting } from './render/viewDistance';
 import { loadViewSetting } from './render/viewSetting';
 import { sfx } from './audio/sfx';
 import { CraftScreen } from './ui/craft';
+import { ChestReveal } from './ui/chestReveal';
 import { BagTray } from './ui/bag';
 import { FEEDS, isItemId, ItemId, ITEMS, type StackId } from './core/items';
 import { Hud, hudStateFor } from './ui/hud';
@@ -283,7 +284,7 @@ const hud = new Hud(document.getElementById('ui')!, stackIcon, {
     sfx.tap();
     renderHud();
   },
-  onBag: () => { if (!craftScreen.isOpen && !grownUps.isOpen) bagTray.open(); },
+  onBag: () => { if (!craftScreen.isOpen && !grownUps.isOpen && !chestReveal.open) bagTray.open(); },
   onCraft: openCraft,
   onGrownUps: () => {},
   onGrownUpsHold: (down, id) => (down ? grownUps.holdStart(id) : grownUps.holdEnd(id)),
@@ -292,12 +293,22 @@ const hud = new Hud(document.getElementById('ui')!, stackIcon, {
 hud.onMunch(() => game.applyIntent({ kind: 'eat' }));
 
 function syncOverlays(): void {
-  const open = craftScreen.isOpen || grownUps.isOpen || bagTray.isOpen || wizardScreen.isOpen;
+  const open = craftScreen.isOpen || grownUps.isOpen || bagTray.isOpen || wizardScreen.isOpen || chestReveal.open;
   hud.setOverlayOpen(open);
   game.paused = open;
   if (open) { game.player.setPath(null); game.player.setStick(0, 0); }
 }
-function openCraft(): void { if (!grownUps.isOpen && !bagTray.isOpen && !wizardScreen.isOpen) craftScreen.open(); }
+function openCraft(): void { if (!grownUps.isOpen && !bagTray.isOpen && !wizardScreen.isOpen && !chestReveal.open) craftScreen.open(); }
+
+// A chest opened (plan Task 19): a soft chime and the picture cards of what came in (they pause the game for 4 s).
+const chestReveal = new ChestReveal(document.getElementById('ui')!, { iconFor: id => stackIcon(id), onOpenChange: syncOverlays });
+game.on(e => {
+  if (e.type !== 'chestOpened') return;
+  sfx.chest();
+  sparkles.burst({ x: e.cell[0] + 0.5, y: e.cell[1] + 1, z: e.cell[2] + 0.5 }, 'sun');
+  renderHud();
+  chestReveal.show(e.reward);
+});
 
 const bagTray = new BagTray(document.getElementById('ui')!, {
   stacks: bagStacks,
@@ -378,7 +389,7 @@ const wizardScreen = new WizardScreen(document.getElementById('ui')!, {
 });
 /** The screen opens only when no other overlay has the game paused. */
 function openWizard(): void {
-  if (craftScreen.isOpen || grownUps.isOpen || bagTray.isOpen || wizardScreen.isOpen) return;
+  if (craftScreen.isOpen || grownUps.isOpen || bagTray.isOpen || wizardScreen.isOpen || chestReveal.open) return;
   // A hello still held (audio locked, Pip talking) is given up: it must not play after "bye".
   visit.skipCurrent();
   wizardScreen.open();
@@ -1036,6 +1047,7 @@ function frame(now: number): void {
     bagTray.padInput(stick, pressed);
   } else if (hud.blockingOverlayOpen) {
     game.player.setStick(0, 0);
+    if (chestReveal.open && pressed.length > 0) chestReveal.hide(); // any pad button closes the chest cards too
   } else {
     if (stick[0] !== 0 || stick[1] !== 0) {
       const [sx, sz] = padStick(stick);
@@ -1061,6 +1073,7 @@ function frame(now: number): void {
     updateHerd(dt, now / 1000);
   }
   sparkles.update(dt);
+  chestReveal.update(dt);
   updateShimmer(dt);
   // Usage is counted once a second, not every frame (it caps each tick at 5 s anyway).
   usageMs += rawMs;

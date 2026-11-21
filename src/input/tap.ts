@@ -1,4 +1,4 @@
-import { BLOCKS } from '../core/blocks';
+import { BLOCKS, BlockId } from '../core/blocks';
 import { canPlant } from '../core/crops';
 import { FEEDS, isItemId, ITEMS, type StackId } from '../core/items';
 import type { Cell } from '../core/pathfind';
@@ -18,6 +18,10 @@ export type TapIntent =
   | { kind: 'pet'; animal: number }
   /** Opens the wizard's screen (spec §7g). Costs nothing, places nothing. */
   | { kind: 'talk' }
+  /** A closed treasure chest in reach: it opens (whatever is selected). Never builds against it. */
+  | { kind: 'open'; cell: Cell }
+  /** A closed chest out of reach: he walks beside it (never on top); a second tap opens it. */
+  | { kind: 'walkNear'; block: Cell }
   | { kind: 'none' };
 
 /** What a press and hold does (spec §7a): dig it, walk next to it, or nothing. */
@@ -77,7 +81,9 @@ export function besideWizard(world: World, wizard: Cell, playerFeet: Cell): Cell
  * player walks to the plant's own cell (plants are walkable); (3) a seed selected and room to
  * plant: plant in reach, walk otherwise; (4) with the hand walk to the cell in front of the tapped
  * face; with a block build on the tapped face if within reach and there is room, otherwise walk.
- * A tap never digs or harvests.
+ * A closed treasure chest (plan Task 19) comes first among the blocks: in pick reach it opens,
+ * whatever is selected, and is never built against; farther, he walks beside it. An open chest is
+ * an ordinary block. A tap never digs or harvests.
  */
 export function resolveTap(
   hit: { cell: Cell; normal: Cell } | null,
@@ -99,6 +105,9 @@ export function resolveTap(
     if (animal.cell) return { kind: 'walk', to: animal.cell };
   }
   if (!hit) return { kind: 'none' };
+  if (world.get(...hit.cell) === BlockId.Chest) {
+    return withinPickReach(world, playerFeet, hit.cell) ? { kind: 'open', cell: hit.cell } : { kind: 'walkNear', block: hit.cell };
+  }
   const front = frontOf(hit);
   const isPlant = extras.plantAt ?? ((c: Cell) => BLOCKS[world.get(...c)].plant !== undefined);
   if (isPlant(hit.cell)) {

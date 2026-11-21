@@ -35,7 +35,7 @@ class StubContext {
   createBufferSource(): unknown { return node({ start(t: number) { log.starts.push(t); }, stop(t: number) { log.stops.push(t); } }); }
 }
 
-const NAMES = ['water', 'sun', 'plant', 'pick', 'gift', 'munch', 'drink', 'chime', 'pet', 'cluck', 'moo', 'baa', 'oink'] as const;
+const NAMES = ['water', 'sun', 'plant', 'pick', 'gift', 'munch', 'drink', 'chime', 'pet', 'cluck', 'moo', 'baa', 'oink', 'chest'] as const;
 type Sfx = typeof import('../../src/audio/sfx')['sfx'];
 let sfx: Sfx;
 let SAME: number;
@@ -120,5 +120,18 @@ describe('farm sfx with a stub AudioContext', () => {
     sfx.pet();
     expect(log.oscillators).toBeGreaterThan(before);
     expect(SAME).toBe(80);
+  });
+
+  it('the chest chime (7h) is two soft sine notes no louder than the collect pop', () => {
+    vi.useFakeTimers();
+    vi.setSystemTime(9_000_000);
+    log.peaks = []; log.oscillators = 0;
+    sfx.pop();
+    const pop = Math.max(...log.peaks);
+    vi.advanceTimersByTime(60_000); // well past the same-sound gap of the loop's earlier chest
+    log.peaks = []; log.oscillators = 0;
+    sfx.chest();
+    expect(log.oscillators).toBe(2);
+    expect(Math.max(...log.peaks)).toBeLessThanOrEqual(pop);
   });
 });

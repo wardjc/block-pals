@@ -7,6 +7,7 @@ import { FEEDS, GIFT, isItemId, ITEMS, type ItemId, type StackId } from '../core
 import { findPath, GENTLE_DROP, isStandable, pathTowards, smoothPath, type Cell } from '../core/pathfind';
 import { EMPTY_CAVES, type CaveLayout } from '../core/caves';
 import { homeSpot, isDeep } from '../core/home';
+import { canOpen, chestReward, openChest, type RewardEntry } from '../core/treasure';
 import type { Rect, VillageLayout } from '../core/village';
 
 import { canCollect, canPlace, withinPickReach, withinReach } from '../core/placement';
@@ -22,6 +23,10 @@ import { Player } from './player';
 export type GameEvent =
   /** A dig put this in the bag (a block, or a Gem from gem stone). */
   | { type: 'collected'; id: StackId }
+  /** The dig was gem stone: one Gem came in (after its 'collected'). */
+  | { type: 'gem' }
+  /** A closed chest opened: the whole reward is in the bag (all or nothing) and the chest is open for good. */
+  | { type: 'chestOpened'; reward: readonly RewardEntry[]; cell: Cell }
   | { type: 'placed'; id: BlockId }
   | { type: 'crafted'; recipe: string }
   | { type: 'full'; id: StackId }
@@ -147,6 +152,9 @@ export class Game {
       case 'place':
         this.active();
         this.place(intent.cell);
+        return;
+      case 'open':
+        this.openChestAt(intent.cell);
         return;
       case 'plant':
         this.active();
@@ -355,6 +363,27 @@ export class Game {
     }
     this.world.set(...cell, BlockId.Air);
     this.emit({ type: 'collected', id });
+    if (here === BlockId.GemOre) this.emit({ type: 'gem' });
+  }
+
+  /**
+   * Opens a closed chest in reach (plan Task 19): every entry of its reward goes into the bag and
+   * the chest becomes ChestOpen (an ordinary edit, so it is saved and never pays twice), or, if any
+   * entry would not fit under 99, nothing changes and Pip says the bag is full (he can come back).
+   * Refused while the game is paused.
+   */
+  private openChestAt(cell: Cell): void {
+    if (this.paused) return;
+    if (this.world.get(...cell) !== BlockId.Chest || !withinPickReach(this.world, this.player.feetCell(), cell)) return;
+    this.active();
+    const reward = chestReward(this.caves, cell);
+    if (!canOpen(this.inventory, reward)) {
+      const tooMany = reward.find(e => this.inventory.count(e.id) + e.n > MAX_STACK) ?? reward[0];
+      this.emit({ type: 'full', id: tooMany.id });
+      return;
+    }
+    const result = openChest(this.world, this.inventory, this.caves, cell);
+    if (result.ok) this.emit({ type: 'chestOpened', reward: result.reward, cell: [cell[0], cell[1], cell[2]] });
   }
 
   private place(cell: Cell): void {
@@ -396,6 +425,11 @@ export class Game {
         return;
       case 'place': {
         if (this.wizardInFront()) { this.applyIntent({ kind: 'talk' }); return; }
+        // A closed chest right in front (at his feet or one up) opens, whatever is selected.
+        for (const dy of [0, 1]) {
+          const cell = this.frontCell(dy);
+          if (this.world.get(...cell) === BlockId.Chest) { this.applyIntent({ kind: 'open', cell }); return; }
+        }
         // With a food selected: an animal right in front is fed; otherwise an edible is eaten. Blocks place as before.
         const sel = this.effectiveSelected();
         if (sel !== 'hand' && isItemId(sel)) {
