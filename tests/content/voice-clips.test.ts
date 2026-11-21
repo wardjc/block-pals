@@ -2,6 +2,7 @@ import { describe, it, expect } from 'vitest';
 import { existsSync, readFileSync } from 'node:fs';
 import { spokenLines } from '../../src/content/spoken';
 import { clipKey } from '../../src/audio/voiceKey';
+import { WIZARD_LINES, wizardPartTexts } from '../../src/content/wizard';
 
 /** Every spoken line, per speaker. */
 const bySpeaker = spokenLines();
@@ -23,6 +24,12 @@ describe('voice clips', () => {
   });
   it('tools/voice/lines.json is up to date with the lines in src', () => {
     for (const [speaker, lines] of Object.entries(bySpeaker)) expect([...new Set(lines)].sort(), speaker).toEqual([...(exported[speaker] ?? [])].sort());
+  });
+  it('the wizard speaks with blend C and has a clip for every line and part', () => {
+    expect(voices.wizard).toEqual({ id: 'wizard', blend: 'bm_lewis*0.6+bf_emma*0.4', tempo: 0.93, lift: 1.02 });
+    const wanted = [...Object.values(WIZARD_LINES).flat(), ...wizardPartTexts()];
+    expect(wanted.filter((l) => !manifest[clipKey('wizard', l)])).toEqual([]);
+    for (const key of Object.keys(manifest).filter((k) => k.startsWith('wizard/'))) expect(manifest[key].text).not.toMatch(/\b(ooh+|hmm+|yay|hooray|tap|click|touch)\b/i);
   });
   it('every manifest entry has its file and the text it was made from', () => {
     for (const [key, e] of Object.entries(manifest)) {

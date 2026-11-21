@@ -183,8 +183,8 @@ describe.each(seeds)('the outer ring, seed %s', seed => {
 });
 
 describe('the outer ring leaves the old world alone', () => {
-  test('the old region is unchanged by this stage (the step 2 fixture still matches at +48)', () => {
-    const fixture = loadWorldFixture();
+  test('the old region is unchanged by this stage (the gen 3 fixture, tower included, still matches at +48)', () => {
+    const fixture = loadWorldFixture(3);
     const old = decodeRle(fixture.rle);
     const { world } = gen();
     let mismatches = 0;

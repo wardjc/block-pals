@@ -2,7 +2,7 @@ import type { HouseId } from '../core/houses';
 
 export type VillagerId = 'bramble' | 'pebble' | 'fern' | 'willow';
 /** Which pre-generated voice speaks (tools/voice/voices.json). */
-export type Speaker = 'bramble' | 'pebble' | 'fern' | 'granny';
+export type Speaker = 'bramble' | 'pebble' | 'fern' | 'granny' | 'wizard';
 
 export interface VillagerDef {
   id: VillagerId;

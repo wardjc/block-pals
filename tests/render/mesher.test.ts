@@ -50,6 +50,42 @@ describe('mesher', () => {
     expect(g.transparent.indices.length / 6).toBe(10);
   });
 
+  it('hasShimmer is set only for chunks containing a shimmer block', () => {
+    const w = new World(32, 16, 16);
+    w.set(5, 5, 5, BlockId.Stone);
+    w.set(20, 5, 5, BlockId.Lamp);
+    expect(buildChunkGeometry(w, 0, 0, uvFor).hasShimmer).toBe(false);
+    for (const id of [BlockId.CloudBlock, BlockId.MoonBlock, BlockId.SunBlock, BlockId.DragonScaleBlock]) {
+      w.set(6, 5, 5, id);
+      expect(buildChunkGeometry(w, 0, 0, uvFor).hasShimmer).toBe(false);
+    }
+    for (const id of [BlockId.RainbowBlock, BlockId.StarlightCrystal, BlockId.StarBlock, BlockId.MagicMirror]) {
+      w.set(6, 5, 5, id);
+      expect(buildChunkGeometry(w, 0, 0, uvFor).hasShimmer).toBe(true);
+      expect(buildChunkGeometry(w, 1, 0, uvFor).hasShimmer).toBe(false); // the neighbour chunk
+    }
+  });
+
+  it('a shimmer block meshes exactly like any other block of its kind (the flag adds nothing to the arrays)', () => {
+    const a = new World(16, 16, 16);
+    const b = new World(16, 16, 16);
+    a.set(5, 5, 5, BlockId.RainbowBlock);
+    b.set(5, 5, 5, BlockId.CloudBlock);
+    const ga = buildChunkGeometry(a, 0, 0, uvFor);
+    const gb = buildChunkGeometry(b, 0, 0, uvFor);
+    expect([ga.hasShimmer, gb.hasShimmer]).toEqual([true, false]);
+    expect(ga.positions).toEqual(gb.positions);
+    expect(ga.uvs).toEqual(gb.uvs);
+    expect(ga.indices).toEqual(gb.indices);
+    // Magic mirror meshes like Glass: into the see-through part.
+    const m = new World(16, 16, 16);
+    m.set(5, 5, 5, BlockId.MagicMirror);
+    m.set(6, 5, 5, BlockId.MagicMirror);
+    const gm = buildChunkGeometry(m, 0, 0, uvFor);
+    expect(gm.indices.length).toBe(0);
+    expect(gm.transparent.indices.length / 6).toBe(10);
+  });
+
   it('no bottom face at y=0 and solid face next to water shows', () => {
     const w = new World(16, 16, 16);
     w.set(5, 0, 5, BlockId.Stone);

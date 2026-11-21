@@ -37,6 +37,16 @@ export enum BlockId {
   Potato1,
   Potato2,
   Potato3,
+  // The wizard's eight mythical blocks. 36 to 39 stay spare; 48 to 55 are kept for later mythical
+  // blocks; the caves plan uses 56 to 64 (65 to 71 reserved). Existing ids still never change.
+  StarlightCrystal = 40,
+  RainbowBlock,
+  CloudBlock,
+  MoonBlock,
+  SunBlock,
+  DragonScaleBlock,
+  StarBlock,
+  MagicMirror,
 }
 
 export interface BlockDef {
@@ -49,6 +59,18 @@ export interface BlockDef {
   /** 'cube' (default) or 'cross': two crossed quads, for plants. */
   shape?: 'cube' | 'cross';
   plant?: { kind: 'wheat' | 'carrot' | 'potato' | 'apple'; stage: number };
+  /** Gives light like a Lamp: an always-bright tile that side shading cannot dim (no real light). */
+  light?: boolean;
+  /** Its atlas tile slowly repaints (a texture swap, never a chunk rebuild). */
+  shimmer?: boolean;
+}
+
+/** A plain bright cube from the wizard: solid, collectable, never a recipe. */
+function mythical(id: BlockId, name: string, icon: string, flags: { light?: boolean; shimmer?: boolean; transparent?: boolean } = {}): BlockDef {
+  const def: BlockDef = { id, name, solid: true, collectable: true, transparent: flags.transparent ?? false, icon };
+  if (flags.light) def.light = true;
+  if (flags.shimmer) def.shimmer = true;
+  return def;
 }
 
 /** Plants are walk-through, picked by the farm, and drawn as two crossed quads. */
@@ -96,6 +118,14 @@ export const BLOCKS: Record<BlockId, BlockDef> = {
   [BlockId.Potato1]: plant(BlockId.Potato1, 'potato', 'potato', 1),
   [BlockId.Potato2]: plant(BlockId.Potato2, 'potato', 'potato', 2),
   [BlockId.Potato3]: plant(BlockId.Potato3, 'potato', 'potato', 3),
+  [BlockId.StarlightCrystal]: mythical(BlockId.StarlightCrystal, 'starlight crystal', 'starlight', { light: true, shimmer: true }),
+  [BlockId.RainbowBlock]: mythical(BlockId.RainbowBlock, 'rainbow block', 'rainbow', { shimmer: true }),
+  [BlockId.CloudBlock]: mythical(BlockId.CloudBlock, 'cloud block', 'cloud'),
+  [BlockId.MoonBlock]: mythical(BlockId.MoonBlock, 'moon block', 'moon', { light: true }),
+  [BlockId.SunBlock]: mythical(BlockId.SunBlock, 'sun block', 'sun', { light: true }),
+  [BlockId.DragonScaleBlock]: mythical(BlockId.DragonScaleBlock, 'dragon scale block', 'dragonScale'),
+  [BlockId.StarBlock]: mythical(BlockId.StarBlock, 'star block', 'star', { shimmer: true }),
+  [BlockId.MagicMirror]: mythical(BlockId.MagicMirror, 'magic mirror', 'mirror', { shimmer: true, transparent: true }),
 };
 
 /** What digging this block leaves in the bag: tilled soil gives plain dirt, everything else itself. */

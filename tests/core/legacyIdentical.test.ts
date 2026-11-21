@@ -7,7 +7,8 @@ import type { Rect, VillageLayout } from '../../src/core/village';
 import { GEN_VERSION, generateWorld, type GeneratedWorld } from '../../src/core/worldgen';
 import { decodeRle, loadWorldFixture } from '../helpers/fixtures';
 
-const fixture = loadWorldFixture();
+// Gen 3: main's world with the wizard's tower, its hill and its path (frozen from main b6d77d7).
+const fixture = loadWorldFixture(3);
 const old = decodeRle(fixture.rle);
 const shiftRect = (r: Rect): Rect => ({ x0: r.x0 + ORIGIN.x, z0: r.z0 + ORIGIN.z, x1: r.x1 + ORIGIN.x, z1: r.z1 + ORIGIN.z });
 const shiftCell = (c: number[]): number[] => [c[0] + ORIGIN.x, c[1] + ORIGIN.y, c[2] + ORIGIN.z];
@@ -31,8 +32,8 @@ beforeAll(() => {
 });
 
 describe('the old 96 x 20 x 96 world sits unchanged in the middle of the big one', () => {
-  test('GEN_VERSION is 3 and the world is 192 x 68 x 192 (2,506,752 bytes)', () => {
-    expect(GEN_VERSION).toBe(3);
+  test('GEN_VERSION is 4 (above main\'s 3, never lowered) and the world is 192 x 68 x 192 (2,506,752 bytes)', () => {
+    expect(GEN_VERSION).toBe(4);
     const { world } = gen;
     expect([world.sizeX, world.sizeY, world.sizeZ]).toEqual([WORLD.x, WORLD.y, WORLD.z]);
     expect(world.buffer.length).toBe(2_506_752);
@@ -85,6 +86,30 @@ describe('the old 96 x 20 x 96 world sits unchanged in the middle of the big one
       const x = k % WORLD.x, z = Math.floor(k / WORLD.x) % WORLD.z, y = Math.floor(k / (WORLD.x * WORLD.z));
       expect(gen.world.get(x, y - 1, z)).toBe(BlockId.PathStone);
     }
+  });
+
+  test('the tower, its hill and its path equal the gen 3 fixture shifted by ORIGIN', () => {
+    const t = gen.tower;
+    const f = fixture.tower!;
+    expect(t.rect).toEqual(shiftRect(f.rect));
+    expect(t.rect).toEqual({ x0: 81, z0: 126, x1: 87, z1: 132 });
+    expect(t.groundY).toBe(f.groundY + ORIGIN.y);
+    expect(t.groundY).toBe(57);
+    expect(t.doorFront).toEqual(shiftCell(f.doorFront));
+    expect(t.doorInside).toEqual(shiftCell(f.doorInside));
+    expect(t.wizardSpot).toEqual(shiftCell(f.wizardSpot));
+    expect(t.topLamp).toEqual(shiftCell(f.topLamp));
+    expect(t.topLamp[1]).toBe(WORLD.y - 1); // still the very top block of the world
+    expect(gen.world.get(...t.topLamp)).toBe(BlockId.Lamp);
+    expect(t.beacon).toEqual({ x: f.beacon.x + ORIGIN.x, y: f.beacon.y + ORIGIN.y, z: f.beacon.z + ORIGIN.z });
+    expect(t.beacon.y).toBeGreaterThan(WORLD.y); // floats above the world
+    expect(gen.towerRoute).toEqual(f.route.map(shiftCell));
+    expect(gen.towerRects).toEqual(f.stampedRects.map(shiftRect));
+    expect(gen.towerPad).toEqual(shiftRect(f.pad));
+    // The wizard stands on the ground floor, on Planks, with room for him.
+    const [wx, wy, wz] = t.wizardSpot;
+    expect(gen.world.get(wx, wy - 1, wz)).toBe(BlockId.Planks);
+    expect(isStandable(gen.world, [wx, wy, wz])).toBe(true);
   });
 
   test('spawn is (72, 56, 72) and standable', () => {

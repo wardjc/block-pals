@@ -135,6 +135,8 @@ export class CraftScreen {
 
   private refreshSelection(): void {
     [...this.list.children].forEach((c, i) => c.classList.toggle('selected', i === this.selected));
+    // The list scrolls on small screens: the chosen row must never sit out of sight.
+    (this.list.children[this.selected] as HTMLElement | undefined)?.scrollIntoView?.({ block: 'nearest' });
   }
 
   private item(id: StackId, n: number, have?: number): HTMLElement {
@@ -171,6 +173,7 @@ export class CraftScreen {
   }
 
   private render(): void {
+    const keep = this.list.scrollTop; // a rebuild must not jump the list back to the top
     this.list.replaceChildren();
     craftRows(this.deps.inventory).forEach((row, i) => {
       const el = document.createElement('div');
@@ -199,6 +202,7 @@ export class CraftScreen {
       el.appendChild(ok);
       this.list.appendChild(el);
     });
+    this.list.scrollTop = keep;
     this.refreshSelection();
   }
 }

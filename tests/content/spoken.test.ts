@@ -3,12 +3,18 @@ import { readFileSync } from 'node:fs';
 import { LINES } from '../../src/content/lines';
 import { spokenLines } from '../../src/content/spoken';
 import { FERN_LINES } from '../../src/content/villagers';
+import { WIZARD_LINES, wizardPartTexts } from '../../src/content/wizard';
 
 describe('spokenLines', () => {
   const all = spokenLines();
   it('includes every Pip key and Fern\'s seed lines', () => {
     for (const lines of Object.values(LINES)) for (const l of lines) expect(all.pip).toContain(l);
     for (const l of [...FERN_LINES.seedGift, ...FERN_LINES.moreSeeds]) expect(all.fern).toContain(l);
+  });
+  it('includes the wizard lines and parts, spoken by the wizard only', () => {
+    for (const lines of Object.values(WIZARD_LINES)) for (const l of lines) expect(all.wizard).toContain(l);
+    for (const p of wizardPartTexts()) expect(all.wizard).toContain(p);
+    for (const p of wizardPartTexts()) expect(all.pip).not.toContain(p);
   });
   it('has no duplicates within a speaker', () => {
     for (const lines of Object.values(all)) expect(new Set(lines).size).toBe(lines.length);

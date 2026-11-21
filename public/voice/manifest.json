@@ -119,6 +119,11 @@
   "text": "Hello, neighbour! I am Captain Pebble.",
   "duration": 3.4
  },
+ "pip/0108db0c5d65": {
+  "file": "pip/0108db0c5d65.ogg",
+  "text": "Your bag has a new magic block.",
+  "duration": 2.01
+ },
  "pip/013d924f5f71": {
   "file": "pip/013d924f5f71.ogg",
   "text": "Carrots grow under the ground.",
@@ -153,6 +158,11 @@
   "file": "pip/0daac2e65f80.ogg",
   "text": "A little rest first, then more.",
   "duration": 1.85
+ },
+ "pip/0f0749babcb6": {
+  "file": "pip/0f0749babcb6.ogg",
+  "text": "Take your time. I will help.",
+  "duration": 2.64
  },
  "pip/0f36d1ee8da1": {
   "file": "pip/0f36d1ee8da1.ogg",
@@ -219,6 +229,11 @@
   "text": "Let's go and meet the neighbours!",
   "duration": 1.61
  },
+ "pip/1f020bbb5461": {
+  "file": "pip/1f020bbb5461.ogg",
+  "text": "Let's go and visit the wizard in his tower.",
+  "duration": 2.4
+ },
  "pip/1f0cb0da1912": {
   "file": "pip/1f0cb0da1912.ogg",
   "text": "Let's find some wood. Press and hold a tree!",
@@ -253,6 +268,11 @@
   "file": "pip/293f3438b325.ogg",
   "text": "What shall we build today?",
   "duration": 1.53
+ },
+ "pip/2babe1c17db9": {
+  "file": "pip/2babe1c17db9.ogg",
+  "text": "Look closely. What do you notice?",
+  "duration": 2.76
  },
  "pip/2c4282cb1b05": {
   "file": "pip/2c4282cb1b05.ogg",
@@ -349,6 +369,11 @@
   "text": "Want a snack? Press the mouth.",
   "duration": 2.6
  },
+ "pip/52d3c956f0df": {
+  "file": "pip/52d3c956f0df.ogg",
+  "text": "What a shiny new block!",
+  "duration": 1.39
+ },
  "pip/52f53831bc2e": {
   "file": "pip/52f53831bc2e.ogg",
   "text": "They'd like a rest now.",
@@ -388,6 +413,21 @@
   "file": "pip/62cb907e00b8.ogg",
   "text": "Wool can be made into coloured blocks.",
   "duration": 2.09
+ },
+ "pip/62e4f706b0ef": {
+  "file": "pip/62e4f706b0ef.ogg",
+  "text": "What is that glowing light far away?",
+  "duration": 2.19
+ },
+ "pip/63918c8f5ed0": {
+  "file": "pip/63918c8f5ed0.ogg",
+  "text": "This is the wizard's tower. Let's go in.",
+  "duration": 3.25
+ },
+ "pip/639534e49877": {
+  "file": "pip/639534e49877.ogg",
+  "text": "Here we are at the wizard's tower.",
+  "duration": 1.95
  },
  "pip/645542d66ff3": {
   "file": "pip/645542d66ff3.ogg",
@@ -443,6 +483,11 @@
   "file": "pip/74d7ae4cb372.ogg",
   "text": "Pick a food and walk over to the animals.",
   "duration": 2.4
+ },
+ "pip/7513acfadf8a": {
+  "file": "pip/7513acfadf8a.ogg",
+  "text": "You have a gem. The wizard likes gems.",
+  "duration": 3.13
  },
  "pip/790510d0b04e": {
   "file": "pip/790510d0b04e.ogg",
@@ -509,6 +554,11 @@
   "text": "Such a gentle animal!",
   "duration": 1.47
  },
+ "pip/90803fb432f5": {
+  "file": "pip/90803fb432f5.ogg",
+  "text": "We are at the tower. Let's say hello.",
+  "duration": 2.99
+ },
  "pip/90afd884ccea": {
   "file": "pip/90afd884ccea.ogg",
   "text": "That's tricky! Let's go a different way.",
@@ -534,10 +584,30 @@
   "text": "Wow, look what you made!",
   "duration": 1.37
  },
+ "pip/99a30faba979": {
+  "file": "pip/99a30faba979.ogg",
+  "text": "A light is shining far away.",
+  "duration": 1.85
+ },
+ "pip/9be37b580715": {
+  "file": "pip/9be37b580715.ogg",
+  "text": "Shall we visit the wizard? Follow me.",
+  "duration": 3.07
+ },
  "pip/9c2bb35ec54d": {
   "file": "pip/9c2bb35ec54d.ogg",
   "text": "Fresh milk, straight from the cow!",
   "duration": 1.79
+ },
+ "pip/9c43a123a958": {
+  "file": "pip/9c43a123a958.ogg",
+  "text": "Look how tall it is. Shall we go in?",
+  "duration": 2.99
+ },
+ "pip/9f4b6e7217c7": {
+  "file": "pip/9f4b6e7217c7.ogg",
+  "text": "Something is glowing over there.",
+  "duration": 1.85
  },
  "pip/9f71574de402": {
   "file": "pip/9f71574de402.ogg",
@@ -558,6 +628,11 @@
   "file": "pip/a257527de2b9.ogg",
   "text": "What a lovely spot for it!",
   "duration": 1.55
+ },
+ "pip/a2bc867436e8": {
+  "file": "pip/a2bc867436e8.ogg",
+  "text": "That looks lovely. Let's build something.",
+  "duration": 3.03
  },
  "pip/a3f6f923fee5": {
   "file": "pip/a3f6f923fee5.ogg",
@@ -604,6 +679,11 @@
   "text": "A little water and sunshine helps plants grow.",
   "duration": 2.68
  },
+ "pip/ae39bbd7f8d8": {
+  "file": "pip/ae39bbd7f8d8.ogg",
+  "text": "Shall we look at it together?",
+  "duration": 1.61
+ },
  "pip/b00485805376": {
   "file": "pip/b00485805376.ogg",
   "text": "This is the village. Lots of neighbours live here!",
@@ -639,6 +719,11 @@
   "text": "This way, follow me!",
   "duration": 1.33
  },
+ "pip/b8dabd1632cc": {
+  "file": "pip/b8dabd1632cc.ogg",
+  "text": "Someone has a light on a hill.",
+  "duration": 1.79
+ },
  "pip/be05c367eeb3": {
   "file": "pip/be05c367eeb3.ogg",
   "text": "Press and hold a block to dig it!",
@@ -673,6 +758,11 @@
   "file": "pip/c56c96a02642.ogg",
   "text": "Soft wool for your bag!",
   "duration": 1.43
+ },
+ "pip/c5720213d5ed": {
+  "file": "pip/c5720213d5ed.ogg",
+  "text": "There is a wizard in the tower. Follow me.",
+  "duration": 3.23
  },
  "pip/ca1b74eae92e": {
   "file": "pip/ca1b74eae92e.ogg",
@@ -729,6 +819,11 @@
   "text": "A plant is ready. Press and hold to pick it!",
   "duration": 3.29
  },
+ "pip/e3de6a810757": {
+  "file": "pip/e3de6a810757.ogg",
+  "text": "Let's look at each picture slowly.",
+  "duration": 1.99
+ },
  "pip/e4709aafee3f": {
   "file": "pip/e4709aafee3f.ogg",
   "text": "Super! You got another!",
@@ -784,6 +879,11 @@
   "text": "Fresh milk for your bag!",
   "duration": 1.47
  },
+ "pip/f7ffd26bdb48": {
+  "file": "pip/f7ffd26bdb48.ogg",
+  "text": "A magic block! Where will you put it?",
+  "duration": 2.95
+ },
  "pip/f9296dfd9799": {
   "file": "pip/f9296dfd9799.ogg",
   "text": "Let's collect the blocks we need!",
@@ -798,5 +898,480 @@
   "file": "pip/fc89195f28d4.ogg",
   "text": "Plants start as seeds. Shall we grow some?",
   "duration": 3.17
+ },
+ "wizard/0803c20fe9ea": {
+  "file": "wizard/0803c20fe9ea.ogg",
+  "text": "Look at the glowing picture.",
+  "duration": 1.51
+ },
+ "wizard/08a195a5e778": {
+  "file": "wizard/08a195a5e778.ogg",
+  "text": "Can you solve my puzzle, young friend?",
+  "duration": 2.38
+ },
+ "wizard/0980251c778a": {
+  "file": "wizard/0980251c778a.ogg",
+  "text": "Which one matches?",
+  "duration": 1.36
+ },
+ "wizard/09d857a2677e": {
+  "file": "wizard/09d857a2677e.ogg",
+  "text": "Come in, come in. Mind the stairs.",
+  "duration": 2.79
+ },
+ "wizard/09de7768e36f": {
+  "file": "wizard/09de7768e36f.ogg",
+  "text": "You solved it, young friend.",
+  "duration": 1.76
+ },
+ "wizard/0b7b768af110": {
+  "file": "wizard/0b7b768af110.ogg",
+  "text": "Which picture comes next?",
+  "duration": 1.72
+ },
+ "wizard/0c13710b6540": {
+  "file": "wizard/0c13710b6540.ogg",
+  "text": "The stars will be here, young friend.",
+  "duration": 2.28
+ },
+ "wizard/0cc78df1faa0": {
+  "file": "wizard/0cc78df1faa0.ogg",
+  "text": "That was a tricky one. Well done.",
+  "duration": 2.92
+ },
+ "wizard/0d8691616df8": {
+  "file": "wizard/0d8691616df8.ogg",
+  "text": "Choose a block. Gems are what I like best.",
+  "duration": 3.4
+ },
+ "wizard/14b32067e579": {
+  "file": "wizard/14b32067e579.ogg",
+  "text": "Glim says you should pick a gift.",
+  "duration": 1.92
+ },
+ "wizard/1552af770990": {
+  "file": "wizard/1552af770990.ogg",
+  "text": "Choose one magic block. It is my gift to you.",
+  "duration": 3.67
+ },
+ "wizard/155962bda9a6": {
+  "file": "wizard/155962bda9a6.ogg",
+  "text": "Come back whenever you like.",
+  "duration": 1.63
+ },
+ "wizard/17b6f75c9a23": {
+  "file": "wizard/17b6f75c9a23.ogg",
+  "text": "Look closely. Something is shining.",
+  "duration": 2.92
+ },
+ "wizard/206d637de4a5": {
+  "file": "wizard/206d637de4a5.ogg",
+  "text": "Slowly does it. Look at each picture.",
+  "duration": 3.13
+ },
+ "wizard/2113e7923823": {
+  "file": "wizard/2113e7923823.ogg",
+  "text": "Have another look.",
+  "duration": 1.15
+ },
+ "wizard/22df0147ef87": {
+  "file": "wizard/22df0147ef87.ogg",
+  "text": "Not enough gems yet. Would you like a puzzle?",
+  "duration": 3.5
+ },
+ "wizard/29e0789156cb": {
+  "file": "wizard/29e0789156cb.ogg",
+  "text": "A fine choice. Glim approves.",
+  "duration": 2.79
+ },
+ "wizard/2d7ccca0a574": {
+  "file": "wizard/2d7ccca0a574.ogg",
+  "text": "Your bag is full of those. Build with some!",
+  "duration": 3.23
+ },
+ "wizard/2f10cfcd85fa": {
+  "file": "wizard/2f10cfcd85fa.ogg",
+  "text": "Not quite. Try once more.",
+  "duration": 2.54
+ },
+ "wizard/3219083708de": {
+  "file": "wizard/3219083708de.ogg",
+  "text": "Glim and I helped a little. Well done.",
+  "duration": 3.17
+ },
+ "wizard/37e6afb13cc2": {
+  "file": "wizard/37e6afb13cc2.ogg",
+  "text": "What comes next?",
+  "duration": 1.38
+ },
+ "wizard/38a9de4b9ef1": {
+  "file": "wizard/38a9de4b9ef1.ogg",
+  "text": "I would like",
+  "duration": 1.02
+ },
+ "wizard/3e2e95f5ad97": {
+  "file": "wizard/3e2e95f5ad97.ogg",
+  "text": "potato",
+  "duration": 0.88
+ },
+ "wizard/4a8d119bcece": {
+  "file": "wizard/4a8d119bcece.ogg",
+  "text": "Look at the row. What comes next?",
+  "duration": 2.96
+ },
+ "wizard/4b00583431c7": {
+  "file": "wizard/4b00583431c7.ogg",
+  "text": "Glim and I will be here.",
+  "duration": 1.8
+ },
+ "wizard/4db2c1df4610": {
+  "file": "wizard/4db2c1df4610.ogg",
+  "text": "five",
+  "duration": 0.69
+ },
+ "wizard/4fa6024f1249": {
+  "file": "wizard/4fa6024f1249.ogg",
+  "text": "egg",
+  "duration": 0.65
+ },
+ "wizard/4fb2be0c20f1": {
+  "file": "wizard/4fb2be0c20f1.ogg",
+  "text": "Can you finish the row?",
+  "duration": 1.51
+ },
+ "wizard/4ffc80205a8f": {
+  "file": "wizard/4ffc80205a8f.ogg",
+  "text": "Quite right. Glim is pleased.",
+  "duration": 2.73
+ },
+ "wizard/56544addf847": {
+  "file": "wizard/56544addf847.ogg",
+  "text": "bundle of wheat",
+  "duration": 1.34
+ },
+ "wizard/56a565dad9ce": {
+  "file": "wizard/56a565dad9ce.ogg",
+  "text": "You have plenty of those. Build with some first.",
+  "duration": 3.61
+ },
+ "wizard/5a61046853f2": {
+  "file": "wizard/5a61046853f2.ogg",
+  "text": "Bring me",
+  "duration": 0.86
+ },
+ "wizard/5ccf6d56c545": {
+  "file": "wizard/5ccf6d56c545.ogg",
+  "text": "Use some first, then come back.",
+  "duration": 2.05
+ },
+ "wizard/5cf896e678bd": {
+  "file": "wizard/5cf896e678bd.ogg",
+  "text": "fifteen",
+  "duration": 0.86
+ },
+ "wizard/626512c14539": {
+  "file": "wizard/626512c14539.ogg",
+  "text": "Glim and I were counting stars.",
+  "duration": 2.05
+ },
+ "wizard/63061230a84d": {
+  "file": "wizard/63061230a84d.ogg",
+  "text": "Please put in my basket",
+  "duration": 1.69
+ },
+ "wizard/64ab24335af6": {
+  "file": "wizard/64ab24335af6.ogg",
+  "text": "Magic blocks for shiny gems. Choose one.",
+  "duration": 3.46
+ },
+ "wizard/6c0de8698dec": {
+  "file": "wizard/6c0de8698dec.ogg",
+  "text": "Take another look. Glim is helping.",
+  "duration": 2.94
+ },
+ "wizard/6f904e7cdc49": {
+  "file": "wizard/6f904e7cdc49.ogg",
+  "text": "Find the one that is the same.",
+  "duration": 1.82
+ },
+ "wizard/70c6adb61515": {
+  "file": "wizard/70c6adb61515.ogg",
+  "text": "eighteen",
+  "duration": 0.9
+ },
+ "wizard/72c51ac7f8d7": {
+  "file": "wizard/72c51ac7f8d7.ogg",
+  "text": "bundles of wheat",
+  "duration": 1.4
+ },
+ "wizard/76c2436b593f": {
+  "file": "wizard/76c2436b593f.ogg",
+  "text": "apples",
+  "duration": 0.82
+ },
+ "wizard/78af1f170000": {
+  "file": "wizard/78af1f170000.ogg",
+  "text": "Hello, young friend. I am Orlo the wizard.",
+  "duration": 3.34
+ },
+ "wizard/7a0ed756c3ab": {
+  "file": "wizard/7a0ed756c3ab.ogg",
+  "text": "Here is a puzzle for you.",
+  "duration": 1.59
+ },
+ "wizard/7d34a9ae6f75": {
+  "file": "wizard/7d34a9ae6f75.ogg",
+  "text": "Not that one. Try again.",
+  "duration": 2.46
+ },
+ "wizard/7ecb51f231e2": {
+  "file": "wizard/7ecb51f231e2.ogg",
+  "text": "Welcome to my tower, young friend.",
+  "duration": 2.3
+ },
+ "wizard/8269d62b12d5": {
+  "file": "wizard/8269d62b12d5.ogg",
+  "text": "Puzzles are free. Shall we try one?",
+  "duration": 2.98
+ },
+ "wizard/864c57ea2d6f": {
+  "file": "wizard/864c57ea2d6f.ogg",
+  "text": "A gift for you, young friend. Choose a block.",
+  "duration": 3.32
+ },
+ "wizard/8819d19069fa": {
+  "file": "wizard/8819d19069fa.ogg",
+  "text": "potatoes",
+  "duration": 0.98
+ },
+ "wizard/885c39aca07c": {
+  "file": "wizard/885c39aca07c.ogg",
+  "text": "nineteen",
+  "duration": 0.92
+ },
+ "wizard/8a13a01d705b": {
+  "file": "wizard/8a13a01d705b.ogg",
+  "text": "fourteen",
+  "duration": 0.86
+ },
+ "wizard/8ca439a9a044": {
+  "file": "wizard/8ca439a9a044.ogg",
+  "text": "Glim is making it easier for you.",
+  "duration": 2.11
+ },
+ "wizard/9694e6397cac": {
+  "file": "wizard/9694e6397cac.ogg",
+  "text": "Together we did it.",
+  "duration": 1.4
+ },
+ "wizard/9f8f7eec5dea": {
+  "file": "wizard/9f8f7eec5dea.ogg",
+  "text": "four",
+  "duration": 0.71
+ },
+ "wizard/a00bbe560e6b": {
+  "file": "wizard/a00bbe560e6b.ogg",
+  "text": "seven",
+  "duration": 0.77
+ },
+ "wizard/a1a21e764a5a": {
+  "file": "wizard/a1a21e764a5a.ogg",
+  "text": "Let us try a puzzle together.",
+  "duration": 1.78
+ },
+ "wizard/a4b0dfa872d2": {
+  "file": "wizard/a4b0dfa872d2.ogg",
+  "text": "Shiny gems buy sets of magic blocks.",
+  "duration": 2.7
+ },
+ "wizard/a74e59d4d328": {
+  "file": "wizard/a74e59d4d328.ogg",
+  "text": "Four magic blocks for you, young friend.",
+  "duration": 2.28
+ },
+ "wizard/a91de6b09d9b": {
+  "file": "wizard/a91de6b09d9b.ogg",
+  "text": "Bring me a gem, or try a puzzle.",
+  "duration": 2.18
+ },
+ "wizard/a9b437fe4745": {
+  "file": "wizard/a9b437fe4745.ogg",
+  "text": "Glim thinks it is this one.",
+  "duration": 1.84
+ },
+ "wizard/aa86da6bd078": {
+  "file": "wizard/aa86da6bd078.ogg",
+  "text": "Find the matching picture.",
+  "duration": 1.53
+ },
+ "wizard/ab9d02841706": {
+  "file": "wizard/ab9d02841706.ogg",
+  "text": "Come and see Glim and me again.",
+  "duration": 1.69
+ },
+ "wizard/ad782ecdac77": {
+  "file": "wizard/ad782ecdac77.ogg",
+  "text": "two",
+  "duration": 0.63
+ },
+ "wizard/b2bf0fff0ddf": {
+  "file": "wizard/b2bf0fff0ddf.ogg",
+  "text": "That is right! You are very clever.",
+  "duration": 2.82
+ },
+ "wizard/b4ddce182ecf": {
+  "file": "wizard/b4ddce182ecf.ogg",
+  "text": "nine",
+  "duration": 0.71
+ },
+ "wizard/b521f9394fab": {
+  "file": "wizard/b521f9394fab.ogg",
+  "text": "twelve",
+  "duration": 0.75
+ },
+ "wizard/b802f384302c": {
+  "file": "wizard/b802f384302c.ogg",
+  "text": "three",
+  "duration": 0.71
+ },
+ "wizard/bcc180cc3322": {
+  "file": "wizard/bcc180cc3322.ogg",
+  "text": "Fill my basket with",
+  "duration": 1.44
+ },
+ "wizard/bd111dcb4b34": {
+  "file": "wizard/bd111dcb4b34.ogg",
+  "text": "eggs",
+  "duration": 0.69
+ },
+ "wizard/bec9703f7a45": {
+  "file": "wizard/bec9703f7a45.ogg",
+  "text": "six",
+  "duration": 0.63
+ },
+ "wizard/bf2c9d27e329": {
+  "file": "wizard/bf2c9d27e329.ogg",
+  "text": "Look carefully. Which is the same?",
+  "duration": 2.92
+ },
+ "wizard/c0d94d09a927": {
+  "file": "wizard/c0d94d09a927.ogg",
+  "text": "sixteen",
+  "duration": 0.92
+ },
+ "wizard/c0ee962ff9e0": {
+  "file": "wizard/c0ee962ff9e0.ogg",
+  "text": "Splendid. You worked it out.",
+  "duration": 2.6
+ },
+ "wizard/c124fbcfe579": {
+  "file": "wizard/c124fbcfe579.ogg",
+  "text": "Those will look lovely in your house.",
+  "duration": 2.09
+ },
+ "wizard/c1777d8e8486": {
+  "file": "wizard/c1777d8e8486.ogg",
+  "text": "seventeen",
+  "duration": 0.98
+ },
+ "wizard/c22f6452ec49": {
+  "file": "wizard/c22f6452ec49.ogg",
+  "text": "A little puzzle, just for you.",
+  "duration": 1.92
+ },
+ "wizard/c24f5cff02c0": {
+  "file": "wizard/c24f5cff02c0.ogg",
+  "text": "thirteen",
+  "duration": 0.92
+ },
+ "wizard/c5310db16399": {
+  "file": "wizard/c5310db16399.ogg",
+  "text": "There you are. Build something wonderful.",
+  "duration": 3.13
+ },
+ "wizard/cc5a0c506761": {
+  "file": "wizard/cc5a0c506761.ogg",
+  "text": "eleven",
+  "duration": 0.86
+ },
+ "wizard/cffa50a32cb1": {
+  "file": "wizard/cffa50a32cb1.ogg",
+  "text": "and",
+  "duration": 0.67
+ },
+ "wizard/d0be2dc421be": {
+  "file": "wizard/d0be2dc421be.ogg",
+  "text": "apple",
+  "duration": 0.77
+ },
+ "wizard/d479fa0ef925": {
+  "file": "wizard/d479fa0ef925.ogg",
+  "text": "eight",
+  "duration": 0.65
+ },
+ "wizard/d5f2b384f4ce": {
+  "file": "wizard/d5f2b384f4ce.ogg",
+  "text": "Gems turn into magic blocks in my tower.",
+  "duration": 2.61
+ },
+ "wizard/d8bfad4b74d5": {
+  "file": "wizard/d8bfad4b74d5.ogg",
+  "text": "carrot",
+  "duration": 0.69
+ },
+ "wizard/dbdc2217599d": {
+  "file": "wizard/dbdc2217599d.ogg",
+  "text": "Every new friend gets one gift. Choose a magic block.",
+  "duration": 4.24
+ },
+ "wizard/dd3562449147": {
+  "file": "wizard/dd3562449147.ogg",
+  "text": "ten",
+  "duration": 0.67
+ },
+ "wizard/dd54354c47fa": {
+  "file": "wizard/dd54354c47fa.ogg",
+  "text": "We solved it together, young friend.",
+  "duration": 2.13
+ },
+ "wizard/df3dd7e70a6e": {
+  "file": "wizard/df3dd7e70a6e.ogg",
+  "text": "Glim is giving you a clue.",
+  "duration": 1.74
+ },
+ "wizard/edd7576a2979": {
+  "file": "wizard/edd7576a2979.ogg",
+  "text": "That is a lot of blocks already.",
+  "duration": 2.09
+ },
+ "wizard/ef4c36a7283b": {
+  "file": "wizard/ef4c36a7283b.ogg",
+  "text": "That is not it. Try another.",
+  "duration": 2.73
+ },
+ "wizard/f7ca663ad590": {
+  "file": "wizard/f7ca663ad590.ogg",
+  "text": "That one needs more gems. A puzzle might help.",
+  "duration": 3.65
+ },
+ "wizard/f838876eca45": {
+  "file": "wizard/f838876eca45.ogg",
+  "text": "Take your time. Look at the glow.",
+  "duration": 2.77
+ },
+ "wizard/f890d49474e9": {
+  "file": "wizard/f890d49474e9.ogg",
+  "text": "carrots",
+  "duration": 0.71
+ },
+ "wizard/fc955a19ae4f": {
+  "file": "wizard/fc955a19ae4f.ogg",
+  "text": "twenty",
+  "duration": 0.82
+ },
+ "wizard/fe05bcdcdc49": {
+  "file": "wizard/fe05bcdcdc49.ogg",
+  "text": "one",
+  "duration": 0.63
  }
 }

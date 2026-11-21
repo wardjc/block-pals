@@ -2,6 +2,7 @@ import { BLOCKS, BlockId } from './blocks';
 import { ORIGIN, V2_WORLD } from './bounds';
 import type { HouseInfo, Rect } from './houses';
 import type { Cell } from './pathfind';
+import type { TowerFloor, TowerInfo, TowerLayout } from './tower';
 import type { FarmLayout, VillageLayout } from './village';
 import type { World } from './world';
 
@@ -60,6 +61,63 @@ export class ShiftedWorld implements WorldCells {
   }
 }
 
+type Vec = { x: number; y: number; z: number };
+
+const mover = (origin: Vec) => ({
+  rect: (r: Rect): Rect => ({ x0: r.x0 + origin.x, x1: r.x1 + origin.x, z0: r.z0 + origin.z, z1: r.z1 + origin.z }),
+  cell: ([x, y, z]: Cell): Cell => [x + origin.x, y + origin.y, z + origin.z],
+});
+
+/** Re-indexes a set of cell indices from a `from`-sized world into `base`, moved by origin. */
+function moveIndices(cells: Set<number>, base: { sizeX: number; sizeZ: number }, origin: Vec, from: Vec): Set<number> {
+  const out = new Set<number>();
+  for (const k of cells) {
+    const x = k % from.x + origin.x;
+    const z = Math.floor(k / from.x) % from.z + origin.z;
+    const y = Math.floor(k / (from.x * from.z)) + origin.y;
+    out.add(x + base.sizeX * (z + base.sizeZ * y));
+  }
+  return out;
+}
+
+/**
+ * The wizard's tower layout (gen 3, stamped on the view in meadow coordinates) in world
+ * coordinates: every rect, cell, floor, stair, lamp, window, the wizard's spot and the beacon move
+ * by origin, the route cells are re-indexed. Pure; the input is not changed or shared.
+ */
+export function shiftTowerLayout(
+  layout: TowerLayout,
+  base: { sizeX: number; sizeZ: number },
+  origin: Vec = ORIGIN,
+  from: Vec = V2_WORLD,
+): TowerLayout {
+  const { rect, cell } = mover(origin);
+  const t = layout.info;
+  const floor = (f: TowerFloor): TowerFloor => ({ y: f.y + origin.y, cells: f.cells.map(cell), ceilingY: f.ceilingY + origin.y });
+  const info: TowerInfo = {
+    groundY: t.groundY + origin.y,
+    rect: rect(t.rect),
+    interior: rect(t.interior),
+    doorCells: t.doorCells.map(cell),
+    doorFront: cell(t.doorFront),
+    doorInside: cell(t.doorInside),
+    floors: t.floors.map(floor),
+    stairCells: t.stairCells.map(cell),
+    wizardSpot: cell(t.wizardSpot),
+    greetRect: rect(t.greetRect),
+    lampCells: t.lampCells.map(cell),
+    topLamp: cell(t.topLamp),
+    windowCells: t.windowCells.map(cell),
+    beacon: { x: t.beacon.x + origin.x, y: t.beacon.y + origin.y, z: t.beacon.z + origin.z },
+  };
+  return {
+    info,
+    route: layout.route.map(cell),
+    routeCells: moveIndices(layout.routeCells, base, origin, from),
+    stampedRects: layout.stampedRects.map(rect),
+  };
+}
+
 export function shiftLayout(
   layout: VillageLayout,
   base: { sizeX: number; sizeZ: number },
@@ -95,13 +153,7 @@ export function shiftLayout(
     herdSpawns: layout.farm.herdSpawns.map(cell),
     path: rect(layout.farm.path),
   };
-  const routeCells = new Set<number>();
-  for (const k of layout.routeCells) {
-    const x = k % from.x + origin.x;
-    const z = Math.floor(k / from.x) % from.z + origin.z;
-    const y = Math.floor(k / (from.x * from.z)) + origin.y;
-    routeCells.add(x + base.sizeX * (z + base.sizeZ * y));
-  }
+  const routeCells = moveIndices(layout.routeCells, base, origin, from);
   const result: VillageLayout = {
     houses: layout.houses.map(house),
     route: layout.route.map(cell),

@@ -1,12 +1,14 @@
 import type { CropRec, TreeRec } from '../game/farm';
 import type { Game } from '../game/game';
+import type { WizardState } from '../game/wizardTrade';
 import { BLOCKS, BlockId, isCarriable } from './blocks';
 import { LEGACY_WORLD, ORIGIN, V2_WORLD, WORLD } from './bounds';
 import { GrowthClock, STAGE_MS, TREE_STAGE_MS } from './growth';
 import { Inventory, MAX_STACK } from './inventory';
 import { isItemId } from './items';
-import { isStandable } from './pathfind';
-import type { VillageLayout } from './village';
+import { isStandable, type Cell } from './pathfind';
+import type { TowerInfo } from './tower';
+import type { Rect, VillageLayout } from './village';
 import type { World } from './world';
 import { GEN_VERSION, generateWorld } from './worldgen';
 
@@ -43,6 +45,16 @@ const SAVE_ORIGIN: [number, number, number] = [ORIGIN.x, ORIGIN.y, ORIGIN.z];
 export const HINT_NAMES: readonly string[] = ['plantSome', 'needWaterSun', 'cropReady', 'holdOutFood', 'tryMunch'];
 /** More crop or tree records than this in a save are ignored (the plants still exist as blocks). */
 export const MAX_FARM_RECORDS = 2000;
+
+/** Hint names the wizard step may save (Pip's tower light line, the tower hint); anything else is ignored. */
+export const WIZARD_HINT_NAMES: readonly string[] = ['seeLight', 'towerHint'];
+/** Wizard counters are whole numbers from 0 to this (clamped). */
+export const WIZARD_COUNT_MAX = 100_000;
+
+/** What a save may hold about the wizard. Every field is optional: a missing or bad one means its default. */
+export interface SavedWizard {
+  gift?: boolean; met?: boolean; led?: boolean; solved?: number; clean?: number; bought?: number; hints?: string[];
+}
 
 export interface SaveFlags {
   ledToVillage: boolean; fernSeeds?: boolean; hints?: string[];
@@ -87,6 +99,8 @@ export interface SaveDataV2 {
   trees?: Array<[number, number, number, number, number]>;
   animals?: SavedAnimalTuple[];
   flags: SaveFlags;
+  /** The wizard's gift, visit, lead, puzzle counters and hints. Optional and additive: absent until anything differs from the defaults. */
+  wizard?: SavedWizard;
 }
 
 /**
@@ -103,6 +117,7 @@ export interface SaveData extends Omit<SaveDataV2, 'version'> {
 
 export function serialise(
   game: Game, seed: number, flags: SaveFlags = { ledToVillage: false }, now: number = Date.now(), animals?: SavedAnimalTuple[],
+  wizard?: WizardState,
 ): SaveData {
   // Records first: this brings any pending plant growth into the world before the edits are read.
   const farm = game.farm.records();
@@ -132,6 +147,10 @@ export function serialise(
   if (farm.crops.length > 0) data.crops = farm.crops.map(c => [c.x, c.y, c.z, c.p]);
   if (farm.trees.length > 0) data.trees = farm.trees.map(t => [t.x, t.y, t.z, t.stage, t.p]);
   if (animals && animals.length > 0) data.animals = animals.map(a => [...a] as SavedAnimalTuple);
+  if (wizard) {
+    const w = wizardState(cleanWizard(wizard));
+    if (!sameWizard(w, defaultWizard())) data.wizard = toSaved(w);
+  }
   return data;
 }
 
@@ -179,6 +198,8 @@ export function shiftV2(v2: SaveDataV2): SaveData {
   if (v2.animals !== undefined) {
     data.animals = v2.animals.map(([k, x, y, z, gift, v]) => [k, x + ox, y + oy, z + oz, gift, v] as SavedAnimalTuple);
   }
+  // The wizard's gift, visit, lead, puzzle counters and hints: no coordinates, copied as they are.
+  if (v2.wizard !== undefined) data.wizard = structuredClone(v2.wizard);
   return data;
 }
 
@@ -297,6 +318,69 @@ function cleanFlags(flags: Record<string, unknown>): SaveFlags {
   return out;
 }
 
+const defaultWizard = (): WizardState => ({ gift: false, met: false, led: false, solved: 0, clean: 0, bought: 0, hints: [] });
+
+/**
+ * Cleans the wizard object field by field: a field of the wrong type is dropped on its own (it
+ * means its default), counts are clamped to 0..WIZARD_COUNT_MAX, `clean` never exceeds a valid
+ * `solved`, and only known hint names are kept (once each). Anything that is not an object is
+ * dropped whole. Nothing here can ever reject the save.
+ */
+function cleanWizard(value: unknown): SavedWizard | undefined {
+  if (!isRecord(value)) return undefined;
+  const out: SavedWizard = {};
+  for (const key of ['gift', 'met', 'led'] as const) if (typeof value[key] === 'boolean') out[key] = value[key];
+  const count = (v: unknown): number | undefined => (isInt(v) ? Math.min(WIZARD_COUNT_MAX, Math.max(0, v)) : undefined);
+  for (const key of ['solved', 'clean', 'bought'] as const) {
+    const n = count(value[key]);
+    if (n !== undefined) out[key] = n;
+  }
+  if (out.clean !== undefined && out.solved !== undefined) out.clean = Math.min(out.clean, out.solved);
+  if (Array.isArray(value.hints)) {
+    const hints = value.hints.filter((h, i, all): h is string => typeof h === 'string' && WIZARD_HINT_NAMES.includes(h) && all.indexOf(h) === i);
+    if (hints.length > 0) out.hints = hints;
+  }
+  return out;
+}
+
+/** The full state from a cleaned (partial) saved object. A dropped `solved` is never less than the clean solves kept. */
+function wizardState(saved: SavedWizard | undefined): WizardState {
+  const w = defaultWizard();
+  if (!saved) return w;
+  w.gift = saved.gift ?? false;
+  w.met = saved.met ?? false;
+  w.led = saved.led ?? false;
+  w.clean = saved.clean ?? 0;
+  w.solved = Math.max(saved.solved ?? 0, w.clean);
+  w.bought = saved.bought ?? 0;
+  w.hints = [...(saved.hints ?? [])];
+  return w;
+}
+
+const sameWizard = (a: WizardState, b: WizardState): boolean => JSON.stringify(toSaved(a)) === JSON.stringify(toSaved(b));
+
+function toSaved(w: WizardState): SavedWizard {
+  const out: SavedWizard = { gift: w.gift, met: w.met, led: w.led, solved: w.solved, clean: w.clean, bought: w.bought };
+  if (w.hints.length > 0) out.hints = [...w.hints];
+  return out;
+}
+
+/**
+ * What a write keeps when a save is already stored: a true flag stays true, a counter never goes
+ * down (so the puzzle level never drops, even from a stale tab) and stored hints are kept.
+ */
+function mergeWizard(next: WizardState, prev: WizardState): WizardState {
+  return {
+    gift: next.gift || prev.gift,
+    met: next.met || prev.met,
+    led: next.led || prev.led,
+    solved: Math.max(next.solved, prev.solved),
+    clean: Math.max(next.clean, prev.clean),
+    bought: Math.max(next.bought, prev.bought),
+    hints: [...next.hints, ...prev.hints.filter(h => !next.hints.includes(h))],
+  };
+}
+
 function validInventory(inv: unknown): boolean {
   return isRecord(inv) && Object.entries(inv).every(([key, count]) => {
     const id = Number(key);
@@ -358,6 +442,11 @@ export function inspectSave(
     if ('order' in parsed && Inventory.validOrder(parsed.order)) own.order = [...(parsed.order as number[])];
     Object.assign(own, cleanItems(parsed.items, parsed.itemOrder));
     if (version !== 1) Object.assign(own, cleanFarm(parsed, box));
+    // The wizard's fields hold no coordinates: cleaned the same way for v2 and v3, never shifted.
+    if (version !== 1) {
+      const wizard = cleanWizard(parsed.wizard);
+      if (wizard) own.wizard = wizard;
+    }
 
     if (version !== 3) {
       const data = shiftV2(own);
@@ -383,30 +472,39 @@ export interface Applied {
   inventory: Inventory;
   spawn: { x: number; y: number; z: number };
   village: VillageLayout;
+  tower: TowerInfo;
+  towerRoute: Cell[];
+  /** The tower's hilltop, world coordinates. */
+  towerPad: Rect;
   flags: SaveFlags;
   items: Record<number, number>;
   /** Plant timers to hand to Farm.restore after the edits are in. */
   farm: { crops: CropRec[]; trees: TreeRec[] };
   animals: SavedAnimalTuple[];
+  /** The wizard's state, defaults when the save has none (cleaned again here, so any object handed in is safe). */
+  wizard: WizardState;
   /** Time to grow while the game was closed: never negative, never more than 8 hours. */
   offlineMs: number;
 }
 
 export function applySave(data: SaveData, now: number = Date.now()): Applied {
   // Stamps first, then his edits: whatever he built or dug always wins over generated houses and paths.
-  const { world, spawn, village } = generateWorld(data.seed);
+  const { world, spawn, village, tower, towerRoute, towerPad } = generateWorld(data.seed);
   for (const [x, y, z, id] of data.edits) world.replayEdit(x, y, z, id);
   // Replayed edits must remain in every later save, even while the world is clean.
   world.markClean();
   const { x, y, z } = data.player;
-  // Never put him back under a roof: a saved spot inside any house footprint means spawn instead.
-  const inHouse = village.houses.some(h => x >= h.rect.x0 && x < h.rect.x1 + 1 && z >= h.rect.z0 && z < h.rect.z1 + 1);
+  // Never put him back under a roof: a saved spot inside any house or the tower means spawn instead.
+  const inHouse = [...village.houses.map(h => h.rect), tower.rect].some(r => x >= r.x0 && x < r.x1 + 1 && z >= r.z0 && z < r.z1 + 1);
   return {
     world,
     inventory: Inventory.fromJSON(data.inventory, data.order, data.items, data.itemOrder),
     spawn: !inHouse && isStandable(world, [Math.floor(x), Math.floor(y), Math.floor(z)])
       ? { ...data.player } : spawn,
     village,
+    tower,
+    towerRoute,
+    towerPad,
     flags: cleanFlags(data.flags as unknown as Record<string, unknown>),
     items: { ...(data.items ?? {}) },
     farm: {
@@ -414,6 +512,7 @@ export function applySave(data: SaveData, now: number = Date.now()): Applied {
       trees: (data.trees ?? []).map(([tx, ty, tz, stage, p]) => ({ x: tx, y: ty, z: tz, stage: stage as TreeRec['stage'], p })),
     },
     animals: (data.animals ?? []).map(a => [...a] as SavedAnimalTuple),
+    wizard: wizardState(cleanWizard(data.wizard)),
     // No savedAt (an older save): nothing extra grows. A future savedAt or a backwards clock gives 0.
     offlineMs: isFinite_(data.savedAt) ? new GrowthClock(data.savedAt).step(now) : 0,
   };
@@ -476,7 +575,8 @@ function preserveBad(storage: Storage, raw: string): boolean {
  * read; this page started without being able to read the storage and the storage now holds a save
  * (v3, v2 or v1); or the stored v3 is damaged (unreadable JSON, not a version 3 save, or skipped
  * edits) and a copy of it cannot first be kept under a `blockpals.save.v3.bad` key. A higher stored
- * `gen` is never lowered.
+ * `gen` is never lowered, and neither is anything the wizard fields record (a true flag, a
+ * counter, a hint): see `mergeWizard`.
  */
 export function storeSave(storage: Storage | null, data: SaveData): boolean {
   if (!storage) return false;
@@ -494,14 +594,21 @@ export function storeSave(storage: Storage | null, data: SaveData): boolean {
       session.mode = 'ok';
     }
     let gen: number = data.gen;
+    let wizard = data.wizard;
     if (existing.raw !== null) {
       const stored = parseExisting(existing.raw);
       if (stored && typeof stored.version === 'number' && stored.version > 3) return false;
       const checked = inspectSave(existing.raw, [3]);
       if ((!checked || checked.skipped > 0) && !preserveBad(storage, existing.raw)) return false;
       if (stored && stored.version === 3 && Number.isSafeInteger(stored.gen)) gen = Math.max(gen, stored.gen as number);
+      if (checked?.data.wizard) {
+        const merged = mergeWizard(wizardState(cleanWizard(data.wizard)), wizardState(checked.data.wizard));
+        if (!sameWizard(merged, defaultWizard())) wizard = toSaved(merged);
+      }
     }
-    storage.setItem(SAVE_KEY, JSON.stringify({ ...data, gen }));
+    const out: SaveData = { ...data, gen };
+    if (wizard) out.wizard = wizard; else delete out.wizard;
+    storage.setItem(SAVE_KEY, JSON.stringify(out));
     session.pendingMigration = false;
     return true;
   } catch {
@@ -573,9 +680,11 @@ export function startAutosave(
   game: Game, seed: number, storage: Storage | null, flags: SaveFlags = { ledToVillage: false },
   /** The herd's positions ride along on every save; a gift (game.herdRevision) marks the save dirty. */
   animals?: () => SavedAnimalTuple[],
+  /** Read live like `flags`: a gift, a visit or a solve marks the save dirty. */
+  wizard?: WizardState,
 ): () => void {
   // `flags` is read live, so flipping ledToVillage later also triggers a save.
-  const snapshot = (): string => JSON.stringify([game.inventory.toJSON(), game.inventory.order(), game.inventory.itemsToJSON(), game.inventory.itemOrder(), flags, game.farm.revision, game.herdRevision]);
+  const snapshot = (): string => JSON.stringify([game.inventory.toJSON(), game.inventory.order(), game.inventory.itemsToJSON(), game.inventory.itemOrder(), flags, game.farm.revision, game.herdRevision, wizard ?? null]);
   let savedInventory = snapshot();
   let savedPos = { ...game.player.pos };
   // Stays true until a write succeeds: a failed or refused write is retried, never forgotten.
@@ -588,7 +697,7 @@ export function startAutosave(
     const inventory = snapshot();
     if (!force && !pending && !game.world.isDirty() && inventory === savedInventory && !moved()) return;
     pending = true;
-    if (storeSave(storage, serialise(game, seed, flags, Date.now(), animals?.()))) {
+    if (storeSave(storage, serialise(game, seed, flags, Date.now(), animals?.(), wizard))) {
       pending = false;
       game.world.markClean();
       savedInventory = inventory;

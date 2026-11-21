@@ -1,7 +1,9 @@
 import { checkSum, HoldGate, makeSum } from '../core/gate';
 import { ALL_SAVE_KEYS } from '../core/save';
+import { transferResetKeys } from '../core/saveTransfer';
 import { REMINDER_OPTIONS, type UsageTracker } from '../core/usage';
 import { saveMapping, type ButtonMapping } from '../input/mapping';
+import { createTransferSection } from './transferSection';
 
 export interface GrownUpsDeps {
   usage: UsageTracker;
@@ -13,8 +15,12 @@ export interface GrownUpsDeps {
   onMappingSaved(m: ButtonMapping): void;
   /** Stops autosave so it cannot rewrite the save while resetting. */
   stopAutosave(): void;
+  /** Starts autosave again when a load-a-copy is abandoned after autosave was stopped. */
+  resumeAutosave?(): void;
   onOpenChange(open: boolean): void;
   reload?: () => void;
+  /** Test seam for the checksum. */
+  sha256?: (text: string) => Promise<string>;
   now?: () => number;
 }
 
@@ -48,6 +54,8 @@ export class GrownUps {
   private open_ = false;
   private captureRun = 0;
   private gateTimer = 0;
+  /** Bumped whenever the panel closes, the gate comes up or the panel is rebuilt: anything started earlier is stale. */
+  private session = 0;
 
   constructor(root: HTMLElement, private readonly deps: GrownUpsDeps) {
     this.ring.hidden = true;
@@ -101,6 +109,7 @@ export class GrownUps {
   }
 
   close(): void {
+    this.session++;
     this.stopGateTimer();
     this.captureRun++;
     this.deps.cancelCapture();
@@ -123,6 +132,7 @@ export class GrownUps {
   };
 
   private showGate(): void {
+    this.session++;
     this.show();
     this.restartGateTimer();
     const sum = makeSum();
@@ -157,7 +167,8 @@ export class GrownUps {
     this.overlay.append(card, x);
   }
 
-  private showPanel(): void {
+  private showPanel(note = ''): void {
+    const token = ++this.session;
     this.stopGateTimer();
     this.show();
     const { usage } = this.deps;
@@ -199,12 +210,27 @@ export class GrownUps {
     setup.addEventListener('click', () => this.setupController(status));
     card.append(setup, status);
 
+    card.appendChild(createTransferSection({
+      storage: this.deps.storage,
+      now: () => Date.now(),
+      host: {
+        present: c => { this.overlay.replaceChildren(c); },
+        back: msg => this.showPanel(msg),
+      },
+      stopAutosave: this.deps.stopAutosave,
+      resumeAutosave: this.deps.resumeAutosave,
+      reload: this.deps.reload ?? (() => location.reload()),
+      app: 'block-pals',
+      sha256: this.deps.sha256,
+      isCurrent: () => token === this.session,
+    }, note));
+
     const reset = el('button', 'gu-action gu-danger', 'Reset progress');
     const confirm = el('div', 'gu-confirm');
     confirm.hidden = true;
     reset.addEventListener('click', () => { confirm.hidden = false; reset.hidden = true; });
     confirm.append(
-      el('p', 'gu-warn', 'This deletes the world and everything collected. Usage history is kept. Are you sure?'),
+      el('p', 'gu-warn', "This deletes this device's game and all safety copies kept in this browser. Files you saved elsewhere and usage history are kept. Are you sure?"),
     );
     const yes = el('button', 'gu-action gu-danger', 'Yes, reset everything');
     yes.addEventListener('click', () => this.resetProgress());
@@ -234,9 +260,10 @@ export class GrownUps {
   }
 
   private resetProgress(): void {
+    this.session++; // any file read still in flight is now stale
     this.deps.stopAutosave();
     // The grown-ups' reset is the only thing that ever deletes the old v1 save and its backup.
-    for (const key of ALL_SAVE_KEYS) {
+    for (const key of [...ALL_SAVE_KEYS, ...transferResetKeys()]) {
       try { this.deps.storage?.removeItem(key); } catch { /* storage blocked: nothing to clear */ }
     }
     this.deps.usage.flush();

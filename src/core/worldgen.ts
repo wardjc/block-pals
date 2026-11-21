@@ -1,13 +1,20 @@
 import { BlockId } from './blocks';
 import { insideWall, LEGACY_WORLD, ORIGIN, V2_WORLD, WORLD } from './bounds';
 import { generateOuter, type OuterInfo } from './outer';
+import type { Cell } from './pathfind';
 import { mulberry32, valueNoise2D } from './rng';
-import { ShiftedWorld, shiftLayout, type WorldCells } from './shifted';
+import { ShiftedWorld, shiftLayout, shiftTowerLayout, type WorldCells } from './shifted';
+import { buildTower, TOWER_PLAN, type TowerInfo, type TowerLayout } from './tower';
 import { buildVillage, type Rect, type VillageLayout } from './village';
 import { World } from './world';
 
-/** Bump when later steps add stamps, so saves can tell which generator made the world. 3: the 192 x 68 x 192 world. */
-export const GEN_VERSION = 3;
+/**
+ * Bump when later steps add stamps, so saves can tell which generator made the world. Never lowered.
+ * 2: village step 2 (96 x 20 x 96). 3: the wizard's tower, its hill and its path (still 96 x 20 x 96).
+ * 4: the 192 x 68 x 192 world, the gen 3 meadow (tower included) unchanged at +ORIGIN.
+ * Old saves regenerate and replay his edits on top.
+ */
+export const GEN_VERSION = 4;
 
 type Cell3 = { x: number; y: number; z: number };
 type Tree = { x: number; z: number };
@@ -53,6 +60,14 @@ export interface GeneratedWorld {
   village: VillageLayout;
   /** The new land around the old rectangle (hills, ponds, trees), world coordinates. */
   outer: OuterInfo;
+  /** World coordinates (the gen 3 tower moved by ORIGIN). */
+  tower: TowerInfo;
+  /** Centre line of the path from the village square to the tower door (world coordinates). */
+  towerRoute: Cell[];
+  /** Everything the tower's generator may have changed (world coordinates). */
+  towerRects: Rect[];
+  /** The tower's level hilltop (TOWER_PLAN.pad moved by ORIGIN): arriving there ends Pip's walk. */
+  towerPad: Rect;
 }
 
 function plantTree(
@@ -152,19 +167,24 @@ const inRect = (r: Rect, x: number, z: number, margin = 0): boolean =>
  * The step 2 world (terrain, v1 trees, village, farm, pasture, stage 4 trees), unchanged, written
  * into `world` (a plain 96 world, or the ShiftedWorld view of the big one). Meadow coordinates.
  */
-function generateMeadowWorld(seed: number, world: WorldCells): { spawn: Cell3; village: VillageLayout } {
+export function generateMeadowWorld(
+  seed: number, world: WorldCells,
+): { spawn: Cell3; village: VillageLayout; tower: TowerLayout } {
   // Stages 1 and 2.
   const { spawn, heights, trees } = generateMeadowStage(seed, world);
 
   // Stage 3: pads, houses and the path (Task 5).
   const village = buildVillage(world, spawn);
+  // Stage 3b: the wizard's hill, tower and path (after the village, so its stamps stay byte-identical).
+  const tower = buildTower(world);
 
   // Stage 4: edge ring and scatter on the new ground, from its own stream.
   const random = mulberry32((seed ^ 0x5eed) >>> 0);
   const blocked = (x: number, z: number): boolean =>
     !insideWall(world, x, z)
     || !(x >= 50 || z >= 50)
-    || village.stampedRects.some(rect => inRect(rect, x, z, 3));
+    || village.stampedRects.some(rect => inRect(rect, x, z, 3))
+    || tower.stampedRects.some(rect => inRect(rect, x, z, 3));
   const plant = (x: number, z: number): boolean =>
     plantTree(world, heights, trees, spawn, x, z, world.sizeY, blocked);
 
@@ -193,7 +213,7 @@ function generateMeadowWorld(seed: number, world: WorldCells): { spawn: Cell3; v
     candidates[chosen] = candidates[i];
     plant(candidate.x, candidate.z);
   }
-  return { spawn, village };
+  return { spawn, village, tower };
 }
 
 /**
@@ -222,6 +242,7 @@ export function generateWorld(seed = 2026): GeneratedWorld {
     }
   }
   const village = shiftLayout(meadow.village, world);
+  const tower = shiftTowerLayout(meadow.tower, world);
   const spawn = { x: meadow.spawn.x + ORIGIN.x, y: meadow.spawn.y + ORIGIN.y, z: meadow.spawn.z + ORIGIN.z };
 
   // Stages 2 and 3: the outer ring (its own streams; only columns outside the old rectangle).
@@ -230,5 +251,7 @@ export function generateWorld(seed = 2026): GeneratedWorld {
   world.endBulk();
   world.clearEdits();
   world.markClean();
-  return { world, spawn, village, outer };
+  const p = TOWER_PLAN.pad;
+  const towerPad: Rect = { x0: p.x0 + ORIGIN.x, z0: p.z0 + ORIGIN.z, x1: p.x1 + ORIGIN.x, z1: p.z1 + ORIGIN.z };
+  return { world, spawn, village, outer, tower: tower.info, towerRoute: tower.route, towerRects: tower.stampedRects, towerPad };
 }

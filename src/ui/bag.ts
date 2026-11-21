@@ -103,6 +103,7 @@ export class BagTray {
 
   private refreshFocus(): void {
     [...this.grid.children].forEach((c, i) => c.classList.toggle('focus', i === this.focus));
+    (this.grid.children[this.focus] as HTMLElement | undefined)?.scrollIntoView?.({ block: 'nearest' }); // the bag scrolls on small screens
   }
 
   private render(): void {

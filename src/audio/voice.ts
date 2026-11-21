@@ -259,20 +259,36 @@ export class Voice {
   private async playClip(key: string, token: number): Promise<boolean> {
     const buf = await this.loadBuffer(key);
     if (token !== this.token) return true; // superseded: say() was called again, nothing to fall back for
-    const out = this.deps!.audio();
+    const out = await this.runningAudio(token);
+    if (out === 'superseded') return true;
     if (!out) return false;
+    this.startBuffer(out, buf, key);
+    return true;
+  }
+
+  /**
+   * The audio output once the context runs (the first tap's resume() may still be in flight), null if
+   * it will not, 'superseded' if a newer line took over while waiting.
+   */
+  private async runningAudio(token: number): Promise<{ ctx: AudioContext; out: AudioNode } | null | 'superseded'> {
+    const out = this.deps!.audio();
+    if (!out) return null;
     const { ctx } = out;
     if (ctx.state !== 'running') {
-      // The first tap's resume() may still be in flight.
       await Promise.race([
         Promise.resolve(ctx.resume()).catch(() => {}),
         new Promise((r) => setTimeout(r, this.deps!.resumeWaitMs ?? 300)),
       ]);
-      if (token !== this.token) return true;
-      if ((ctx.state as string) !== 'running') return false;
+      if (token !== this.token) return 'superseded';
+      if ((ctx.state as string) !== 'running') return null;
     }
-    const src = ctx.createBufferSource();
-    const gain = ctx.createGain();
+    return out;
+  }
+
+  /** Starts a decoded clip now; `ended` runs once it has really finished (after the line's own bookkeeping). */
+  private startBuffer(out: { ctx: AudioContext; out: AudioNode }, buf: AudioBuffer, key: string, ended?: () => void): void {
+    const src = out.ctx.createBufferSource();
+    const gain = out.ctx.createGain();
     gain.gain.value = CLIP_GAIN;
     src.buffer = buf;
     src.connect(gain);
@@ -280,13 +296,62 @@ export class Voice {
     src.onended = () => {
       try { src.disconnect(); gain.disconnect(); } catch { /* already gone */ }
       if (this.current?.src === src) { this.current = null; this.clipUntil = 0; }
+      ended?.();
     };
     src.start();
     this.loadingUntil = 0;
     this.clipUntil = performance.now() + SPEECH_HARD_CAP_MS; // cap only: onended ends it
     this.current = { src, gain };
     this.last = { source: 'clip', key };
-    return true;
+  }
+
+  /**
+   * Speaks a sentence stitched from pre-recorded fragments (the wizard's counting sentence), back to
+   * back with `gapMs` between them. It is one line for every rule: speaking() stays true from the call,
+   * through the gaps, until the last part ends; a newer say(), sayParts() or stop() cuts it and no
+   * later part plays. It never uses the tablet voice: a part without a clip is skipped, and with audio
+   * locked or no clips at all nothing is said.
+   */
+  sayParts(speaker: string, texts: string[], gapMs = 120): void {
+    const parts = texts.filter((t) => !!t);
+    if (parts.length === 0) return; // like say(''): never cuts the line that is playing
+    let keys: string[];
+    try {
+      keys = parts.map((t) => clipKey(speaker, t));
+      this.requested = clipKey(speaker, parts.join(' '));
+    } catch { return; }
+    const token = ++this.token;
+    this.clipUntil = 0;
+    this.ttsUntil = 0;
+    this.utterance = null;
+    this.stopClip();
+    try { this.synth?.cancel(); } catch { /* speech is optional */ }
+    const d = this.deps;
+    if (!d) { this.loadingUntil = 0; this.last = { source: 'none', key: keys[0] }; return; }
+    this.loadingUntil = performance.now() + 5 * (d.timeoutMs ?? FETCH_TIMEOUT_MS) + (d.resumeWaitMs ?? 300) + 1500;
+    const quiet = (): void => {
+      if (token !== this.token) return;
+      this.loadingUntil = 0;
+      this.clipUntil = 0;
+    };
+    void (async () => {
+      const bufs = await Promise.all(keys.map((k) => this.loadBuffer(k).catch(() => null)));
+      if (token !== this.token) return;
+      const queue = bufs.flatMap((b, i) => (b ? [{ buf: b, key: keys[i] }] : []));
+      if (queue.length === 0) { this.last = { source: 'none', key: keys[0] }; quiet(); return; }
+      const out = await this.runningAudio(token);
+      if (out === 'superseded' || token !== this.token) return;
+      if (!out) { quiet(); return; } // locked: dropped quietly, never the tablet voice
+      const play = (i: number): void => {
+        if (token !== this.token) return;
+        this.startBuffer(out, queue[i].buf, queue[i].key, () => {
+          if (token !== this.token || i + 1 >= queue.length) return;
+          this.clipUntil = performance.now() + SPEECH_HARD_CAP_MS; // the gap still counts as speaking
+          setTimeout(() => play(i + 1), gapMs);
+        });
+      };
+      play(0);
+    })().catch(quiet);
   }
 
   private speak(text: string): void {

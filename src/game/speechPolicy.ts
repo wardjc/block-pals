@@ -55,6 +55,31 @@ export function craftSpeech(
   };
 }
 
+/** The wizard says hello under exactly the same rules as a neighbour. */
+export const mayWizardGreet: typeof mayGreet = mayGreet;
+
+/** The wizard's speech: what he can say, every call behind the break guard. */
+export interface WizardSpeaker {
+  /** One of his lines, by key. */
+  line(key: string): void;
+  /** A counting sentence stitched from recorded parts ("bring me 3 apples and 2 carrots"). */
+  countSentence(parts: unknown): void;
+  /** Says the last line again (the 🔊 button). */
+  again(): void;
+}
+
+/**
+ * Like `craftSpeech`: while the break bubble is open the wizard says nothing (and so never cuts the
+ * reminder); his screen itself keeps working.
+ */
+export function wizardSpeech<S extends WizardSpeaker>(breakOpen: () => boolean, speak: S): WizardSpeaker {
+  return {
+    line: key => { if (!breakOpen()) speak.line(key); },
+    countSentence: parts => { if (!breakOpen()) speak.countSentence(parts); },
+    again: () => { if (!breakOpen()) speak.again(); },
+  };
+}
+
 /**
  * A line that must be said exactly once but may have to wait (the welcome while the break bubble
  * is up). `want()` asks for it; `take(blocked)` returns true exactly once, the first time it is
@@ -93,5 +118,40 @@ export class LockedHold {
     this.locked += Math.max(0, dt);
     if (!this.fired && this.locked >= HOLD_LIMIT_SECONDS) { this.fired = true; return true; }
     return false;
+  }
+}
+
+/**
+ * One Pip line that must wait its turn (Pip's puzzle nudge while Orlo's screen is open): it never
+ * cuts a voice that is speaking (Orlo) or the break reminder. A newer line replaces an older one.
+ */
+export class HeldPipLine {
+  private key: string | null = null;
+
+  want(key: string): void {
+    this.key = key;
+  }
+
+  clear(): void {
+    this.key = null;
+  }
+
+  /**
+   * Offers the line to `say` when nobody is speaking and the break bubble is down. It is used up
+   * only when `say` really said it (true); refused (Pip's hush, his chatter gap), it is tried again.
+   */
+  offer(speaking: boolean, breakOpen: boolean, say: (key: string) => boolean): boolean {
+    if (this.key === null || speaking || breakOpen) return false;
+    if (!say(this.key)) return false;
+    this.key = null;
+    return true;
+  }
+
+  /** The line to say now, once, or null while a voice is speaking or the break bubble is up. */
+  take(speaking: boolean, breakOpen: boolean): string | null {
+    if (this.key === null || speaking || breakOpen) return null;
+    const k = this.key;
+    this.key = null;
+    return k;
   }
 }
