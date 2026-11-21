@@ -386,7 +386,9 @@ function rampColumns(steps: MouthPlan['steps']): MouthPlan['columns'] {
     for (const [x, z] of across(s, s.dir)) add(x, z, s.f);
     const next = steps[i + 1];
     if (next && (next.dir[0] !== s.dir[0] || next.dir[1] !== s.dir[1])) {
-      for (let dz = -2; dz <= 2; dz++) for (let dx = -2; dx <= 2; dx++) add(s.x + dx, s.z + dz, s.f);
+      // The square reaches 2 back along the way in: give it that step's (higher) floor, never a dip.
+      const back = steps[Math.max(0, i - 2)].f;
+      for (let dz = -2; dz <= 2; dz++) for (let dx = -2; dx <= 2; dx++) add(s.x + dx, s.z + dz, back);
     }
   });
   return [...map.values()];
