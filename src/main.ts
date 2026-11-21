@@ -865,6 +865,8 @@ if (debugOn) {
     },
     burst: (kind: 'water' | 'sun' | 'both' | 'heart' | 'crumb') => { const q = game.player.pos; sparkles.burst({ x: q.x + 1.2, y: q.y + 1.6, z: q.z }, kind); },
     worldSize: () => ({ x: world.sizeX, y: world.sizeY, z: world.sizeZ }),
+    deep: () => game.isDeep(),
+    goHome: () => game.goHome(),
     saveNow,
     eating: () => ({ active: game.eating.active, progress: game.eating.progress, bite: game.eating.bite, food: game.eating.food }),
     layoutFarm: () => ({ beds: village.farm.beds, pool: village.farm.pool, irrigation: village.farm.irrigation, pasture, gate: village.farm.gate, fence: village.farm.fence, path: village.farm.path }),
@@ -994,7 +996,7 @@ function frame(now: number): void {
     usageMs = 0;
   }
   const p = game.player.pos;
-  playerModel.position.set(p.x, p.y, p.z);
+  playerModel.position.set(p.x, game.player.visualY, p.z); // a gentle drop is a glide
   playerModel.rotation.y = game.player.heading;
   animatePlayerWalk(playerModel, playerWalk, dt, Math.hypot(p.x - prevPlayerX, p.z - prevPlayerZ));
   prevPlayerX = p.x; prevPlayerZ = p.z;

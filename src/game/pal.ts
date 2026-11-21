@@ -1,6 +1,6 @@
 import type { LineKey } from '../content/lines';
 import { insideWall } from '../core/bounds';
-import { canStep, findPath, isStandable, smoothPath, type Cell } from '../core/pathfind';
+import { canStep, dropLanding, findPath, GENTLE_DROP, isStandable, smoothPath, type Cell } from '../core/pathfind';
 import type { World } from '../core/world';
 import type { GameEvent } from './game';
 import { LEAD_CATCH_UP_SPEED, LEAD_SPEED } from './lead';
@@ -41,6 +41,8 @@ export class Pal {
   private leadIndex: () => number = () => -1;
   private leadGoal: Cell | null = null;
   private avoid: Cell = [NaN, 0, NaN];
+  /** Set by a Home lift: Pip appears beside him at the next update. */
+  private liftPending = false;
 
   constructor(
     start: Vec,
@@ -131,7 +133,12 @@ export class Pal {
         this.speak('upYouCome', true);
         return;
       case 'noPath':
+      case 'noPathDeep': // the caves' own way-up line comes with the Home button (Task 21)
         this.speak('noPath');
+        return;
+      case 'homeLift':
+        // He was lifted to the surface: Pip joins him there on the next update (never left behind).
+        this.liftPending = true;
         return;
       case 'idle':
         this.speak(this.hasWood() ? 'idleHint' : 'letsFindWood');
@@ -153,6 +160,11 @@ export class Pal {
   update(world: World, player: Player, dt: number): void {
     if (!Number.isFinite(dt) || dt <= 0) return;
     this.repathCooldown = Math.max(0, this.repathCooldown - dt);
+    if (this.liftPending) {
+      this.liftPending = false;
+      this.teleport(world, player);
+      return;
+    }
     if (this.leadRoute) {
       this.updateLead(world, player, dt);
       return;
@@ -244,7 +256,7 @@ export class Pal {
     const from = this.feetCell();
     const goals = this.leadRoute && this.leadGoal ? [this.leadGoal] : this.spots(world, player, [2, 1], this.pos).slice(0, 6);
     for (const goal of goals) {
-      const p = findPath(world, from, goal, 1500, this.allowed(world));
+      const p = findPath(world, from, goal, 1500, this.allowed(world), GENTLE_DROP);
       if (p) {
         this.path = smoothPath(world, p, from, this.allowed(world));
         return;
@@ -309,6 +321,9 @@ export class Pal {
       to[0] = nx; to[1] = from[1] + dy; to[2] = nz;
       if (canStep(world, from, to, allowed)) return [nx, to[1], nz];
     }
+    // A gentle drop, as he can take one (orthogonal only; canStep checks the column).
+    const landing = dropLanding(world, from, nx, nz, GENTLE_DROP);
+    if (landing !== null && canStep(world, from, [nx, landing, nz], allowed, GENTLE_DROP)) return [nx, landing, nz];
     return undefined;
   }
 

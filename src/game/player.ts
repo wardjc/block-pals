@@ -1,11 +1,16 @@
 import { BLOCKS } from '../core/blocks';
 import { clampToWall, insideWall } from '../core/bounds';
-import { canStep, isStandable, type Cell } from '../core/pathfind';
+import { canStep, dropLanding, GENTLE_DROP, isStandable, type Cell } from '../core/pathfind';
 import type { World } from '../core/world';
 
 const SPEED = 3.5;
 const MAX_STEP = 0.2;
 const EPSILON = 1e-8;
+/** Glide speeds of the drawn height, blocks a second. */
+export const GLIDE_DOWN = 9;
+export const GLIDE_UP = 14;
+/** A sideways jump this big in one frame is a teleport, not a walk. */
+const TELEPORT_JUMP = 1.5;
 
 /** Turn along the shortest arc, bounded by the time available this frame. */
 export function easeHeading(current: number, target: number, maxDelta: number): number {
@@ -19,13 +24,20 @@ export class Player {
   pos: { x: number; y: number; z: number };
   // Radians from +z towards +x, pointing in the direction of travel.
   heading = 0;
+  /** The height he is drawn at: eases toward pos.y so a gentle drop is a glide (see easeVisual). */
+  visualY: number;
   private path: Cell[] = [];
   private waypoint = 0;
   private centring = false;
   private stick = { x: 0, z: 0 };
+  private lastX: number;
+  private lastZ: number;
 
   constructor(spawn: { x: number; y: number; z: number }) {
     this.pos = { ...spawn };
+    this.visualY = spawn.y;
+    this.lastX = spawn.x;
+    this.lastZ = spawn.z;
   }
 
   feetCell(): Cell {
@@ -51,6 +63,36 @@ export class Player {
 
   update(world: World, dt: number): void {
     if (!Number.isFinite(dt) || dt <= 0) return;
+    this.step(world, dt);
+    this.easeVisual(dt);
+  }
+
+  /** Puts the drawn height straight onto his feet (after a lift behind the white fade). */
+  snapVisual(): void {
+    this.visualY = this.pos.y;
+    this.lastX = this.pos.x;
+    this.lastZ = this.pos.z;
+  }
+
+  /**
+   * The drawn height follows his feet at a gentle glide: down at GLIDE_DOWN blocks a second (a drop
+   * is a glide, never a snap), up at GLIDE_UP. A jump of more than TELEPORT_JUMP sideways in one frame
+   * is a teleport (debug, Pip-free lifts): it snaps, so the camera never sweeps through the ground.
+   */
+  private easeVisual(dt: number): void {
+    if (Math.hypot(this.pos.x - this.lastX, this.pos.z - this.lastZ) > TELEPORT_JUMP || !Number.isFinite(this.visualY)) {
+      this.snapVisual();
+      return;
+    }
+    this.lastX = this.pos.x;
+    this.lastZ = this.pos.z;
+    const gap = this.pos.y - this.visualY;
+    if (gap < 0) this.visualY = Math.max(this.pos.y, this.visualY - GLIDE_DOWN * dt);
+    // An ordinary one-block step up stays a snap (as before): his feet never sink into the step.
+    else if (gap > 0) this.visualY = gap <= 1 + EPSILON ? this.pos.y : Math.min(this.pos.y, this.visualY + GLIDE_UP * dt);
+  }
+
+  private step(world: World, dt: number): void {
     if (!isStandable(world, this.feetCell()) && !this.recover(world)) return;
     let remaining = SPEED * dt;
     if (this.stick.x !== 0 || this.stick.z !== 0) {
@@ -179,6 +221,12 @@ export class Player {
           break;
         }
       }
+      // Off the edge: a gentle drop to the floor below (the glide is visualY's job).
+      if (!destination) {
+        const landing = dropLanding(world, from, nextX, nextZ, GENTLE_DROP);
+        const to: Cell = [nextX, landing ?? 0, nextZ];
+        if (landing !== null && this.canMove(world, from, to)) destination = to;
+      }
     }
     if (!destination || !this.insideWall(world, destination) || !isStandable(world, destination)) return false;
     const travelledX = x - this.pos.x;
@@ -190,6 +238,6 @@ export class Player {
   }
 
   private canMove(world: World, from: Cell, to: Cell): boolean {
-    return canStep(world, from, to, cell => this.insideWall(world, cell));
+    return canStep(world, from, to, cell => this.insideWall(world, cell), GENTLE_DROP);
   }
 }

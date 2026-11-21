@@ -18,7 +18,7 @@ export function isStandable(world: WorldCells, [x, y, z]: Cell): boolean {
 }
 
 /**
- * How far he and Pip may walk off an edge and glide down (never hurt). Only the player, Pip and the
+ * How far he and Pip may walk off an edge and glide down, softly. Only the player, Pip and the
  * player's own route search pass it; animals, villagers and everything else keep the 1-block rule.
  */
 export const GENTLE_DROP = 12;
@@ -43,6 +43,21 @@ export function canStep(
 export function dropLanding(world: WorldCells, from: Cell, nx: number, nz: number, maxDrop: number): number | null {
   const y = from[1];
   if (!world.inBounds(nx, y, nz)) return null;
+  if (world instanceof World) {
+    // Same scan straight from the buffer (the route searches ask this for every step they consider).
+    const cells = world.buffer;
+    const layer = world.sizeX * world.sizeZ;
+    const col = nx + world.sizeX * nz;
+    for (let cy = y + 1; cy >= y - maxDrop - 1 && cy >= 0; cy--) {
+      const id = cy < world.sizeY ? cells[col + layer * cy] : BlockId.Air;
+      if (id === BlockId.Water) return null;
+      if (SOLID[id] === 1) {
+        const landing = cy + 1;
+        return y - landing >= 2 && y - landing <= maxDrop ? landing : null;
+      }
+    }
+    return null;
+  }
   // From head height on the edge straight down the column.
   for (let cy = y + 1; cy >= y - maxDrop - 1 && cy >= 0; cy--) {
     const id = world.get(nx, cy, nz);
