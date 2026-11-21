@@ -38,6 +38,45 @@ function checkStep(
     }));
 }
 
+/**
+ * A body (him, Pip, Orlo, a villager) placed at `cell` after his edits replayed: never buried, never
+ * in the void, never inside a block. A standable cell is returned as it is. If a body cell is solid
+ * he is lifted to the nearest standable cell above in the same column (then below); if he would be
+ * in the void (no floor), the nearest below first. Failing that, the nearest column within
+ * `radius` (Chebyshev rings) with a standable cell at or near the same height, then its top.
+ * The cell itself only when nothing better exists anywhere near.
+ */
+export function settleCell(world: WorldCells, cell: Cell, radius = 8): Cell {
+  if (isStandable(world, cell)) return cell;
+  const [x, y, z] = cell;
+  const buried = BLOCKS[world.get(x, y, z)].solid || BLOCKS[world.get(x, y + 1, z)].solid;
+  const up = (cx: number, cz: number, from: number): Cell | null => {
+    for (let cy = Math.max(1, from); cy < world.sizeY - 1; cy++) if (isStandable(world, [cx, cy, cz])) return [cx, cy, cz];
+    return null;
+  };
+  const down = (cx: number, cz: number, from: number): Cell | null => {
+    for (let cy = Math.min(world.sizeY - 2, from); cy >= 1; cy--) if (isStandable(world, [cx, cy, cz])) return [cx, cy, cz];
+    return null;
+  };
+  const column = (cx: number, cz: number): Cell | null => (buried
+    ? up(cx, cz, y + 1) ?? down(cx, cz, y - 1)
+    : down(cx, cz, y - 1) ?? up(cx, cz, y + 1));
+  const own = column(x, z);
+  if (own) return own;
+  for (let r = 1; r <= radius; r++) {
+    let best: Cell | null = null;
+    for (let dx = -r; dx <= r; dx++) {
+      for (let dz = -r; dz <= r; dz++) {
+        if (Math.max(Math.abs(dx), Math.abs(dz)) !== r || !world.inBounds(x + dx, 0, z + dz)) continue;
+        const c = column(x + dx, z + dz);
+        if (c && (!best || Math.abs(c[1] - y) < Math.abs(best[1] - y))) best = c;
+      }
+    }
+    if (best) return best;
+  }
+  return cell;
+}
+
 export function nearestStandable(world: WorldCells, x: number, z: number): Cell | null {
   const cell: Cell = [x, world.topSolidY(x, z) + 1, z];
   return isStandable(world, cell) ? cell : null;

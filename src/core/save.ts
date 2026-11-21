@@ -6,7 +6,7 @@ import { LEGACY_WORLD, ORIGIN, V2_WORLD, WORLD } from './bounds';
 import { GrowthClock, STAGE_MS, TREE_STAGE_MS } from './growth';
 import { Inventory, MAX_STACK } from './inventory';
 import { isItemId } from './items';
-import { isStandable, type Cell } from './pathfind';
+import { isStandable, settleCell, type Cell } from './pathfind';
 import type { TowerInfo } from './tower';
 import type { Rect, VillageLayout } from './village';
 import type { World } from './world';
@@ -496,13 +496,25 @@ export function applySave(data: SaveData, now: number = Date.now()): Applied {
   const { x, y, z } = data.player;
   // Never put him back under a roof: a saved spot inside any house or the tower means spawn instead.
   const inHouse = [...village.houses.map(h => h.rect), tower.rect].some(r => x >= r.x0 && x < r.x1 + 1 && z >= r.z0 && z < r.z1 + 1);
+  // Every body is checked against the REAL replayed world (review finding 5): the spawn, Orlo's
+  // spot and each villager's spot are lifted out of any block he placed there (or off a dug-out
+  // void). His edits still win; only where the body stands moves. Animals are checked by
+  // Herd.restore, Pip by settleCell in main.ts.
+  const settle = (c: Cell): Cell => settleCell(world, c);
+  const at = (p: { x: number; y: number; z: number }): Cell => [Math.floor(p.x), Math.floor(p.y), Math.floor(p.z)];
+  const lifted = (p: { x: number; y: number; z: number }): { x: number; y: number; z: number } => {
+    const [cx, cy, cz] = settle(at(p));
+    return { x: cx + (p.x - Math.floor(p.x)), y: cy, z: cz + (p.z - Math.floor(p.z)) };
+  };
+  const safeSpawn = lifted(spawn);
+  const settledVillage: VillageLayout = { ...village, houses: village.houses.map(h => ({ ...h, npcSpot: settle(h.npcSpot) })) };
+  const settledTower: TowerInfo = { ...tower, wizardSpot: settle(tower.wizardSpot) };
   return {
     world,
     inventory: Inventory.fromJSON(data.inventory, data.order, data.items, data.itemOrder),
-    spawn: !inHouse && isStandable(world, [Math.floor(x), Math.floor(y), Math.floor(z)])
-      ? { ...data.player } : spawn,
-    village,
-    tower,
+    spawn: !inHouse && isStandable(world, at(data.player)) ? { ...data.player } : safeSpawn,
+    village: settledVillage,
+    tower: settledTower,
     towerRoute,
     towerPad,
     flags: cleanFlags(data.flags as unknown as Record<string, unknown>),
