@@ -83,7 +83,7 @@ const wizard = loaded?.wizard ?? newWizardState();
 const saveGame = (): boolean => storeSave(storage, serialise(game, seed, flags, Date.now(), herd.toJSON(), wizard));
 const autosave = createAutosaveControl(() => startAutosave(game, seed, storage, flags, () => herd.toJSON(), wizard), saveGame);
 const usage = new UsageTracker(storage);
-world.onChange((x, _y, z) => scene.rebuildChunkAt(x, z));
+world.onChange((x, y, z) => scene.markSectionDirty(x, y, z));
 
 const playerModel = makePlayerModel();
 scene.add(playerModel);

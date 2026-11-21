@@ -3,10 +3,10 @@ import type { World } from '../core/world';
 import { createAtlas } from './atlas';
 import { CameraRig, clearance } from './cameraRig';
 import { castVoxelRay, type VoxelHit } from './voxelRay';
-import { DirtyChunks } from './chunkDirty';
+import { DirtySections, sectionKey } from './chunkDirty';
 import { ChunkCuller, FOG_FAR } from './chunkCull';
 import { CAMERA_FAR, NEAR_MAX, cameraNear, easeNear } from './depthPolicy';
-import { buildChunkGeometry, CHUNK_SIZE, type MeshArrays } from './mesher';
+import { buildSectionGeometry, CHUNK_SIZE, sectionsPerColumn, type MeshArrays } from './mesher';
 
 const FOLLOW_K = 4; // exponential smoothing rate, per second
 /** The camera orbits his head: feet + EYE_HEIGHT (spec §7c). */
@@ -17,10 +17,12 @@ const MARKER_SECONDS = 0.9;
 // Three r155+ no longer pre-multiplies light intensity by PI, so scale to get the classic bright look.
 const LIGHT_SCALE = Math.PI;
 
-interface ChunkMeshes {
-  /** null when the chunk has nothing of that kind (no empty draw calls). */
+interface SectionMeshes {
+  /** null when the section has nothing of that kind (no empty draw calls). */
   solid: THREE.Mesh | null;
   trans: THREE.Mesh | null;
+  /** Its column's "cx,cz" (the cull set's key until the section cull). */
+  column: string;
 }
 
 function toGeometry(a: MeshArrays): THREE.BufferGeometry {
@@ -33,8 +35,8 @@ function toGeometry(a: MeshArrays): THREE.BufferGeometry {
   return g;
 }
 
-/** Marked chunks rebuilt per frame, nearest first (a dig or build is next to him, so it is always in this frame). */
-const DIRTY_PER_FRAME = 4;
+/** Marked sections rebuilt per frame, nearest first (a dig or build is next to him, so it is always in this frame). */
+export const DIRTY_PER_FRAME = 4;
 
 export class GameScene {
   readonly scene = new THREE.Scene();
@@ -42,8 +44,9 @@ export class GameScene {
   readonly renderer: THREE.WebGLRenderer;
   readonly atlas = createAtlas();
 
-  private readonly chunks = new Map<string, ChunkMeshes>();
-  private readonly dirty: DirtyChunks;
+  /** Built section meshes, keyed "cx,sy,cz". */
+  private readonly chunks = new Map<string, SectionMeshes>();
+  private readonly dirty: DirtySections;
   private readonly solidMat: THREE.MeshLambertMaterial;
   private readonly transMat: THREE.MeshLambertMaterial;
   /** Yaw, pitch and the wall-aware distance of the camera (spec §7c). */
@@ -67,7 +70,7 @@ export class GameScene {
   private readonly shimmerChunks = new Set<string>();
 
   constructor(private readonly host: HTMLElement, private readonly world: World) {
-    this.dirty = new DirtyChunks(world.sizeX, world.sizeZ);
+    this.dirty = new DirtySections(world.sizeX, world.sizeY, world.sizeZ);
     this.culler = new ChunkCuller(world.sizeX, world.sizeY, world.sizeZ);
     this.renderer = new THREE.WebGLRenderer({ antialias: false, powerPreference: 'high-performance' });
     this.renderer.setPixelRatio(Math.min(window.devicePixelRatio || 1, 1.5));
@@ -117,7 +120,8 @@ export class GameScene {
 
     const cxs = Math.ceil(world.sizeX / CHUNK_SIZE);
     const czs = Math.ceil(world.sizeZ / CHUNK_SIZE);
-    for (let cz = 0; cz < czs; cz++) for (let cx = 0; cx < cxs; cx++) this.rebuildChunk(cx, cz);
+    const sys = sectionsPerColumn(world.sizeY);
+    for (let cz = 0; cz < czs; cz++) for (let cx = 0; cx < cxs; cx++) for (let sy = 0; sy < sys; sy++) this.rebuildSection(cx, sy, cz);
 
     this.resize();
     window.addEventListener('resize', this.resize);
@@ -132,43 +136,54 @@ export class GameScene {
     this.camera.updateProjectionMatrix();
   };
 
-  private rebuildChunk(cx: number, cz: number): void {
-    if (cx < 0 || cz < 0 || cx * CHUNK_SIZE >= this.world.sizeX || cz * CHUNK_SIZE >= this.world.sizeZ) return;
-    const key = `${cx},${cz}`;
-    const old = this.chunks.get(key);
-    if (old) {
-      for (const m of [old.solid, old.trans]) {
-        if (!m) continue;
-        this.scene.remove(m);
-        m.geometry.dispose();
-      }
-    }
-    const geo = buildChunkGeometry(this.world, cx, cz, this.atlas.uvFor);
+  private rebuildSection(cx: number, sy: number, cz: number): void {
+    if (cx < 0 || cz < 0 || sy < 0 || cx * CHUNK_SIZE >= this.world.sizeX || cz * CHUNK_SIZE >= this.world.sizeZ
+      || sy >= sectionsPerColumn(this.world.sizeY)) return;
+    const key = sectionKey(cx, sy, cz);
+    this.disposeSection(key);
+    const geo = buildSectionGeometry(this.world, cx, sy, cz, this.atlas.uvFor);
     this.chunkBuilds++;
     const solid = geo.indices.length > 0 ? new THREE.Mesh(toGeometry(geo), this.solidMat) : null;
     const trans = geo.transparent.indices.length > 0 ? new THREE.Mesh(toGeometry(geo.transparent), this.transMat) : null;
     if (trans) trans.renderOrder = 1;
-    const shown = this.shown === null || this.shown.has(key);
+    const column = `${cx},${cz}`;
+    const shown = this.shown === null || this.shown.has(column);
     for (const m of [solid, trans]) {
       if (!m) continue;
       m.visible = shown;
       this.scene.add(m);
     }
-    this.chunks.set(key, { solid, trans });
+    this.chunks.set(key, { solid, trans, column });
     if (geo.hasShimmer) this.shimmerChunks.add(key);
     else this.shimmerChunks.delete(key);
   }
 
-  /** Hides chunks whose nearest corner is deeper than the fog along the view direction (nothing visible changes). */
+  private disposeSection(key: string): void {
+    const old = this.chunks.get(key);
+    if (!old) return;
+    for (const m of [old.solid, old.trans]) {
+      if (!m) continue;
+      this.scene.remove(m);
+      m.geometry.dispose();
+    }
+    this.chunks.delete(key);
+  }
+
+  /** Hides sections whose column's nearest corner is deeper than the fog along the view direction (nothing visible changes). */
   private cullFar(c: { x: number; y: number; z: number }, f: { x: number; y: number; z: number }, px: number, pz: number): void {
     const set = this.culler.update(c.x, c.y, c.z, f.x, f.y, f.z, px, pz);
     if (set === this.shown) return;
     this.shown = set;
-    for (const [k, c] of this.chunks) {
-      const v = set.has(k);
-      if (c.solid) c.solid.visible = v;
-      if (c.trans) c.trans.visible = v;
+    for (const s of this.chunks.values()) {
+      const v = set.has(s.column);
+      if (s.solid) s.solid.visible = v;
+      if (s.trans) s.trans.visible = v;
     }
+  }
+
+  private isShown(key: string): boolean {
+    const s = this.chunks.get(key);
+    return !!s && (this.shown === null || this.shown.has(s.column));
   }
 
   /** Chunk and draw numbers for the debug panel and the budget checks. */
@@ -187,24 +202,23 @@ export class GameScene {
    */
   anyVisibleShimmer(): boolean {
     if (this.shimmerChunks.size === 0) return false;
-    const shown = this.shown;
-    if (shown === null) return true;
+    if (this.shown === null) return true;
     let any = false;
-    this.shimmerChunks.forEach(key => { if (!any && shown.has(key)) any = true; });
+    this.shimmerChunks.forEach(key => { if (!any && this.isShown(key)) any = true; });
     return any;
   }
 
   /**
-   * Marks the chunk containing the cell (and the neighbour on a chunk edge) for rebuilding. The
-   * rebuild happens once per chunk in `render` (a few per frame, nearest first), or at once with `flush`.
+   * Marks the section containing the cell (and any neighbour across a shared border) for rebuilding.
+   * The rebuild happens once per section in `render` (DIRTY_PER_FRAME per frame, nearest first), or at once with `flush`.
    */
-  rebuildChunkAt(x: number, z: number): void {
-    this.dirty.mark(x, z);
+  markSectionDirty(x: number, y: number, z: number): void {
+    this.dirty.mark(x, y, z);
   }
 
-  /** Rebuilds every marked chunk now. */
+  /** Rebuilds every marked section now. */
   flush(): void {
-    for (const [cx, cz] of this.dirty.take(Infinity, 0, 0)) this.rebuildChunk(cx, cz);
+    for (const [cx, sy, cz] of this.dirty.take(Infinity, 0, 0, 0)) this.rebuildSection(cx, sy, cz);
   }
 
   triangleCount(): number {
@@ -320,7 +334,7 @@ export class GameScene {
   render(timeSeconds = performance.now() / 1000): void {
     if (this.dirty.size > 0) {
       const p = this.smoothEye;
-      for (const [cx, cz] of this.dirty.take(DIRTY_PER_FRAME, p.x, p.z)) this.rebuildChunk(cx, cz);
+      for (const [cx, sy, cz] of this.dirty.take(DIRTY_PER_FRAME, p.x, p.y, p.z)) this.rebuildSection(cx, sy, cz);
     }
     if (this.anyVisibleShimmer() && this.atlas.shimmer(timeSeconds)) this.shimmerRepaints++;
     this.renderer.render(this.scene, this.camera);
