@@ -1,10 +1,16 @@
-import { applySave, inspectSave, SAVE_KEY } from './save';
+import { applySave, inspectSave, SAVE_KEY, V2_SAVE_KEY } from './save';
 
 /**
  * "Save a copy / load a copy": moves his saved game between devices as a plain file.
- * Pure and injectable (storage, clock, hashing) and VERSION-AGNOSTIC: it only ever uses the
- * game's current main save key (SAVE_KEY) and the game's own hardened parser (inspectSave).
- * It never touches the legacy v1 key, the .bad / .backup slots, or the usage and controller keys.
+ * Pure and injectable (storage, clock, hashing). It only ever WRITES the game's current main save
+ * key (SAVE_KEY, v3) and its pre-import slots, and checks everything with the game's own hardened
+ * parser (inspectSave). It never writes the v1 or v2 keys, the .bad / .backup slots, or the usage
+ * and controller keys.
+ *
+ * Across the move to the big world (save v3): a copy made by the build before holds the v2 key; it
+ * is accepted, checked in its own 96 box and shifted +48 once by the same migration the game loads
+ * with, and the migrated v3 save is what gets written. On a device whose v2 save has not reached
+ * the v3 key yet (a refused or failed write), "save a copy" copies the v2 save as it is.
  */
 
 export const BUNDLE_FORMAT = 'blockpals-save-bundle';
@@ -18,8 +24,30 @@ const PREIMPORT_SLOTS = 3;
 export const preimportKeys = (mainKey: string = SAVE_KEY): string[] =>
   Array.from({ length: PREIMPORT_SLOTS }, (_, i) => (i === 0 ? `${mainKey}.preimport` : `${mainKey}.preimport.${i + 1}`));
 
-/** Extra keys the grown-ups' reset must clear (the pre-import slots and the transfer note). */
-export const transferResetKeys = (mainKey: string = SAVE_KEY): string[] => [...preimportKeys(mainKey), TRANSFER_KEY];
+/**
+ * Extra keys the grown-ups' reset must clear: the pre-import slots (this build's, and the ones the
+ * build before made for the v2 key) and the transfer note.
+ */
+export const transferResetKeys = (mainKey: string = SAVE_KEY): string[] =>
+  [...new Set([...preimportKeys(mainKey), ...preimportKeys(V2_SAVE_KEY), TRANSFER_KEY])];
+
+type Versions = ReadonlyArray<1 | 2 | 3>;
+
+/**
+ * Where a saved game may sit, in the order the game reads them, and which versions each may hold.
+ * For the real main key: the v3 key, then the v2 key (read only). A custom key (tests) is on its own.
+ */
+const sourcesFor = (mainKey: string): Array<[string, Versions]> =>
+  mainKey === SAVE_KEY ? [[SAVE_KEY, [3]], [V2_SAVE_KEY, [1, 2]]] : [[mainKey, [1, 2, 3]]];
+
+/** The first source key that holds anything (null when none does). Throws if a read throws. */
+function firstSaved(storage: Storage, mainKey: string): { key: string; raw: string; only: Versions } | null {
+  for (const [key, only] of sourcesFor(mainKey)) {
+    const raw = storage.getItem(key);
+    if (raw !== null) return { key, raw, only };
+  }
+  return null;
+}
 
 export interface Bundle {
   format: typeof BUNDLE_FORMAT;
@@ -68,14 +96,15 @@ export type ExportResult = { ok: true; bundle: Bundle; text: string; fileName: s
 export async function buildBundle(deps: TransferDeps): Promise<ExportResult> {
   const mainKey = deps.mainKey ?? SAVE_KEY;
   if (!deps.storage) return fail('storage', 'This browser is not letting the game keep anything, so there is nothing to copy.');
-  let raw: string | null;
-  try { raw = deps.storage.getItem(mainKey); } catch {
+  let found: ReturnType<typeof firstSaved>;
+  try { found = firstSaved(deps.storage, mainKey); } catch {
     return fail('storage', 'The saved game could not be read just now, so no copy was made. Nothing has been changed.');
   }
-  if (raw === null) return fail('nosave', 'There is no saved game on this device yet. Play for a little while first, then try again.');
-  if (!inspectSave(raw)) return fail('invalid', 'The saved game on this device could not be read, so it was not copied. Nothing has been changed.');
+  if (found === null) return fail('nosave', 'There is no saved game on this device yet. Play for a little while first, then try again.');
+  // A damaged v3 is refused, never quietly swapped for an older v2 copy.
+  if (!inspectSave(found.raw, found.only)) return fail('invalid', 'The saved game on this device could not be read, so it was not copied. Nothing has been changed.');
   try {
-    const keys = { [mainKey]: raw };
+    const keys = { [found.key]: found.raw };
     const checksum = await (deps.sha256 ?? webCryptoSha256)(canonicalKeys(keys));
     const createdAt = new Date(deps.now()).toISOString();
     const bundle: Bundle = { format: BUNDLE_FORMAT, formatVersion: BUNDLE_VERSION, createdAt, ...(deps.app ? { app: deps.app } : {}), keys, checksum };
@@ -136,16 +165,21 @@ export async function parseBundle(text: string, deps: TransferDeps): Promise<Par
     return fail('crypto', 'This browser cannot do the safety check on the file (it needs a secure https address). Nothing has been changed.');
   }
   if (sum !== parsed.checksum) return fail('checksum', 'That file looks damaged or has been edited, so it was not used. Nothing has been changed.');
-  const raw = keys[mainKey];
-  if (typeof raw !== 'string') return fail('key', 'That copy was made by a different version of the game, so it cannot be loaded here. Nothing has been changed.');
-  const checked = inspectSave(raw); // the SAME hardened parser the game loads with
+  // The newest key the copy holds, read with the versions the game itself accepts from that key.
+  const source = sourcesFor(mainKey).find(([key]) => typeof keys[key] === 'string');
+  if (!source) return fail('key', 'That copy was made by a different version of the game, so it cannot be loaded here. Nothing has been changed.');
+  const [sourceKey, only] = source;
+  const checked = inspectSave(keys[sourceKey] as string, only); // the SAME hardened parser the game loads with
   if (!checked) return fail('invalid', 'The saved game inside that file could not be read, so it was not used. Nothing has been changed.');
+  // A v3 copy is written byte for byte; an older one is written as the v3 save the game migrated it to.
+  const raw = sourceKey === mainKey ? keys[sourceKey] as string : JSON.stringify(checked.data);
   try { applySave(checked.data, 0); } catch { // dry run: the world has to build
     return fail('invalid', 'The saved game inside that file could not be built into a world, so it was not used. Nothing has been changed.');
   }
   let currentEdits: number | null = null;
   try {
-    const cur = deps.storage ? inspectSave(deps.storage.getItem(mainKey)) : null;
+    const found = deps.storage ? firstSaved(deps.storage, mainKey) : null;
+    const cur = found ? inspectSave(found.raw, found.only) : null;
     currentEdits = cur ? cur.data.edits.length : null;
   } catch { currentEdits = null; }
   const d = checked.data as unknown as { edits: unknown[]; inventory?: unknown; items?: unknown };

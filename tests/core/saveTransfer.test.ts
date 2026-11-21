@@ -278,8 +278,8 @@ describe('import: committing', () => {
 });
 
 describe('reset', () => {
-  test('transferResetKeys covers the pre-import slots and the transfer note, and none are in the bundle', () => {
-    expect(transferResetKeys()).toEqual([...preimportKeys(), TRANSFER_KEY]);
+  test('transferResetKeys covers the pre-import slots (v3, and the old build\'s v2 ones) and the transfer note, and none are in the bundle', () => {
+    expect(transferResetKeys()).toEqual([...preimportKeys(), ...preimportKeys('blockpals.save.v2'), TRANSFER_KEY]);
     expect(preimportKeys()).toEqual([`${SAVE_KEY}.preimport`, `${SAVE_KEY}.preimport.2`, `${SAVE_KEY}.preimport.3`]);
     for (const k of transferResetKeys()) expect(ALL_SAVE_KEYS).not.toContain(k);
   });
