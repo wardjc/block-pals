@@ -1,5 +1,10 @@
 import { BLOCKS, BlockId } from './blocks';
 import type { WorldCells } from './shifted';
+import { World } from './world';
+
+/** 1 for a solid block id, 0 otherwise: one typed-array read in the hot loops. */
+const SOLID = new Uint8Array(256);
+for (const [id, def] of Object.entries(BLOCKS)) if (def.solid) SOLID[Number(id)] = 1;
 
 export type Cell = [number, number, number]; // Feet cell.
 
@@ -12,9 +17,53 @@ export function isStandable(world: WorldCells, [x, y, z]: Cell): boolean {
     && world.get(x, y, z) !== BlockId.Water;
 }
 
-/** Every step clears both bodies and the lower ceiling; diagonals also clear both flanks. */
-export function canStep(world: WorldCells, from: Cell, to: Cell, allowed: (cell: Cell) => boolean = () => true): boolean {
+/**
+ * How far he and Pip may walk off an edge and glide down (never hurt). Only the player, Pip and the
+ * player's own route search pass it; animals, villagers and everything else keep the 1-block rule.
+ */
+export const GENTLE_DROP = 12;
+
+/**
+ * Every step clears both bodies and the lower ceiling; diagonals also clear both flanks. With
+ * `maxDrop` above 1 an orthogonal step may also be a gentle drop of 2 to `maxDrop` blocks (see dropLanding).
+ */
+export function canStep(
+  world: WorldCells, from: Cell, to: Cell, allowed: (cell: Cell) => boolean = () => true, maxDrop = 1,
+): boolean {
+  if (maxDrop > 1 && from[1] - to[1] >= 2) return dropStep(world, from, to, allowed, maxDrop, cell => isStandable(world, cell));
   return checkStep(world, from, to, allowed, cell => isStandable(world, cell));
+}
+
+/**
+ * Where a walk off the edge from `from` into column (nx, nz) lands: the first floor below, when it is
+ * 2 to `maxDrop` blocks down and the whole column from his head height down to the landing is clear
+ * of solids and water (no drop through a roof or into water). null when there is no such drop.
+ * The landing is never mid-air: he glides until his feet meet the ground.
+ */
+export function dropLanding(world: WorldCells, from: Cell, nx: number, nz: number, maxDrop: number): number | null {
+  const y = from[1];
+  if (!world.inBounds(nx, y, nz)) return null;
+  // From head height on the edge straight down the column.
+  for (let cy = y + 1; cy >= y - maxDrop - 1 && cy >= 0; cy--) {
+    const id = world.get(nx, cy, nz);
+    if (id === BlockId.Water) return null;
+    if (BLOCKS[id].solid) {
+      const landing = cy + 1;
+      // A solid at the edge's feet or head is a wall; 0 or 1 down is a normal step, not a drop.
+      return y - landing >= 2 && y - landing <= maxDrop ? landing : null;
+    }
+  }
+  return null;
+}
+
+function dropStep(
+  world: WorldCells, from: Cell, to: Cell, allowed: (cell: Cell) => boolean, maxDrop: number,
+  standable: (cell: Cell) => boolean,
+): boolean {
+  const dx = Math.abs(from[0] - to[0]);
+  const dz = Math.abs(from[2] - to[2]);
+  if (dx + dz !== 1 || !allowed(to) || !standable(from)) return false;
+  return dropLanding(world, from, to[0], to[2], maxDrop) === to[1] && standable(to);
 }
 
 function checkStep(
@@ -84,7 +133,7 @@ class Frontier {
 
 export function findPath(
   world: WorldCells, from: Cell, to: Cell, maxNodes = 4000,
-  allowed: (cell: Cell) => boolean = () => true,
+  allowed: (cell: Cell) => boolean = () => true, maxDrop = 1,
 ): Cell[] | null {
   if (!isStandable(world, from) || !isStandable(world, to) || !allowed(to)) return null;
   const key = ([x, y, z]: Cell): number => x + world.sizeX * (z + world.sizeZ * y);
@@ -129,6 +178,17 @@ export function findPath(
         const cell: Cell = [x + dx, y + dy, z + dz];
         if (!checkStep(world, current.cell, cell, allowed, standable)) continue;
         const g = current.g + (dx !== 0 && dz !== 0 ? Math.SQRT2 : 1);
+        if (g >= (costs.get(key(cell)) ?? Infinity)) continue;
+        costs.set(key(cell), g);
+        frontier.push({ cell, g, f: g + heuristic(cell), parent: current });
+      }
+      // A gentle drop (orthogonal only). It costs its height, so the heuristic stays admissible.
+      if (maxDrop > 1 && (dx === 0 || dz === 0)) {
+        const landing = dropLanding(world, current.cell, x + dx, z + dz, maxDrop);
+        if (landing === null) continue;
+        const cell: Cell = [x + dx, landing, z + dz];
+        if (!allowed(cell) || !standable(cell)) continue;
+        const g = current.g + (y - landing);
         if (g >= (costs.get(key(cell)) ?? Infinity)) continue;
         costs.set(key(cell), g);
         frontier.push({ cell, g, f: g + heuristic(cell), parent: current });
@@ -221,78 +281,181 @@ export function goalDistance([x, y, z]: Cell, goal: Cell): number {
   return Math.max(Math.abs(x - goal[0]), Math.abs(z - goal[2])) + Math.abs(y - goal[1]);
 }
 
+/*
+ * Search scratch, shared by every pathTowards call and grown only when a bigger world appears. At
+ * 192 x 68 x 192 a fresh pair of whole-world arrays per tap was 12.5 MB; these are made once (7.5 MB).
+ * Each cell's tag holds the search stamp (a multiple of 8) plus three flags, so starting a search is
+ * one increment instead of a fill. When the 16-bit stamp runs out the tags are cleared once and it restarts.
+ */
+const SEEN = 1, KNOWN = 2, STANDS = 4, FLAGS = 7, STAMP_STEP = 8;
+const MAX_STAMP = 0x10000 - STAMP_STEP;
+/** Parent links as a direction code: 4 directions x a height change of -32..+1. 255 is the start. */
+const START_CODE = 255;
+const MAX_DROP_CODED = 30;
+const DIRS: ReadonlyArray<readonly [number, number]> = [[1, 0], [-1, 0], [0, 1], [0, -1]];
+const STEP_DYS = [0, 1, -1] as const;
+let tags = new Uint16Array(0);
+let links = new Uint8Array(0);
+let queueBuf = new Int32Array(0);
+let stamp = 0;
+/** Bumped by every search; an Approach is "current" while nothing has searched since. */
+let searchCount = 0;
+
+function beginSearch(cells: number, maxNodes: number): void {
+  if (tags.length < cells) {
+    tags = new Uint16Array(cells);
+    links = new Uint8Array(cells);
+    stamp = 0;
+  }
+  if (queueBuf.length < Math.min(cells, maxNodes)) queueBuf = new Int32Array(Math.min(cells, maxNodes));
+  stamp += STAMP_STEP;
+  if (stamp > MAX_STAMP) {
+    tags.fill(0);
+    stamp = STAMP_STEP;
+  }
+  searchCount++;
+}
+
+/** Test hook: the scratch sizes, and a way to push the stamp near its limit. */
+export function __pathScratch(): { cells: number; bytes: number; maxStamp: number; forceStamp(n: number): void } {
+  return {
+    cells: tags.length,
+    bytes: tags.byteLength + links.byteLength + queueBuf.byteLength,
+    maxStamp: MAX_STAMP,
+    forceStamp: n => { stamp = Math.floor(n / STAMP_STEP) * STAMP_STEP; },
+  };
+}
+
 /**
  * One four-neighbour breadth-first flood from the player, using cardinal canStep rules.
  * Picks the reachable standable cell nearest the goal (goalDistance); ties go to the
  * cell fewest steps from the player, which BFS order gives for free. Stops early once
- * the goal itself is reached. `allowed` keeps the flood inside the soft wall.
- * Returns null when `from` is not standable.
+ * the goal itself is reached. `allowed` keeps the flood inside the soft wall. With `maxDrop`
+ * above 1 the flood also takes gentle drops (one way, orthogonal), like canStep.
+ * Returns null when `from` is not standable. Allocates nothing per call but the result.
  */
 export function pathTowards(
   world: WorldCells, from: Cell, goal: Cell,
-  allowed: (cell: Cell) => boolean = () => true, maxNodes = 8000,
+  allowed: (cell: Cell) => boolean = () => true, maxNodes = 8000, maxDrop = 1,
 ): Approach | null {
   if (!isStandable(world, from)) return null;
+  const drop = Math.min(MAX_DROP_CODED, Math.max(1, Math.floor(maxDrop)));
   const sx = world.sizeX;
-  const sxz = sx * world.sizeZ;
+  const sz = world.sizeZ;
+  const sxz = sx * sz;
+  const cells = sxz * world.sizeY;
+  const cap = Math.max(1, Math.min(cells, Math.floor(maxNodes)));
+  beginSearch(cells, cap);
+  const id = searchCount;
+  const s = stamp;
+  const t = tags;
+  const link = links;
+  const queue = queueBuf;
   const key = ([x, y, z]: Cell): number => x + sx * z + sxz * y;
   const decode = (k: number): Cell => [k % sx, Math.floor(k / sxz), Math.floor((k % sxz) / sx)];
-  // Typed arrays keep one flood well under a millisecond or two on the tablet.
-  const parent = new Int32Array(sxz * world.sizeY).fill(-2); // -2 unseen, -1 start
-  const queue = new Int32Array(Math.min(parent.length, maxNodes));
+  const flags = (k: number): number => ((t[k] & ~FLAGS) === s ? t[k] & FLAGS : 0);
+  const cell: Cell = [0, 0, 0];
+  // A plain World is read straight from its buffer (same rule as isStandable, no bounds checks per read).
+  const raw = world instanceof World ? world.buffer : null;
+  const solid = SOLID;
+  // Standability is asked up to 12 times per cell, so remember it.
+  const standable = (k: number): boolean => {
+    const f = flags(k);
+    if (f & KNOWN) return (f & STANDS) !== 0;
+    cell[0] = k % sx; cell[1] = Math.floor(k / sxz); cell[2] = Math.floor((k % sxz) / sx);
+    let yes: boolean;
+    if (raw && cell[1] >= 1) {
+      const feet = raw[k];
+      yes = solid[raw[k - sxz]] === 1 && solid[feet] === 0 && feet !== BlockId.Water
+        && (k + sxz >= cells || solid[raw[k + sxz]] === 0);
+    } else {
+      yes = isStandable(world, cell);
+    }
+    yes = yes && allowed(cell);
+    t[k] = s | f | KNOWN | (yes ? STANDS : 0);
+    return yes;
+  };
   const start = key(from);
-  parent[start] = -1;
+  t[start] = s | flags(start) | SEEN;
+  link[start] = START_CODE;
   queue[0] = start;
   let tail = 1;
   let best = start;
   let bestDistance = goalDistance(from, goal);
   const startDistance = bestDistance;
-  // Standability is asked up to 12 times per cell, so remember it (0 unknown, 1 yes, 2 no).
-  const standCache = new Uint8Array(parent.length);
-  const cell: Cell = [0, 0, 0];
-  const standable = (k: number): boolean => {
-    if (standCache[k] === 0) {
-      cell[0] = k % sx; cell[1] = Math.floor(k / sxz); cell[2] = Math.floor((k % sxz) / sx);
-      standCache[k] = isStandable(world, cell) && allowed(cell) ? 1 : 2;
+  const visit = (nk: number, d: number, dy: number, nx: number, ny: number, nz: number): void => {
+    t[nk] = s | flags(nk) | SEEN;
+    link[nk] = d + 4 * (dy + 32);
+    queue[tail++] = nk;
+    const dist = Math.max(Math.abs(nx - goal[0]), Math.abs(nz - goal[2])) + Math.abs(ny - goal[1]);
+    if (dist < bestDistance) {
+      best = nk;
+      bestDistance = dist;
     }
-    return standCache[k] === 1;
   };
+  const here: Cell = [0, 0, 0];
   for (let head = 0; head < tail && bestDistance > 0; head++) {
     const k = queue[head];
     const x = k % sx;
     const y = Math.floor(k / sxz);
     const z = Math.floor((k % sxz) / sx);
-    for (const [dx, dz] of [[1, 0], [-1, 0], [0, 1], [0, -1]]) {
-      const nx = x + dx;
-      const nz = z + dz;
-      if (nx < 0 || nz < 0 || nx >= sx || nz >= world.sizeZ) continue;
-      for (const dy of [0, 1, -1]) {
+    for (let d = 0; d < 4; d++) {
+      const nx = x + DIRS[d][0];
+      const nz = z + DIRS[d][1];
+      if (nx < 0 || nz < 0 || nx >= sx || nz >= sz) continue;
+      for (let j = 0; j < 3; j++) {
+        const dy = STEP_DYS[j];
         const ny = y + dy;
         if (ny < 0 || ny >= world.sizeY) continue;
         const nk = nx + sx * nz + sxz * ny;
-        if (parent[nk] !== -2 || tail >= queue.length || !standable(nk)) continue;
+        if ((flags(nk) & SEEN) !== 0 || tail >= cap || !standable(nk)) continue;
         // Same rule as canStep: a height change needs headroom over the lower end.
-        if (dy === 1 && BLOCKS[world.get(x, y + 2, z)].solid) continue;
-        if (dy === -1 && BLOCKS[world.get(nx, ny + 2, nz)].solid) continue;
-        parent[nk] = k;
-        queue[tail++] = nk;
-        const d = Math.max(Math.abs(nx - goal[0]), Math.abs(nz - goal[2])) + Math.abs(ny - goal[1]);
-        if (d < bestDistance) {
-          best = nk;
-          bestDistance = d;
+        if (dy !== 0) {
+          const hk = dy === 1 ? k + 2 * sxz : nk + 2 * sxz;
+          const roof = raw ? (hk < cells && solid[raw[hk]] === 1)
+            : (dy === 1 ? BLOCKS[world.get(x, y + 2, z)].solid : BLOCKS[world.get(nx, ny + 2, nz)].solid);
+          if (roof) continue;
         }
+        visit(nk, d, dy, nx, ny, nz);
+      }
+      if (drop > 1) {
+        here[0] = x; here[1] = y; here[2] = z;
+        const landing = dropLanding(world, here, nx, nz, drop);
+        if (landing === null) continue;
+        const nk = nx + sx * nz + sxz * landing;
+        if ((flags(nk) & SEEN) !== 0 || tail >= cap || !standable(nk)) continue;
+        visit(nk, d, landing - y, nx, landing, nz);
       }
     }
   }
   const path: Cell[] = [];
-  for (let k = best; k !== start; k = parent[k]) path.push(decode(k));
+  for (let k = best; k !== start;) {
+    path.push(decode(k));
+    const code = link[k];
+    const [dx, dz] = DIRS[code & 3];
+    k = k - dx - sx * dz - sxz * ((code >> 2) - 32);
+  }
   path.reverse();
+  const origin: Cell = [from[0], from[1], from[2]];
+  const target: Cell = [goal[0], goal[1], goal[2]];
+  let redo: Approach | null = null;
+  let redoId = -1;
   return {
     path,
     end: decode(best),
     distance: bestDistance,
     startDistance,
     visited: tail,
-    reached: cell => world.inBounds(...cell) && parent[key(cell)] !== -2,
+    reached: c => {
+      if (!world.inBounds(...c)) return false;
+      if (id === searchCount) return (flags(key(c)) & SEEN) !== 0;
+      // Another search has reused the scratch since: answer from a fresh flood (same inputs, same answer).
+      if (!redo || redoId !== searchCount) {
+        redo = pathTowards(world, origin, target, allowed, maxNodes, maxDrop);
+        redoId = searchCount;
+      }
+      return redo?.reached(c) ?? false;
+    },
   };
 }
+
