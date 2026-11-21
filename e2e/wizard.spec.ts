@@ -277,6 +277,10 @@ test.describe('the wizard\'s tower', () => {
     // Stand 3 south of the Rainbow block, looking north at it.
     await ev(page, (d, c) => { d.teleport(c[0] + 0.5, c[1], c[2] + 3.5); d.setCamera(Math.PI, 0.5); }, cells[1]);
     await frames(page, 30);
+    // The quarry's cave mouth is near the square, so the caves below are drawn too: let their lazy
+    // section builds finish first (the check is that the shimmer itself never rebuilds a section).
+    await expect.poll(() => ev<number>(page, d => d.sections().queued), { timeout: 30_000 }).toBe(0);
+    await frames(page, 10);
     const s0 = await ev<any>(page, d => d.stats());
     await page.waitForTimeout(2000);
     const s1 = await ev<any>(page, d => d.stats());
