@@ -230,6 +230,16 @@ describe('the scene follows the view distance', () => {
     expect([...wide].some(k => !narrow.has(k))).toBe(true);
   });
 
+  test('a wider field of view (60 to 120) widens the draw set: the radial bound uses the live fov (recheck 2)', async () => {
+    const { scene, step } = await sceneAt();
+    for (let i = 0; i < 30; i++) step();
+    const at60 = new Set(inner(scene).shown);
+    scene.camera.fov = 120;
+    scene.camera.updateProjectionMatrix();
+    step();
+    expect([...inner(scene).shown!].some(k => !at60.has(k))).toBe(true);
+  });
+
   test('160 meshed sections is a hard cap for sections outside the draw set', async () => {
     const { MAX_BUILT_SECTIONS } = await import('../../src/render/scene');
     expect(MAX_BUILT_SECTIONS).toBe(160);

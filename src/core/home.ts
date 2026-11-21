@@ -1,7 +1,7 @@
 import { BLOCKS, BlockId } from './blocks';
 import { insideWall } from './bounds';
 import type { CaveLayout } from './caves';
-import { canStep, isStandable, type Cell } from './pathfind';
+import { canStep, isStandable, settleCell, type Cell } from './pathfind';
 import type { WorldCells } from './shifted';
 import type { Rect, VillageLayout } from './village';
 
@@ -99,13 +99,20 @@ export function homeSpot(
     }
   }
   if (best) return best;
+  // Every way out must be safe: standable (free body, solid floor) and not deep.
+  const safe = (c: Cell): boolean => isStandable(world, c) && depthBelowGround(world, c) <= DEEP_EXIT;
   let mouth: Cell | null = null;
   let mouthDist = Infinity;
   for (const m of caves.mouths) {
     const d = Math.hypot(m[0] - px, m[2] - pz);
-    if (d < mouthDist && isStandable(world, m)) { mouth = m; mouthDist = d; }
+    if (d < mouthDist && safe(m)) { mouth = m; mouthDist = d; }
   }
-  return mouth ? [...mouth] : [...fallback];
+  if (mouth) return [...mouth];
+  if (safe(fallback)) return [...fallback];
+  // The spawn is blocked (he built there): the nearest safe cell to it, first on its own top, then settled.
+  const top: Cell = [fallback[0], world.topSolidY(fallback[0], fallback[2]) + 1, fallback[2]];
+  if (safe(top)) return top;
+  return settleCell(world, fallback);
 }
 
 /**

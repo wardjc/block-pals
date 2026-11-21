@@ -75,6 +75,30 @@ describe('review of PR #32 (chunk B)', () => {
     expect(BLOCKS[w.get(c[0], c[1], c[2])].solid || BLOCKS[w.get(c[0], c[1] + 1, c[2])].solid).toBe(false);
   });
 
+  it('recheck 1: with no open top within 24, a deep mouth is refused and a buried spawn is settled, the result is still standable and not deep', () => {
+    const w = new World(60, 40, 60);
+    for (let x = 0; x < 60; x++) for (let z = 0; z < 60; z++) for (let y = 0; y < 20; y++) w.set(x, y, z, BlockId.Stone);
+    // A RoofTile cap over the middle 50 x 50 (no open ground within 24 of the centre), grass outside it.
+    for (let x = 0; x < 60; x++) for (let z = 0; z < 60; z++) w.set(x, 20, z, Math.max(Math.abs(x - 30), Math.abs(z - 30)) <= 25 ? BlockId.RoofTile : BlockId.Grass);
+    for (let y = 8; y < 11; y++) w.set(30, y, 30, BlockId.Air);
+    const spot = homeSpot(w, [30, 8, 30], { mouths: [[30, 8, 30]] }, null, [30, 10, 31]);
+    expect(spot).not.toEqual([30, 8, 30]);
+    expect(isStandable(w, spot)).toBe(true);
+    expect(isDeep(w, spot, true)).toBe(false);
+  });
+
+  for (const depth of [2, 3, 4]) {
+    it(`recheck 3: Pip joins him in a one-cell shaft ${depth} deep (never stuck at the rim)`, () => {
+      const w = meadow();
+      for (let y = 21 - depth; y <= 20; y++) w.set(20, y, 20, BlockId.Air);
+      const player = new Player({ x: 20.5, y: 21 - depth, z: 20.5 });
+      const pal = new Pal({ x: 22.5, y: 21, z: 20.5 }, () => undefined, () => 0);
+      for (let i = 0; i < 600; i++) pal.update(w, player, 1 / 30);
+      expect(Math.abs(pal.pos.y - player.pos.y)).toBeLessThanOrEqual(1);
+      expect(Math.hypot(pal.pos.x - player.pos.x, pal.pos.z - player.pos.z)).toBeLessThanOrEqual(3);
+    });
+  }
+
   it('3. underground, a floor the camera looks straight down at inside the fog is kept, beyond the +-20 window', () => {
     // Camera at y 54.81 over the world centre looking straight down; the floor is at y 31 (section 1).
     const set = visibleSections(192, 68, 192, 96.5, 54.81, 96.5, 0, -1, 0, 'underground', 96.5, 96.5, 36);

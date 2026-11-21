@@ -355,7 +355,7 @@ export class GameScene {
   /** Frees built sections that are far outside the draw reach (after a grace), and keeps the built count under the cap. */
   private disposeFar(): void {
     const c = this.rig.position;
-    const reach = (this.fogEnd + CULL_MARGIN) * radialFactor(FOV, this.camera.aspect) + DISPOSE_SLACK;
+    const reach = (this.fogEnd + CULL_MARGIN) * radialFactor(this.camera.fov, this.camera.aspect) + DISPOSE_SLACK;
     const due: Array<{ key: string; d: number }> = [];
     const outside: Array<{ key: string; d: number }> = [];
     for (const [key, s] of this.chunks) {
@@ -413,7 +413,7 @@ export class GameScene {
     this.zone = zone;
     const set = visibleSections(
       this.world.sizeX, this.world.sizeY, this.world.sizeZ, c.x, c.y, c.z, f.x, f.y, f.z, zone, px, pz, this.fogEnd,
-      { floorSection: this.floorSection, radialFactor: radialFactor(FOV, this.camera.aspect) },
+      { floorSection: this.floorSection, radialFactor: radialFactor(this.camera.fov, this.camera.aspect) },
     );
     this.shown = set;
     for (const [key, s] of this.chunks) {
