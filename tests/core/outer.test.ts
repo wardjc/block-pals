@@ -27,7 +27,8 @@ function outerColumns(): Array<[number, number]> {
 
 const seeds = [2026, 2027, 7, 0xffffffff];
 const gens = new Map<number, GeneratedWorld>();
-beforeAll(() => { for (const s of seeds) gens.set(s, generateWorld(s)); });
+// The outer ring stage itself, before the caves (their mouths and trees are tested in tests/core/cavesRoutes.test.ts).
+beforeAll(() => { for (const s of seeds) gens.set(s, generateWorld(s, { caves: false })); });
 const gen = (seed = 2026): GeneratedWorld => gens.get(seed)!;
 
 describe.each(seeds)('the outer ring, seed %s', seed => {
@@ -178,7 +179,7 @@ describe.each(seeds)('the outer ring, seed %s', seed => {
   });
 
   test('deterministic', () => {
-    expect(generateWorld(seed).world.buffer).toEqual(gen(seed).world.buffer);
+    expect(generateWorld(seed, { caves: false }).world.buffer).toEqual(gen(seed).world.buffer);
   });
 });
 

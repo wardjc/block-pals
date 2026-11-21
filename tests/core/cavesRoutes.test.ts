@@ -172,6 +172,6 @@ describe.each(SEEDS)('mouths, stairs and the trail, seed %i', seed => {
       expect(route!.length).toBeLessThan(600);
     }
     console.log(`cavesRoutes ${seed}: longest way home ${worst} steps, slowest routeHome ${worstMs.toFixed(1)} ms`);
-    expect(worstMs).toBeLessThan(160);
+    expect(worstMs).toBeLessThan(250); // about 40 to 60 ms alone; the full suite runs many files at once
   });
 });

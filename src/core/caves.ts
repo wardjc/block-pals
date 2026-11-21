@@ -429,6 +429,8 @@ function tryMouth(
   const box = { x0: Infinity, z0: Infinity, x1: -Infinity, z1: -Infinity };
   for (const c of all) {
     if (c.x < EDGE_KEEP || c.z < EDGE_KEEP || c.x >= sizeX - EDGE_KEEP || c.z >= sizeZ - EDGE_KEEP) return null;
+    // A mouth in the new land never touches the old region above its floor row (that would change his meadow).
+    if (kind !== 'hill' && kind !== 'quarry' && c.t > CARVE_MAX_Y - 2 && toOldRect(c.x, c.z) < 4) return null;
     const g = ground[c.x + sizeX * c.z];
     const nearSurface = g - c.t < 3;
     // Where it opens to the sky (the trench, the doorway, the posts) it keeps 6 from the village and
@@ -1000,20 +1002,22 @@ export const TRAIL_LAMP_EVERY = 6;
  * Hideout are left as they are (`skip`). Returns the trail's floor cells (world indices).
  */
 export function layTrail(
-  world: World, rooms: readonly Room[], mouths: ReadonlyArray<{ cell: Cell }>, walk: Uint8Array, skip: readonly Rect[],
+  world: World, rooms: readonly Room[], mouths: ReadonlyArray<{ cell: Cell }>, walk: Uint8Array,
+  skip: ReadonlyArray<Rect & { y0: number; y1: number }>,
 ): { trail: Set<number>; lamps: Cell[]; paths: Cell[][] } {
-  const inSkip = (x: number, z: number): boolean => skip.some(r => x >= r.x0 && x <= r.x1 && z >= r.z0 && z <= r.z1);
+  // Boxes the trail keeps out of (only at their own heights: a tunnel may pass over the hideout).
+  const inSkip = (x: number, y: number, z: number): boolean => skip.some(r => x >= r.x0 && x <= r.x1 && z >= r.z0 && z <= r.z1 && y >= r.y0 && y <= r.y1);
   const inside = (i: number): boolean => {
     if (!walk[i]) return false;
-    const [x, , z] = cellOf(world, i);
-    return !inSkip(x, z);
+    const [x, y, z] = cellOf(world, i);
+    return !inSkip(x, y, z);
   };
   const flood = floodWalk(world, mouths.map(m => m.cell), inside);
   const trail = new Set<number>();
   const lamps: Cell[] = [];
   const paths: Cell[][] = [];
   const paveAt = (x: number, y: number, z: number): void => {
-    if (!isStandable(world, [x, y, z]) || inSkip(x, z)) return;
+    if (!isStandable(world, [x, y, z]) || inSkip(x, y, z)) return;
     const feet = cellIndex(world, x, y, z);
     if (!walk[feet] && !mouths.some(m => m.cell[0] === x && m.cell[1] === y && m.cell[2] === z)) return;
     const k = cellIndex(world, x, y - 1, z);
@@ -1043,7 +1047,7 @@ export function layTrail(
         const lx = x - dz * 2 * side, lz = z + dx * 2 * side;
         if (lampNear(lx, y - 1, lz)) break;
         const feet = cellIndex(world, lx, y, lz);
-        if (!walk[feet] || inSkip(lx, lz) || !isStandable(world, [lx, y, lz])) continue;
+        if (!walk[feet] || inSkip(lx, y, lz) || !isStandable(world, [lx, y, lz])) continue;
         const floor = cellIndex(world, lx, y - 1, lz);
         if (trail.has(floor) || !PAVABLE.has(world.get(lx, y - 1, lz))) continue;
         world.set(lx, y - 1, lz, BlockId.Lamp);

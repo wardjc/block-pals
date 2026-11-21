@@ -42,7 +42,10 @@ export function legacyView(generated: GeneratedWorld): LegacyView {
   };
 }
 
-/** generateWorld(seed) seen in the old meadow's coordinates. */
-export function generateLegacy(seed = 2026): LegacyView {
-  return legacyView(generateWorld(seed));
+/**
+ * generateWorld(seed) seen in the old meadow's coordinates: the meadow stages (village, farm,
+ * tower), before the caves (the two cave mouths stamped into the meadow are tested with the caves).
+ */
+export function generateLegacy(seed = 2026, opts: { caves?: boolean } = { caves: false }): LegacyView {
+  return legacyView(generateWorld(seed, opts));
 }

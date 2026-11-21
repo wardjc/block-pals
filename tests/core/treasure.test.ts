@@ -77,17 +77,19 @@ describe.each(SEEDS)('treasure rooms, seed %i', seed => {
   });
 
   test('rooms keep 2 clear of other rooms, tunnels, mouths and each other; 20 from every mouth and each other', () => {
-    const { caves } = caveWorld(seed);
+    const { caves, world } = caveWorld(seed);
     for (const t of caves.treasure) {
       const cx = (t.rect.x0 + t.rect.x1) / 2, cz = (t.rect.z0 + t.rect.z1) / 2;
       for (const m of caves.mouths) expect(Math.hypot(m.cell[0] - cx, m.cell[2] - cz)).toBeGreaterThanOrEqual(20);
       for (const u of caves.treasure) {
         if (u !== t) expect(Math.hypot((u.rect.x0 + u.rect.x1) / 2 - cx, (u.rect.z0 + u.rect.z1) / 2 - cz)).toBeGreaterThanOrEqual(20);
       }
-      for (const r of caves.rooms) {
-        if (r.layer !== t.layer) continue;
-        const d = Math.max(t.rect.x0 - r.cx, 0, r.cx - t.rect.x1, t.rect.z0 - r.cz, 0, r.cz - t.rect.z1);
-        expect(d, `${t.id} vs room ${r.id}`).toBeGreaterThan(Math.max(r.rx, r.rz) + 2);
+      // A room of its own: the ring 1 and 2 cells round the interior is rock, except the side tunnel at the archway.
+      const [ex, , ez] = t.entrance;
+      for (let x = t.rect.x0 - 2; x <= t.rect.x1 + 2; x++) for (let z = t.rect.z0 - 2; z <= t.rect.z1 + 2; z++) {
+        if (x >= t.rect.x0 && x <= t.rect.x1 && z >= t.rect.z0 && z <= t.rect.z1) continue;
+        if (Math.max(Math.abs(x - ex), Math.abs(z - ez)) <= 2) continue;
+        for (let y = t.floorY; y < t.floorY + 5; y++) expect(world.get(x, y, z), `${t.id} ${x},${y},${z}`).not.toBe(BlockId.Air);
       }
     }
   });

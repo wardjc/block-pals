@@ -14,7 +14,7 @@ import { legacyView } from '../helpers/legacy';
 vi.setConfig({ testTimeout: 60_000 });
 
 const t0 = performance.now();
-const real = generateWorld(2026);
+const real = generateWorld(2026, { caves: false }); // the meadow stages (the quarry's cave mouth is tested with the caves)
 const genMs = performance.now() - t0;
 const generated = legacyView(real);
 const { world, village, tower, towerRoute, towerRects } = generated;
@@ -147,7 +147,7 @@ describe('the tower in the generated world', () => {
     for (const r of towerRects) {
       expect(r.x0 >= -6 && r.z0 >= -6 && r.x1 <= WORLD.x + 6 && r.z1 <= WORLD.z + 6).toBe(true);
     }
-    const again = legacyView(generateWorld(2026));
+    const again = legacyView(generateWorld(2026, { caves: false }));
     expect(again.tower).toEqual(tower);
     expect(again.towerRoute).toEqual(towerRoute);
     for (let x = pad.x0 - 6; x <= pad.x1 + 6; x++) for (let z = pad.z0 - 6; z < WORLD.z; z++) for (let y = 0; y < WORLD.y; y++) {

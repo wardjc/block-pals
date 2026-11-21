@@ -1,7 +1,7 @@
 import { BlockId } from './blocks';
 import {
   carveField, carveMouth, carveStairs, groundTops, inOld, layTrail, planCaves, repairFloors,
-  type CaveLayout, type Mouth, type MouthContext,
+  EMPTY_CAVES, type CaveLayout, type Mouth, type MouthContext,
 } from './caves';
 import { dressCaves } from './caveDress';
 import { stampRuin } from './ruin';
@@ -235,7 +235,7 @@ export function generateMeadowWorld(
  * Stages 2 and 3 add the outer land (src/core/outer.ts) around the old rectangle, never inside it.
  * Everything runs in bulk mode: no edit records, a clean world.
  */
-export function generateWorld(seed = 2026): GeneratedWorld {
+export function generateWorld(seed = 2026, opts: { caves?: boolean } = {}): GeneratedWorld {
   const world = new World(WORLD.x, WORLD.y, WORLD.z);
   world.beginBulk();
 
@@ -259,8 +259,9 @@ export function generateWorld(seed = 2026): GeneratedWorld {
   // Stages 2 and 3: the outer ring (its own streams; only columns outside the old rectangle).
   const outer = generateOuter(world, seed);
 
-  // Stages 4 to 9: the caves (their own streams, seed ^ 0xca7e5 and sub-streams).
-  const caves = generateCaves(world, seed, {
+  // Stages 4 to 9: the caves (their own streams, seed ^ 0xca7e5 and sub-streams). `caves: false` is
+  // for the tests of the earlier stages only; the game always has them.
+  const caves = opts.caves === false ? EMPTY_CAVES : generateCaves(world, seed, {
     spawn,
     keepOff: [...village.houses.map(h => h.rect), village.farmPlot, village.farm.pasture, tower.info.rect, ...tower.stampedRects],
     pathColumns: [
@@ -270,6 +271,9 @@ export function generateWorld(seed = 2026): GeneratedWorld {
     quarry: village.quarry,
     outerTrees: outer.trees,
   });
+
+  // Trees a mouth's open trench cleared are gone from the list too.
+  outer.trees = outer.trees.filter(t => world.get(t.x, world.topSolidY(t.x, t.z), t.z) === BlockId.Leaves);
 
   world.endBulk();
   world.clearEdits();
@@ -311,8 +315,8 @@ export function generateCaves(world: World, seed: number, ctx: MouthContext): Ca
   const ruin = stampRuin(world, seed);
   const stampMs = lap();
   const stampedRects = mouths.filter(m => m.stamped).map(m => m.rect);
-  const ring = { x0: ruin.rect.x0 - 1, z0: ruin.rect.z0 - 1, x1: ruin.rect.x1 + 1, z1: ruin.rect.z1 + 1 };
-  const { trail } = layTrail(world, plan.rooms, mouths, walk, [ring, ...treasure.map(tr => tr.rect)]);
+  const ring = { x0: ruin.rect.x0 - 1, z0: ruin.rect.z0 - 1, x1: ruin.rect.x1 + 1, z1: ruin.rect.z1 + 1, y0: 0, y1: 27 };
+  const { trail } = layTrail(world, plan.rooms, mouths, walk, [ring, ...treasure.map(tr => ({ ...tr.rect, y0: tr.floorY - 1, y1: tr.floorY + 5 }))]);
   const trailMs = lap();
   const dress = dressCaves(world, seed, carved, stampedRects);
   const dressMs = lap();

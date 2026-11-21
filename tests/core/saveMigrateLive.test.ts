@@ -163,14 +163,16 @@ describe('his live v2 save (gen 3, the tower) moves into the big world', () => {
     let checked = 0;
     for (let y = 1; y < V2_WORLD.y; y++) for (let z = 0; z < V2_WORLD.z; z++) for (let x = 0; x < V2_WORLD.x; x++) {
       if (touched.has(`${x},${y},${z}`)) continue;
+      // D2: the two cave mouths stamped into the meadow (hill and quarry) are documented differences.
+      if (applied.caves.stampedRects.some(r => x + 48 >= r.x0 && x + 48 <= r.x1 && z + 48 >= r.z0 && z + 48 <= r.z1)) { checked++; continue; }
       const got = applied.world.get(x + 48, y + 48, z + 48);
       if (got !== pristine.get(x, y, z)) expect(got, `old (${x},${y},${z})`).toBe(pristine.get(x, y, z));
       checked++;
     }
     expect(checked).toBe(V2_WORLD.x * (V2_WORLD.y - 1) * V2_WORLD.z - touched.size);
-    // D1: the old bedrock row is Stone now (he can dig on down); the real floor is bedrock at y 0.
+    // D1: the old bedrock row is Stone now (he can dig on down), or a cave where one reaches it; the real floor is bedrock at y 0.
     for (let z = 0; z < V2_WORLD.z; z++) for (let x = 0; x < V2_WORLD.x; x++) {
-      expect(applied.world.get(x + 48, 48, z + 48)).toBe(BlockId.Stone);
+      expect(applied.world.get(x + 48, 48, z + 48)).not.toBe(BlockId.Bedrock);
     }
   });
 
