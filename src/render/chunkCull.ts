@@ -74,7 +74,7 @@ export type CameraZone = 'outdoors' | 'underground';
  */
 export const MOUTH_NEAR = 24;
 export const MOUTH_ABOVE = 8;
-/** Underground, sections whose y-range overlaps the camera's height plus or minus this are drawn. */
+/** Underground, sections whose y-range overlaps the camera's height plus or minus this (at least; the fog end plus the cull margin when larger) are drawn. */
 export const ZONE_Y_WINDOW = 20;
 /** Outdoors, sections from this height up (the old surface: y 48..67) are drawn; deeper ones only where the ground dips (see floorSection). */
 export const SURFACE_SECTION_Y = 48;
@@ -148,6 +148,7 @@ export function visibleSections(
   }
   const limit = fogEnd + CULL_MARGIN;
   const reach = limit * Math.max(1, radial);
+  const window = Math.max(ZONE_Y_WINDOW, limit);
   const keepCx = Math.floor(keepX / CHUNK_SIZE), keepCz = Math.floor(keepZ / CHUNK_SIZE);
   const defaultFloor = Math.min(sys - 1, Math.floor(SURFACE_SECTION_Y / SECTION_HEIGHT));
   for (let cz = 0; cz < czs; cz++) {
@@ -160,7 +161,9 @@ export function visibleSections(
       const floor = zone === 'outdoors' ? Math.max(0, Math.min(sys - 1, opts.floorSection?.(cx, cz) ?? defaultFloor)) : 0;
       for (let sy = floor; sy < sys; sy++) {
         const y0 = sy * SECTION_HEIGHT, y1 = Math.min(sizeY, y0 + SECTION_HEIGHT);
-        if (zone === 'underground' && (y1 < camY - ZONE_Y_WINDOW || y0 > camY + ZONE_Y_WINDOW)) continue;
+        // The height window is never narrower than what the fog lets him see (looking straight down a
+        // shaft the floor can be 30 below), and never cuts the column he stands in.
+        if (zone === 'underground' && !keep && (y1 < camY - window || y0 > camY + window)) continue;
         if (!keep) {
           const dx = (fx >= 0 ? x0 : x1) - camX, dy = (fy >= 0 ? y0 : y1) - camY, dz = (fz >= 0 ? z0 : z1) - camZ;
           if (dx * fx + dy * fy + dz * fz > limit) continue;

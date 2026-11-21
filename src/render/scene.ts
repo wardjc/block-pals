@@ -113,7 +113,7 @@ export class GameScene {
   private readonly farSince = new Map<string, number>();
   private meshed = 0;
   /** Camera pose of the last cull, so a still camera does not recompute the set. */
-  private readonly lastCull = { x: NaN, y: NaN, z: NaN, fx: NaN, fy: NaN, fz: NaN, fog: NaN, zone: '', floors: -1, keep: '' };
+  private readonly lastCull = { x: NaN, y: NaN, z: NaN, fx: NaN, fy: NaN, fz: NaN, fog: NaN, zone: '', floors: -1, keep: '', shape: '' };
   /** Highest solid y per world column, and per 16 x 16 column its lowest ground top (for the outdoor floor rule). */
   private readonly tops: Int16Array;
   private readonly columnMinTop: Int16Array;
@@ -406,8 +406,10 @@ export class GameScene {
     const keep = `${Math.floor(px / CHUNK_SIZE)},${Math.floor(pz / CHUNK_SIZE)}`;
     const moved = !(Math.abs(c.x - L.x) < 0.25 && Math.abs(c.y - L.y) < 0.25 && Math.abs(c.z - L.z) < 0.25)
       || !(f.x * L.fx + f.y * L.fy + f.z * L.fz > 0.9995);
-    if (!moved && zone === L.zone && this.fogEnd === L.fog && this.floorsVersion === L.floors && keep === L.keep) return;
-    Object.assign(L, { x: c.x, y: c.y, z: c.z, fx: f.x, fy: f.y, fz: f.z, fog: this.fogEnd, zone, floors: this.floorsVersion, keep });
+    // The frustum's shape matters too: a resize (portrait to landscape) widens what can be on screen.
+    const shape = `${this.camera.aspect},${this.camera.fov}`;
+    if (!moved && zone === L.zone && this.fogEnd === L.fog && this.floorsVersion === L.floors && keep === L.keep && shape === L.shape) return;
+    Object.assign(L, { x: c.x, y: c.y, z: c.z, fx: f.x, fy: f.y, fz: f.z, fog: this.fogEnd, zone, floors: this.floorsVersion, keep, shape });
     this.zone = zone;
     const set = visibleSections(
       this.world.sizeX, this.world.sizeY, this.world.sizeZ, c.x, c.y, c.z, f.x, f.y, f.z, zone, px, pz, this.fogEnd,

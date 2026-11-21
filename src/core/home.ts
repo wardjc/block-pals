@@ -60,7 +60,8 @@ function openTop(world: WorldCells, x: number, z: number, avoid: readonly Rect[]
   const ground = world.get(x, top, z);
   if (NOT_GROUND.has(ground) || !BLOCKS[ground].solid) return null;
   const cell: Cell = [x, top + 1, z];
-  return isStandable(world, cell) ? cell : null;
+  // The floor of a shaft is "open to the sky" too: a spot that would still count as deep is not home.
+  return isStandable(world, cell) && depthBelowGround(world, cell) <= DEEP_EXIT ? cell : null;
 }
 
 /**

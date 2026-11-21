@@ -217,6 +217,19 @@ describe('the scene follows the view distance', () => {
     expect(scene.lookNow()).toMatchObject({ depthFactor: 0, fogColor: 0x78c6ff, zone: 'outdoors' });
   });
 
+  test('a resize (portrait to landscape) with a still camera recomputes the draw set (review 5)', async () => {
+    const { scene, step } = await sceneAt();
+    scene.camera.aspect = 0.5;
+    scene.camera.updateProjectionMatrix();
+    for (let i = 0; i < 30; i++) step();
+    const narrow = new Set(inner(scene).shown);
+    scene.camera.aspect = 2.2;
+    scene.camera.updateProjectionMatrix();
+    step();
+    const wide = inner(scene).shown!;
+    expect([...wide].some(k => !narrow.has(k))).toBe(true);
+  });
+
   test('160 meshed sections is a hard cap for sections outside the draw set', async () => {
     const { MAX_BUILT_SECTIONS } = await import('../../src/render/scene');
     expect(MAX_BUILT_SECTIONS).toBe(160);

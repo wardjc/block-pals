@@ -43,6 +43,8 @@ export class Pal {
   private avoid: Cell = [NaN, 0, NaN];
   /** Set by a Home lift: Pip appears beside him at the next update. */
   private liftPending = false;
+  /** His feet cell while Pip has to share it (no free cell near him); cleared when he moves. */
+  private sharing: Cell | null = null;
 
   constructor(
     start: Vec,
@@ -176,6 +178,9 @@ export class Pal {
     const inPlayer = here[0] === playerCell[0] && here[2] === playerCell[2];
     const unsupported = !isStandable(world, here);
 
+    // Sharing his cell (nowhere else near him, e.g. a one-cell shaft) is fine until he moves off it.
+    if (this.sharing && !(this.sharing[0] === playerCell[0] && this.sharing[1] === playerCell[1] && this.sharing[2] === playerCell[2])) this.sharing = null;
+    if (this.sharing) { this.path = []; return; }
     if (dist > TELEPORT_DIST || inPlayer || unsupported || Math.abs(player.pos.y - this.pos.y) > 4) {
       this.teleport(world, player);
       return;
@@ -344,13 +349,36 @@ export class Pal {
     return insideWall(world, x, z);
   }
 
+  /**
+   * Beside him: the usual spots (rings 1 to 3 at his height +-1); else the nearest standable cell within
+   * 4 blocks sideways and 4 up or down (any column but his); else, in a one-cell shaft he glided into,
+   * Pip shares his column so he is never left at the rim.
+   */
   private teleport(world: World, player: Player): void {
-    const spot = this.spots(world, player, [1, 2, 3], player.pos)[0];
+    const spot = this.spots(world, player, [1, 2, 3], player.pos)[0] ?? this.nearestBeside(world, player);
     this.path = [];
     this.waypoint = 0;
     this.stuckFor = 0;
-    if (!spot) return;
-    this.pos = { x: spot[0] + 0.5, y: spot[1], z: spot[2] + 0.5 };
+    const p = player.feetCell();
+    const at: Cell = spot ?? p;
+    this.sharing = spot ? null : [p[0], p[1], p[2]];
+    this.pos = { x: at[0] + 0.5, y: at[1], z: at[2] + 0.5 };
     this.heading = player.heading;
+  }
+
+  private nearestBeside(world: World, player: Player): Cell | null {
+    const [px, py, pz] = player.feetCell();
+    let best: Cell | null = null;
+    let bestD = Infinity;
+    for (let dx = -4; dx <= 4; dx++) for (let dz = -4; dz <= 4; dz++) {
+      if (dx === 0 && dz === 0) continue;
+      if (!this.insideWall(world, [px + dx, 0, pz + dz])) continue;
+      for (let dy = -4; dy <= 4; dy++) {
+        const cell: Cell = [px + dx, py + dy, pz + dz];
+        const d = Math.hypot(dx, dz) + Math.abs(dy) * 1.5;
+        if (d < bestD && isStandable(world, cell)) { best = cell; bestD = d; }
+      }
+    }
+    return best;
   }
 }

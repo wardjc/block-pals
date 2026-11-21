@@ -68,19 +68,21 @@ describe('visibleSections (the draw rule)', () => {
     }
   });
 
-  it('in a deep cave: surface sections (y >= 48) are hidden and the layer around the camera is shown', () => {
+  it('in a deep cave: surface sections (y >= 48) are hidden and the layer around the camera is shown (window: the cave fog, at least 20)', () => {
     const w = deepWorld().world;
-    for (let x = 70; x < 90; x++) for (let z = 70; z < 90; z++) for (let y = 20; y < 27; y++) w.set(x, y, z, BlockId.Air);
-    const cam = cameraAt(w, 80.5, 20, 80.5, 0.4, 0.3);
+    for (let x = 70; x < 90; x++) for (let z = 70; z < 90; z++) for (let y = 3; y < 10; y++) w.set(x, y, z, BlockId.Air);
+    const cam = cameraAt(w, 80.5, 3, 80.5, 0.4, 0.3);
     const zone = cameraZone(w, cam.pos.x, cam.pos.y, cam.pos.z, []);
     expect(zone).toBe('underground');
-    const set = setFor(w, cam, { x: 80.5, z: 80.5 }, zone);
+    const fogEnd = 36; // the deep cave haze
+    const window = Math.max(ZONE_Y_WINDOW, fogEnd + 1.5);
+    const set = setFor(w, cam, { x: 200, z: 200 }, zone, fogEnd);
     for (const key of set) {
       const sy = Number(key.split(',')[1]);
       expect(sy * SECTION_HEIGHT).toBeLessThan(SURFACE_SECTION_Y);
-      expect(sy * SECTION_HEIGHT + SECTION_HEIGHT).toBeGreaterThanOrEqual(cam.pos.y - ZONE_Y_WINDOW);
+      expect(sy * SECTION_HEIGHT + SECTION_HEIGHT).toBeGreaterThanOrEqual(cam.pos.y - window);
     }
-    expect(set.has(`5,1,5`)).toBe(true); // the room's own section
+    expect(set.has(`5,0,5`)).toBe(true); // the room's own section
   });
 
   it('at a cave mouth (within 24): the shallow layer sections are visible, so looking into the tunnel never shows a hole', () => {

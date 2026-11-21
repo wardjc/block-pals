@@ -31,6 +31,8 @@ export class Player {
   private centring = false;
   private stick = { x: 0, z: 0 };
   private lastX: number;
+  /** True from a drop until the drawn body has landed: no sideways movement meanwhile. */
+  private gliding = false;
   private lastZ: number;
 
   constructor(spawn: { x: number; y: number; z: number }) {
@@ -70,6 +72,7 @@ export class Player {
   /** Puts the drawn height straight onto his feet (after a lift behind the white fade). */
   snapVisual(): void {
     this.visualY = this.pos.y;
+    this.gliding = false;
     this.lastX = this.pos.x;
     this.lastZ = this.pos.z;
   }
@@ -87,13 +90,19 @@ export class Player {
     this.lastX = this.pos.x;
     this.lastZ = this.pos.z;
     const gap = this.pos.y - this.visualY;
-    if (gap < 0) this.visualY = Math.max(this.pos.y, this.visualY - GLIDE_DOWN * dt);
+    if (gap >= 0) this.gliding = false;
+    if (gap < 0) {
+      this.visualY = Math.max(this.pos.y, this.visualY - GLIDE_DOWN * dt);
+      if (this.visualY === this.pos.y) this.gliding = false;
+    }
     // An ordinary one-block step up stays a snap (as before): his feet never sink into the step.
     else if (gap > 0) this.visualY = gap <= 1 + EPSILON ? this.pos.y : Math.min(this.pos.y, this.visualY + GLIDE_UP * dt);
   }
 
   private step(world: World, dt: number): void {
     if (!isStandable(world, this.feetCell()) && !this.recover(world)) return;
+    // Mid-glide his body is still above his feet: no sideways movement (it could carry the body into rock).
+    if (this.gliding) return;
     let remaining = SPEED * dt;
     if (this.stick.x !== 0 || this.stick.z !== 0) {
       const magnitude = Math.hypot(this.stick.x, this.stick.z);
@@ -107,6 +116,7 @@ export class Player {
         if (!this.move(world, dx, dz, stepTime)
           && !this.move(world, dx, 0, stepTime) && !this.move(world, 0, dz, stepTime)) break;
         remaining -= distance;
+        if (this.gliding) break;
       }
       return;
     }
@@ -143,6 +153,12 @@ export class Player {
         this.centring = true;
         this.path.splice(this.waypoint, 0, here);
         continue;
+      }
+      if (this.gliding) {
+        // Dropped into the landing cell (now at its centre): that waypoint is reached; walk on after the glide.
+        const [fx, , fz] = this.feetCell();
+        if (fx === target[0] && fz === target[2]) this.waypoint++;
+        break;
       }
       remaining -= step;
       if (step === distance) {
@@ -232,8 +248,15 @@ export class Player {
     const travelledX = x - this.pos.x;
     const travelledZ = z - this.pos.z;
     if (Math.hypot(travelledX, travelledZ) < EPSILON) return false;
-    this.pos = { x, y: destination[1], z };
     this.heading = easeHeading(this.heading, Math.atan2(travelledX, travelledZ), 10 * dt);
+    if (from[1] - destination[1] >= 2) {
+      // A drop: he glides straight down the middle of the clear landing column (dropLanding checked it
+      // from his head height down), and does not move sideways until his drawn body has landed.
+      this.pos = { x: destination[0] + 0.5, y: destination[1], z: destination[2] + 0.5 };
+      this.gliding = true;
+      return true;
+    }
+    this.pos = { x, y: destination[1], z };
     return true;
   }
 
