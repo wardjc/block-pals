@@ -72,8 +72,12 @@ describe('the scene draws 16 x 16 x 16 sections', () => {
     world.set(20, 20, 20, BlockId.Air); // y 20 is inside section 1, mid-column
     scene.render(1);
     expect(scene.stats().chunkBuilds - before).toBe(1);
-    world.set(20, 16, 20, BlockId.Air); // the bottom layer of section 1: section 0 shares the border
+    world.set(20, 31, 20, BlockId.Planks); // the top layer of section 1: section 2 shares the border
     scene.render(2);
+    expect(scene.stats().chunkBuilds - before).toBe(3);
+    // Below the ground outdoors (section 0 is never drawn here) nothing is built for a change.
+    world.set(20, 3, 20, BlockId.Air);
+    scene.render(3);
     expect(scene.stats().chunkBuilds - before).toBe(3);
   });
 });
