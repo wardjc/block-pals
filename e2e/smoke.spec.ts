@@ -253,7 +253,7 @@ test('Pip speaks from a pre-generated clip, also offline', async ({ page, contex
 // ---------------------------------------------------------------------------------------------
 // Village step 1: the browser story.
 
-const SPAWN_KEYS = ['blockpals.save.v2', 'blockpals.save.v1', 'blockpals.save.v1.backup'];
+const SPAWN_KEYS = ['blockpals.save.v3', 'blockpals.save.v2', 'blockpals.save.v1', 'blockpals.save.v1.backup'];
 
 /** Walks with a tap-style intent and waits until he is within `tol` of the cell (cap in ms). */
 async function walkTo(page: Page, cell: Cell, tol = 1.3, capMs = 40_000): Promise<void> {
@@ -272,19 +272,23 @@ async function freshVillage(page: Page): Promise<VillageData> {
 }
 
 test.describe('the village', () => {
-  test('new world is 96 wide and loads fast', async ({ page }) => {
+  test('new world is 192 wide and 68 high, and loads fast', async ({ page }) => {
     const errors: string[] = [];
     page.on('console', m => { if (m.type() === 'error') errors.push(m.text()); });
     page.on('pageerror', e => errors.push(String(e)));
     const t0 = Date.now();
     await page.goto(URL);
     await page.waitForFunction(() => !!window.__debug);
-    expect(Date.now() - t0).toBeLessThan(8000);
-    expect(await page.evaluate(() => window.__debug.worldSize())).toEqual({ x: 96, y: 20, z: 96 });
+    const loadMs = Date.now() - t0;
+    console.log(`load to debug hooks: ${loadMs} ms`);
+    expect(loadMs).toBeLessThan(8000);
+    expect(await page.evaluate(() => window.__debug.worldSize())).toEqual({ x: 192, y: 68, z: 192 });
     await frames(page, 30);
     const st = await page.evaluate(() => window.__debug.stats());
-    expect(st.worldTriangles).toBeLessThan(110_000);
-    expect(st.chunks).toBe(36);
+    console.log(`spawn view: ${JSON.stringify(st)}`);
+    expect(st.worldTriangles).toBeLessThan(600_000); // the whole bigger world; in view:
+    expect(st.triangles).toBeLessThan(110_000);
+    expect(st.chunks).toBe(144);
     expect(errors).toEqual([]);
   });
 
@@ -472,11 +476,12 @@ test.describe('the village', () => {
     // Learn the spawn spot of a fresh world, then forget everything.
     await ready(page);
     const spawn = await page.evaluate(() => window.__debug.playerPos());
+    // A v1 save holds meadow coordinates: 48 less on every axis than the bigger world's.
     const v1 = JSON.stringify({
       version: 1, seed: 2026,
       edits: [[47, 6, 47, 3], [30, 6, 30, 8], [10, 12, 10, 9]],
       inventory: { 4: 7, 3: 2 }, order: [4, 3],
-      player: { x: spawn.x, y: spawn.y, z: spawn.z },
+      player: { x: spawn.x - 48, y: spawn.y - 48, z: spawn.z - 48 },
     });
     const old = page;
     page = await old.context().newPage();
@@ -490,9 +495,9 @@ test.describe('the village', () => {
     }, v1);
     await page.goto(URL);
     await page.waitForFunction(() => !!window.__debug);
-    expect(await page.evaluate(() => window.__debug.worldSize())).toEqual({ x: 96, y: 20, z: 96 });
+    expect(await page.evaluate(() => window.__debug.worldSize())).toEqual({ x: 192, y: 68, z: 192 });
     for (const [x, y, z, id] of [[47, 6, 47, 3], [30, 6, 30, 8], [10, 12, 10, 9]]) {
-      expect(await page.evaluate(c => window.__debug.game.world.get(c[0], c[1], c[2]), [x, y, z])).toBe(id);
+      expect(await page.evaluate(c => window.__debug.game.world.get(c[0] + 48, c[1] + 48, c[2] + 48), [x, y, z])).toBe(id);
     }
     const p = await page.evaluate(() => window.__debug.playerPos());
     expect(Math.hypot(p.x - spawn.x, p.z - spawn.z)).toBeLessThan(0.5);
@@ -501,9 +506,10 @@ test.describe('the village', () => {
     const keys = await page.evaluate(ks => Object.fromEntries(ks.map(k => [k, localStorage.getItem(k)])), SPAWN_KEYS);
     expect(keys['blockpals.save.v1']).toBe(v1); // byte-identical, never written
     expect(keys['blockpals.save.v1.backup']).toBe(v1);
-    const v2 = JSON.parse(keys['blockpals.save.v2']!);
-    expect(v2.version).toBe(2);
-    expect(v2.edits).toEqual(expect.arrayContaining([[47, 6, 47, 3], [30, 6, 30, 8]]));
+    expect(keys['blockpals.save.v2']).toBeNull(); // the v2 key is never written
+    const v3 = JSON.parse(keys['blockpals.save.v3']!);
+    expect(v3.version).toBe(3);
+    expect(v3.edits).toEqual(expect.arrayContaining([[95, 54, 95, 3], [78, 54, 78, 8]]));
   });
 
   test('walled-in player can dig out', async ({ page }) => {

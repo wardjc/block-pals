@@ -6,15 +6,20 @@ import {
   MARKER_BOTTOM, beaconPixels, beaconPulse, beaconScreen, markerShown,
 } from '../../src/render/beacon';
 import { CAMERA_FAR } from '../../src/render/depthPolicy';
+import { ORIGIN } from '../../src/core/bounds';
 import { generateWorld } from '../../src/core/worldgen';
 
 const { tower } = generateWorld(2026);
+/** The beacon in world coordinates (what the game draws). */
 const at = tower.beacon;
+/** The same point in meadow coordinates: the camera spots below are written as in the 96 world. */
+const atM = { x: at.x - ORIGIN.x, y: at.y - ORIGIN.y, z: at.z - ORIGIN.z };
 
 function cam(x: number, y: number, z: number, lookX: number, lookY: number, lookZ: number, aspect = 1.6): THREE.PerspectiveCamera {
+  // Meadow coordinates in, world coordinates in the camera (+ORIGIN).
   const c = new THREE.PerspectiveCamera(60, aspect, 0.2, CAMERA_FAR);
-  c.position.set(x, y, z);
-  c.lookAt(lookX, lookY, lookZ);
+  c.position.set(x + ORIGIN.x, y + ORIGIN.y, z + ORIGIN.z);
+  c.lookAt(lookX + ORIGIN.x, lookY + ORIGIN.y, lookZ + ORIGIN.z);
   c.updateMatrixWorld();
   return c;
 }
@@ -34,7 +39,7 @@ describe('the tower beacon', () => {
     expect(readFileSync('src/render/beacon.ts', 'utf8')).toMatch(/BEACON_CLAMP = CAMERA_FAR - 2/);
     const b = new Beacon(new THREE.Scene(), at);
     for (const [x, z] of [[24, 24], [70, 20], [5, 90], [90, 90], [36, 40]]) {
-      const c = cam(x, 8, z, at.x, at.y, at.z);
+      const c = cam(x, 8, z, atM.x, atM.y, atM.z);
       b.update(c, 0);
       const d = c.position.distanceTo(b.sprite.position);
       expect(d).toBeLessThanOrEqual(CAMERA_FAR - 1.9);
@@ -43,7 +48,7 @@ describe('the tower beacon', () => {
 
   it('beyond the clamp it rides the line of sight with its apparent size kept', () => {
     const b = new Beacon(new THREE.Scene(), at);
-    const c = cam(24, 8, 24, at.x, at.y, at.z); // the spawn, about 60 away
+    const c = cam(24, 8, 24, atM.x, atM.y, atM.z); // the spawn, about 60 away
     b.update(c, 0); // pulse scale is 1 at t = 0
     const real = c.position.distanceTo(new THREE.Vector3(at.x, at.y, at.z));
     expect(real).toBeGreaterThan(BEACON_CLAMP);
@@ -59,10 +64,10 @@ describe('the tower beacon', () => {
 
   it('within the clamp it sits at the real place; within 10 blocks it hides', () => {
     const b = new Beacon(new THREE.Scene(), at);
-    b.update(cam(at.x, at.y - 2, at.z - 25, at.x, at.y, at.z), 0);
+    b.update(cam(atM.x, atM.y - 2, atM.z - 25, atM.x, atM.y, atM.z), 0);
     expect(b.sprite.visible).toBe(true);
     expect(b.sprite.position.toArray()).toEqual([at.x, at.y, at.z]);
-    b.update(cam(at.x, at.y - 3, at.z - 6, at.x, at.y, at.z), 0);
+    b.update(cam(atM.x, atM.y - 3, atM.z - 6, atM.x, atM.y, atM.z), 0);
     expect(b.sprite.visible).toBe(false);
     expect(BEACON_NEAR_HIDE).toBe(10);
   });
@@ -100,7 +105,7 @@ describe('the tower beacon', () => {
 describe('beaconScreen', () => {
   const W = 1280, H = 800;
   it('on screen: its pixel', () => {
-    const s = beaconScreen(cam(36, 15, 50, at.x, at.y, at.z), at, W, H);
+    const s = beaconScreen(cam(36, 15, 50, atM.x, atM.y, atM.z), at, W, H);
     expect(s.onScreen).toBe(true);
     expect(s.x).toBeCloseTo(W / 2, 0);
     expect(s.y).toBeCloseTo(H / 2, 0);
@@ -126,7 +131,7 @@ describe('beaconScreen', () => {
     const toEdge = Math.min(s.x, W - s.x, s.y, H - s.y);
     expect(toEdge).toBeLessThanOrEqual(MARKER_BOTTOM + 1);
     expect(s.y).toBeLessThanOrEqual(H - MARKER_BOTTOM);
-    expect(s.distance).toBeCloseTo(Math.hypot(0.5, at.y - 15, at.z - 40), 0);
+    expect(s.distance).toBeCloseTo(Math.hypot(0.5, atM.y - 15, atM.z - 40), 0);
   });
   it('markerShown: only off screen, more than 20 away, never visited and no overlay', () => {
     const off = { onScreen: false, distance: 50 };

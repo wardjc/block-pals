@@ -2,32 +2,44 @@ import type { CropRec, TreeRec } from '../game/farm';
 import type { Game } from '../game/game';
 import type { WizardState } from '../game/wizardTrade';
 import { BLOCKS, BlockId, isCarriable } from './blocks';
-import { LEGACY_WORLD, WORLD } from './bounds';
+import { LEGACY_WORLD, ORIGIN, V2_WORLD, WORLD } from './bounds';
 import { GrowthClock, STAGE_MS, TREE_STAGE_MS } from './growth';
 import { Inventory, MAX_STACK } from './inventory';
 import { isItemId } from './items';
-import { isStandable, type Cell } from './pathfind';
+import { isStandable, settleCell, type Cell } from './pathfind';
 import type { TowerInfo } from './tower';
-import type { VillageLayout } from './village';
+import type { Rect, VillageLayout } from './village';
 import type { World } from './world';
 import { GEN_VERSION, generateWorld } from './worldgen';
 
 /**
- * Version 2 lives under its OWN key. The version 1 key is never written, changed or deleted by
- * this build (only the grown-ups' reset removes it), so rolling the app back to an older build
- * still finds his untouched v1 save and nothing is lost. The old build treats an unknown version
- * as corrupt and would overwrite it, which is why v2 must not share the v1 key.
+ * Version 3 (the bigger, deeper world) lives under its OWN key. The v1 and v2 keys are never
+ * written, changed or deleted by this build (only the grown-ups' reset removes them), so rolling
+ * the app back to an older build still finds his untouched save and nothing is lost. An older
+ * build treats an unknown version as corrupt and would overwrite it, which is why v3 must not
+ * share the v2 key.
  */
-export const SAVE_KEY = 'blockpals.save.v2';
+export const SAVE_KEY = 'blockpals.save.v3';
+/** Step 1 and 2 saves: read only, never written. */
+export const V2_SAVE_KEY = 'blockpals.save.v2';
+/** v1 saves: read only, never written. */
 export const LEGACY_SAVE_KEY = 'blockpals.save.v1';
+/** Raw copy of the v2 payload, written once when it is first migrated, never overwritten. */
+export const BACKUP_V2_KEY = 'blockpals.save.v2.backup';
 /** Raw copy of the v1 payload, written once when it is first migrated, never overwritten. */
 export const BACKUP_KEY = 'blockpals.save.v1.backup';
-/** Every key a reset has to clear. */
-/** Raw copy of a damaged v2 payload, kept before anything replaces it; never overwritten (spares: .2 to .4). */
+/** Raw copy of a damaged v3 payload, kept before anything replaces it; never overwritten (spares: .2 to .4). */
+export const BAD_V3_KEY = 'blockpals.save.v3.bad';
+/** The step 2 build kept damaged v2 payloads here. This build never writes them; the reset clears them. */
 export const BAD_V2_KEY = 'blockpals.save.v2.bad';
+const spares = (key: string): string[] => [key, `${key}.2`, `${key}.3`, `${key}.4`];
+/** Every key a reset has to clear. */
 export const ALL_SAVE_KEYS: readonly string[] = [
-  SAVE_KEY, LEGACY_SAVE_KEY, BACKUP_KEY, BAD_V2_KEY, `${BAD_V2_KEY}.2`, `${BAD_V2_KEY}.3`, `${BAD_V2_KEY}.4`,
+  SAVE_KEY, V2_SAVE_KEY, LEGACY_SAVE_KEY, BACKUP_V2_KEY, BACKUP_KEY, ...spares(BAD_V3_KEY), ...spares(BAD_V2_KEY),
 ];
+
+/** Where meadow cell (0, 0, 0) sits in a v3 world. Written always; a v3 save is never shifted again. */
+const SAVE_ORIGIN: [number, number, number] = [ORIGIN.x, ORIGIN.y, ORIGIN.z];
 
 /** Hint names the farm may save; anything else in a save is ignored. */
 export const HINT_NAMES: readonly string[] = ['plantSome', 'needWaterSun', 'cropReady', 'holdOutFood', 'tryMunch'];
@@ -44,7 +56,13 @@ export interface SavedWizard {
   gift?: boolean; met?: boolean; led?: boolean; solved?: number; clean?: number; bought?: number; hints?: string[];
 }
 
-export interface SaveFlags { ledToVillage: boolean; fernSeeds?: boolean; hints?: string[] }
+export interface SaveFlags {
+  ledToVillage: boolean; fernSeeds?: boolean; hints?: string[];
+  /** He has been underground (7h). */
+  cavesSeen?: boolean;
+  /** He has found the old hideout (7h). */
+  ruinFound?: boolean;
+}
 
 /** kind 0..3 (chicken, cow, sheep, pig), x, y, z, giftIn seconds, variant. */
 export type SavedAnimalTuple = [number, number, number, number, number, number];
@@ -58,7 +76,8 @@ export interface SaveDataV1 {
   order?: number[];
 }
 
-export interface SaveData {
+/** The step 1 and step 2 save (meadow coordinates in the 96 x 20 x 96 world). Read only. */
+export interface SaveDataV2 {
   version: 2;
   /** Generator version that made the world the edits sit on. */
   gen: number;
@@ -84,6 +103,18 @@ export interface SaveData {
   wizard?: SavedWizard;
 }
 
+/**
+ * Version 3: the bigger, deeper world (192 x 68 x 192). Every coordinate is a WORLD coordinate; the
+ * old meadow sits at `origin`. The fields are the v2 fields plus origin and migratedFrom.
+ */
+export interface SaveData extends Omit<SaveDataV2, 'version'> {
+  version: 3;
+  /** Where meadow cell (0, 0, 0) sits: always [48, 48, 48] (informational: a v3 save is never shifted). */
+  origin: [number, number, number];
+  /** Set when this save was made by migrating an older one. */
+  migratedFrom?: 1 | 2;
+}
+
 export function serialise(
   game: Game, seed: number, flags: SaveFlags = { ledToVillage: false }, now: number = Date.now(), animals?: SavedAnimalTuple[],
   wizard?: WizardState,
@@ -93,8 +124,9 @@ export function serialise(
   const items = game.inventory.itemsToJSON();
   const itemOrder = game.inventory.itemOrder();
   const data: SaveData = {
-    version: 2,
+    version: 3,
     gen: GEN_VERSION,
+    origin: [...SAVE_ORIGIN],
     seed,
     edits: game.world.edits(),
     inventory: game.inventory.toJSON(),
@@ -105,6 +137,8 @@ export function serialise(
   };
   if (flags.fernSeeds === true) data.flags.fernSeeds = true;
   if (flags.hints && flags.hints.length > 0) data.flags.hints = [...flags.hints];
+  if (flags.cavesSeen === true) data.flags.cavesSeen = true;
+  if (flags.ruinFound === true) data.flags.ruinFound = true;
   // Only written when there is something, so a block-only bag with no plants saves what step 1 saved (plus savedAt).
   if (itemOrder.length > 0) {
     data.items = items;
@@ -120,9 +154,9 @@ export function serialise(
   return data;
 }
 
-/** Carries everything over untouched: same seed, edits (the v1 world is the corner of the new one), bag. */
-export function migrateV1(v1: SaveDataV1): SaveData {
-  const data: SaveData = {
+/** Carries everything over untouched: same seed, edits (the v1 world is the corner of the v2 one), bag. */
+export function migrateV1(v1: SaveDataV1): SaveDataV2 {
+  const data: SaveDataV2 = {
     version: 2,
     gen: 1,
     seed: v1.seed,
@@ -132,6 +166,40 @@ export function migrateV1(v1: SaveDataV1): SaveData {
     flags: { ledToVillage: false },
   };
   if (v1.order) data.order = [...v1.order];
+  return data;
+}
+
+/**
+ * The one shift of an old save into the big world: +ORIGIN (48) on every coordinate, once. Pure
+ * (never mutates its input, shares no arrays with it). Shifts edits, the player, crops and trees
+ * (indices 0..2) and animals (indices 1..3, fractions kept); copies everything else unchanged.
+ */
+export function shiftV2(v2: SaveDataV2): SaveData {
+  const [ox, oy, oz] = SAVE_ORIGIN;
+  const data: SaveData = {
+    version: 3,
+    gen: v2.gen,
+    origin: [...SAVE_ORIGIN],
+    migratedFrom: 2,
+    seed: v2.seed,
+    edits: v2.edits.map(([x, y, z, id]) => [x + ox, y + oy, z + oz, id] as [number, number, number, number]),
+    inventory: { ...v2.inventory },
+    player: { x: v2.player.x + ox, y: v2.player.y + oy, z: v2.player.z + oz },
+    flags: structuredClone(v2.flags),
+  };
+  if (v2.order !== undefined) data.order = [...v2.order];
+  if (v2.items !== undefined) data.items = { ...v2.items };
+  if (v2.itemOrder !== undefined) data.itemOrder = [...v2.itemOrder];
+  if (v2.savedAt !== undefined) data.savedAt = v2.savedAt;
+  if (v2.crops !== undefined) data.crops = v2.crops.map(([x, y, z, p]) => [x + ox, y + oy, z + oz, p] as [number, number, number, number]);
+  if (v2.trees !== undefined) {
+    data.trees = v2.trees.map(([x, y, z, stage, p]) => [x + ox, y + oy, z + oz, stage, p] as [number, number, number, number, number]);
+  }
+  if (v2.animals !== undefined) {
+    data.animals = v2.animals.map(([k, x, y, z, gift, v]) => [k, x + ox, y + oy, z + oz, gift, v] as SavedAnimalTuple);
+  }
+  // The wizard's gift, visit, lead, puzzle counters and hints: no coordinates, copied as they are.
+  if (v2.wizard !== undefined) data.wizard = structuredClone(v2.wizard);
   return data;
 }
 
@@ -161,7 +229,7 @@ function validEdit(edit: unknown, size: { x: number; y: number; z: number }): ed
  * entry never costs the rest of the bag, the blocks or the world. Anything that is not a list or a
  * record is ignored.
  */
-function cleanItems(items: unknown, itemOrder: unknown): Pick<SaveData, 'items' | 'itemOrder'> {
+function cleanItems(items: unknown, itemOrder: unknown): Pick<SaveDataV2, 'items' | 'itemOrder'> {
   const kept: Record<number, number> = {};
   if (isRecord(items)) {
     for (const [key, n] of Object.entries(items)) {
@@ -189,8 +257,10 @@ const inBox = (v: unknown[], size: { x: number; y: number; z: number }): boolean
  * past the cap is dropped on its own. A list of the wrong type is dropped as a whole; nothing here
  * can ever reject the save or cost him his world.
  */
-function cleanFarm(parsed: Record<string, unknown>): Pick<SaveData, 'crops' | 'trees' | 'animals' | 'savedAt'> {
-  const out: Pick<SaveData, 'crops' | 'trees' | 'animals' | 'savedAt'> = {};
+type Box = { readonly x: number; readonly y: number; readonly z: number };
+
+function cleanFarm(parsed: Record<string, unknown>, box: Box): Pick<SaveDataV2, 'crops' | 'trees' | 'animals' | 'savedAt'> {
+  const out: Pick<SaveDataV2, 'crops' | 'trees' | 'animals' | 'savedAt'> = {};
   if (isFinite_(parsed.savedAt) && parsed.savedAt > 0) out.savedAt = parsed.savedAt;
   const seen = new Set<string>();
   const first = <T>(list: unknown, take: (e: unknown[]) => T | null): T[] => {
@@ -205,7 +275,7 @@ function cleanFarm(parsed: Record<string, unknown>): Pick<SaveData, 'crops' | 't
     return kept;
   };
   const crops = first(parsed.crops, e => {
-    if (e.length !== 4 || !inBox(e, WORLD) || !isFinite_(e[3])) return null;
+    if (e.length !== 4 || !inBox(e, box) || !isFinite_(e[3])) return null;
     const key = `c${e[0]},${e[1]},${e[2]}`;
     if (seen.has(key)) return null;
     seen.add(key);
@@ -213,7 +283,7 @@ function cleanFarm(parsed: Record<string, unknown>): Pick<SaveData, 'crops' | 't
   });
   if (crops.length > 0) out.crops = crops;
   const trees = first(parsed.trees, e => {
-    if (e.length !== 5 || !inBox(e, WORLD) || !isInt(e[3]) || e[3] < 0 || e[3] > 3 || !isFinite_(e[4])) return null;
+    if (e.length !== 5 || !inBox(e, box) || !isInt(e[3]) || e[3] < 0 || e[3] > 3 || !isFinite_(e[4])) return null;
     const key = `t${e[0]},${e[1]},${e[2]}`;
     if (seen.has(key)) return null;
     seen.add(key);
@@ -225,7 +295,7 @@ function cleanFarm(parsed: Record<string, unknown>): Pick<SaveData, 'crops' | 't
     if (e.length !== 6 || !isInt(e[0]) || e[0] < 0 || e[0] > 3) return null;
     if (![e[1], e[2], e[3]].every(isFinite_) || !isFinite_(e[4]) || !isInt(e[5]) || e[5] < 0) return null;
     const n = e as number[];
-    if (n[1] < 0 || n[1] >= WORLD.x || n[2] < 0 || n[2] >= WORLD.y || n[3] < 0 || n[3] >= WORLD.z) return null;
+    if (n[1] < 0 || n[1] >= box.x || n[2] < 0 || n[2] >= box.y || n[3] < 0 || n[3] >= box.z) return null;
     // Two animals never share a cell, so the cell (not the rounded spot) is the identity.
     const key = `a${Math.floor(n[1])},${Math.floor(n[2])},${Math.floor(n[3])}`;
     if (seen.has(key)) return null;
@@ -239,6 +309,8 @@ function cleanFarm(parsed: Record<string, unknown>): Pick<SaveData, 'crops' | 't
 function cleanFlags(flags: Record<string, unknown>): SaveFlags {
   const out: SaveFlags = { ledToVillage: flags.ledToVillage === true };
   if (flags.fernSeeds === true) out.fernSeeds = true;
+  if (flags.cavesSeen === true) out.cavesSeen = true;
+  if (flags.ruinFound === true) out.ruinFound = true;
   if (Array.isArray(flags.hints)) {
     const hints = flags.hints.filter((h, i, all): h is string => typeof h === 'string' && HINT_NAMES.includes(h) && all.indexOf(h) === i);
     if (hints.length > 0) out.hints = hints;
@@ -318,65 +390,78 @@ function validInventory(inv: unknown): boolean {
 }
 
 /**
- * Accepts v1 (migrated) and v2; always returns v2. Anything else (corrupt, older than 1, newer
- * than 2) is null, so the game starts fresh instead of crashing.
- * A bad inventory does NOT make the save corrupt: keep the builds, use an empty bag.
+ * Accepts v1 and v2 (validated in their own box, then migrated and shifted into the big world) and
+ * v3; always returns v3. Anything else (corrupt, older than 1, newer than 3) is null, so the game
+ * starts fresh instead of crashing. A bad inventory does NOT make the save corrupt: keep the
+ * builds, use an empty bag.
  */
 export function parseSave(raw: string | null): SaveData | null {
   return inspectSave(raw)?.data ?? null;
 }
 
+/** The box a save's own coordinates must lie in, by version. */
+const BOX_OF: Record<1 | 2 | 3, Box> = { 1: LEGACY_WORLD, 2: V2_WORLD, 3: WORLD };
+
 /**
  * Like parseSave, and also says how many individual edits were skipped as invalid (out of range or
- * an unknown block). Valid edits are always kept: one bad entry never costs him the rest of his world.
- * Structural problems (not JSON, wrong version, bad seed, edits or player) still reject the whole save.
+ * an unknown block) and which version the payload was. Every entry is checked against the box of
+ * the save's OWN version first (v1 48/16/48, v2 96/20/96, v3 192/68/192), bad entries are skipped one
+ * by one, and only then is an old save shifted (once, by shiftV2). Valid edits are always kept: one
+ * bad entry never costs him the rest of his world. Structural problems (not JSON, wrong version,
+ * bad seed, edits or player) still reject the whole save. `only` limits the versions accepted.
  */
-export function inspectSave(raw: string | null): { data: SaveData; skipped: number } | null {
+export function inspectSave(
+  raw: string | null, only: ReadonlyArray<1 | 2 | 3> = [1, 2, 3],
+): { data: SaveData; skipped: number; from: 1 | 2 | 3 } | null {
   if (raw === null) return null;
   try {
     const parsed = JSON.parse(raw) as unknown;
     if (!isRecord(parsed)) return null;
-    let data: SaveData;
-    let skipped = 0;
-    const keepValid = (size: { x: number; y: number; z: number }): void => {
-      const edits = parsed.edits as unknown[];
-      const kept = edits.filter((e): e is [number, number, number, number] => validEdit(e, size));
-      skipped = edits.length - kept.length;
-      parsed.edits = kept;
+    const version = parsed.version;
+    if (version !== 1 && version !== 2 && version !== 3) return null;
+    if (!only.includes(version)) return null;
+    if (!validShape(parsed)) return null;
+    if (version !== 1 && (!Number.isSafeInteger(parsed.gen) || (parsed.gen as number) < 1)) return null;
+    const box = BOX_OF[version];
+    const edits = parsed.edits as unknown[];
+    const kept = edits.filter((e): e is [number, number, number, number] => validEdit(e, box))
+      .map(e => [e[0], e[1], e[2], e[3]] as [number, number, number, number]);
+    const skipped = edits.length - kept.length;
+    const player = parsed.player as { x: number; y: number; z: number };
+
+    // Everything below is checked in the save's own box, field by field.
+    const own: SaveDataV2 = {
+      version: 2,
+      gen: version === 1 ? 1 : parsed.gen as number,
+      seed: parsed.seed as number,
+      edits: kept,
+      inventory: validInventory(parsed.inventory) ? { ...(parsed.inventory as Record<number, number>) } : {},
+      player: { x: player.x, y: player.y, z: player.z },
+      flags: version === 1 ? { ledToVillage: false } : cleanFlags(isRecord(parsed.flags) ? parsed.flags : {}),
     };
-    if (parsed.version === 1) {
-      if (!validShape(parsed)) return null;
-      keepValid(LEGACY_WORLD);
-      data = migrateV1(parsed as unknown as SaveDataV1);
-      data.inventory = parsed.inventory as Record<number, number>;
-      if ('order' in parsed) data.order = parsed.order as number[];
-    } else if (parsed.version === 2) {
-      if (!validShape(parsed) || !Number.isSafeInteger(parsed.gen) || (parsed.gen as number) < 1) return null;
-      keepValid(WORLD);
-      const flags = isRecord(parsed.flags) ? parsed.flags : {};
-      data = {
-        ...(parsed as unknown as SaveData),
-        flags: cleanFlags(flags),
-      };
-    } else {
-      return null;
-    }
-    if (!validInventory(data.inventory)) data.inventory = {};
-    if ('order' in data && !Inventory.validOrder(data.order)) delete data.order;
-    delete data.items;
-    delete data.itemOrder;
-    delete data.savedAt;
-    delete data.crops;
-    delete data.trees;
-    delete data.animals;
-    delete data.wizard;
-    Object.assign(data, cleanItems(parsed.items, parsed.itemOrder));
-    if (parsed.version === 2) {
+    if ('order' in parsed && Inventory.validOrder(parsed.order)) own.order = [...(parsed.order as number[])];
+    Object.assign(own, cleanItems(parsed.items, parsed.itemOrder));
+    if (version !== 1) Object.assign(own, cleanFarm(parsed, box));
+    // The wizard's fields hold no coordinates: cleaned the same way for v2 and v3, never shifted.
+    if (version !== 1) {
       const wizard = cleanWizard(parsed.wizard);
-      if (wizard) data.wizard = wizard;
+      if (wizard) own.wizard = wizard;
     }
-    if (parsed.version === 2) Object.assign(data, cleanFarm(parsed));
-    return { data, skipped };
+
+    if (version !== 3) {
+      const data = shiftV2(own);
+      data.migratedFrom = version;
+      return { data, skipped, from: version };
+    }
+    const origin = parsed.origin;
+    if (!(Array.isArray(origin) && origin.length === 3 && origin.every((n, i) => n === SAVE_ORIGIN[i]))) {
+      // Informational only: a v3 save is in world coordinates and is never shifted.
+      console.warn('blockpals: a v3 save with an unexpected origin', origin, 'loads unshifted');
+    }
+    const { version: _v2, ...rest } = own;
+    const data: SaveData = { version: 3, ...rest, origin: [...SAVE_ORIGIN] };
+    if (parsed.migratedFrom === 1 || parsed.migratedFrom === 2) data.migratedFrom = parsed.migratedFrom;
+    return { data, skipped, from: 3 };
   } catch {
     return null;
   }
@@ -389,6 +474,8 @@ export interface Applied {
   village: VillageLayout;
   tower: TowerInfo;
   towerRoute: Cell[];
+  /** The tower's hilltop, world coordinates. */
+  towerPad: Rect;
   flags: SaveFlags;
   items: Record<number, number>;
   /** Plant timers to hand to Farm.restore after the edits are in. */
@@ -402,21 +489,34 @@ export interface Applied {
 
 export function applySave(data: SaveData, now: number = Date.now()): Applied {
   // Stamps first, then his edits: whatever he built or dug always wins over generated houses and paths.
-  const { world, spawn, village, tower, towerRoute } = generateWorld(data.seed);
+  const { world, spawn, village, tower, towerRoute, towerPad } = generateWorld(data.seed);
   for (const [x, y, z, id] of data.edits) world.replayEdit(x, y, z, id);
   // Replayed edits must remain in every later save, even while the world is clean.
   world.markClean();
   const { x, y, z } = data.player;
   // Never put him back under a roof: a saved spot inside any house or the tower means spawn instead.
   const inHouse = [...village.houses.map(h => h.rect), tower.rect].some(r => x >= r.x0 && x < r.x1 + 1 && z >= r.z0 && z < r.z1 + 1);
+  // Every body is checked against the REAL replayed world (review finding 5): the spawn, Orlo's
+  // spot and each villager's spot are lifted out of any block he placed there (or off a dug-out
+  // void). His edits still win; only where the body stands moves. Animals are checked by
+  // Herd.restore, Pip by settleCell in main.ts.
+  const settle = (c: Cell): Cell => settleCell(world, c);
+  const at = (p: { x: number; y: number; z: number }): Cell => [Math.floor(p.x), Math.floor(p.y), Math.floor(p.z)];
+  const lifted = (p: { x: number; y: number; z: number }): { x: number; y: number; z: number } => {
+    const [cx, cy, cz] = settle(at(p));
+    return { x: cx + (p.x - Math.floor(p.x)), y: cy, z: cz + (p.z - Math.floor(p.z)) };
+  };
+  const safeSpawn = lifted(spawn);
+  const settledVillage: VillageLayout = { ...village, houses: village.houses.map(h => ({ ...h, npcSpot: settle(h.npcSpot) })) };
+  const settledTower: TowerInfo = { ...tower, wizardSpot: settle(tower.wizardSpot) };
   return {
     world,
     inventory: Inventory.fromJSON(data.inventory, data.order, data.items, data.itemOrder),
-    spawn: !inHouse && isStandable(world, [Math.floor(x), Math.floor(y), Math.floor(z)])
-      ? { ...data.player } : spawn,
-    village,
-    tower,
+    spawn: !inHouse && isStandable(world, at(data.player)) ? { ...data.player } : safeSpawn,
+    village: settledVillage,
+    tower: settledTower,
     towerRoute,
+    towerPad,
     flags: cleanFlags(data.flags as unknown as Record<string, unknown>),
     items: { ...(data.items ?? {}) },
     farm: {
@@ -453,13 +553,13 @@ const sessionOf = (storage: Storage): Session => {
   return s;
 };
 
-/** True while a migrated save still has to reach the v2 key (a failed or refused write). */
+/** True while a migrated save still has to reach the v3 key (a failed or refused write). */
 export function hasPendingMigration(storage: Storage | null): boolean {
   return storage !== null && (sessions.get(storage)?.pendingMigration ?? false);
 }
 
-/** Keys that hold a copy of a damaged v2 payload: the first is the original, then three spares. */
-const BAD_SLOTS = [BAD_V2_KEY, `${BAD_V2_KEY}.2`, `${BAD_V2_KEY}.3`, `${BAD_V2_KEY}.4`];
+/** Keys that hold a copy of a damaged v3 payload: the first is the original, then three spares. */
+const BAD_SLOTS = spares(BAD_V3_KEY);
 
 /**
  * Makes sure `raw` is kept under a bad-copy key before anything replaces it. True when a slot
@@ -482,13 +582,16 @@ function preserveBad(storage: Storage, raw: string): boolean {
 }
 
 /**
- * Writes v2 to its own key. Never touches the v1 key. It refuses (returns false, writes nothing) when:
- * a save from a newer build (version above 2) is stored; the stored v2 cannot be read; this page
- * started without being able to read the storage and the storage now holds a save; or the stored v2
- * is damaged (unreadable JSON or skipped edits) and a copy of it cannot first be kept under a
- * `blockpals.save.v2.bad` key. A higher stored `gen` is never lowered, and neither is anything the
- * wizard fields record (a true flag, a counter, a hint): see `mergeWizard`.
+ * Writes v3 to its own key. Never touches the v1 or v2 key. It refuses (returns false, writes
+ * nothing) when: a save from a newer build (version above 3) is stored; the stored v3 cannot be
+ * read; this page started without being able to read the storage and the storage now holds a save
+ * (v3, v2 or v1); or the stored v3 is damaged (unreadable JSON, not a version 3 save, or skipped
+ * edits) and a copy of it cannot first be kept under a `blockpals.save.v3.bad` key. A higher stored
+ * `gen` is never lowered, and neither is anything the wizard fields record (a true flag, a
+ * counter, a hint): see `mergeWizard`.
  */
+// Review ruling #2: the read, merge ("never lower") and write below run in one synchronous task;
+// in real browsers localStorage work in one task cannot interleave with another tab's, so no lock.
 export function storeSave(storage: Storage | null, data: SaveData): boolean {
   if (!storage) return false;
   try {
@@ -498,19 +601,20 @@ export function storeSave(storage: Storage | null, data: SaveData): boolean {
     if (session.mode === 'conflict') return false;
     if (session.mode === 'unreadable') {
       // Started blind: only write if the storage is now readable AND truly empty.
+      const v2 = readKey(storage, V2_SAVE_KEY);
       const v1 = readKey(storage, LEGACY_SAVE_KEY);
-      if (!v1.ok) return false;
-      if (existing.raw !== null || v1.raw !== null) { session.mode = 'conflict'; return false; }
+      if (!v2.ok || !v1.ok) return false;
+      if (existing.raw !== null || v2.raw !== null || v1.raw !== null) { session.mode = 'conflict'; return false; }
       session.mode = 'ok';
     }
     let gen: number = data.gen;
     let wizard = data.wizard;
     if (existing.raw !== null) {
       const stored = parseExisting(existing.raw);
-      if (stored && typeof stored.version === 'number' && stored.version > 2) return false;
-      const checked = inspectSave(existing.raw);
+      if (stored && typeof stored.version === 'number' && stored.version > 3) return false;
+      const checked = inspectSave(existing.raw, [3]);
       if ((!checked || checked.skipped > 0) && !preserveBad(storage, existing.raw)) return false;
-      if (stored && stored.version === 2 && Number.isSafeInteger(stored.gen)) gen = Math.max(gen, stored.gen as number);
+      if (stored && stored.version === 3 && Number.isSafeInteger(stored.gen)) gen = Math.max(gen, stored.gen as number);
       if (checked?.data.wizard) {
         const merged = mergeWizard(wizardState(cleanWizard(data.wizard)), wizardState(checked.data.wizard));
         if (!sameWizard(merged, defaultWizard())) wizard = toSaved(merged);
@@ -536,41 +640,62 @@ function parseExisting(raw: string | null): Record<string, unknown> | null {
   }
 }
 
-/** Copies the raw v1 payload once. An existing backup is never overwritten; failure is harmless. */
-function backupLegacy(storage: Storage, raw: string): void {
+/**
+ * Copies a raw old payload once. An existing backup is never overwritten; failure is harmless.
+ * The one documented exception to "the old keys are never written" (review ruling #4): the
+ * additive `.v2.backup` / `.v1.backup` copies are created once during a migration. The v1 and v2
+ * MAIN keys themselves are never written or removed.
+ */
+function backupOnce(storage: Storage, key: string, raw: string): void {
   try {
-    if (storage.getItem(BACKUP_KEY) === null) storage.setItem(BACKUP_KEY, raw);
-  } catch { /* full or blocked storage: the v1 key itself is untouched anyway */ }
+    if (storage.getItem(key) === null) storage.setItem(key, raw);
+  } catch { /* full or blocked storage: the old key itself is untouched anyway */ }
 }
 
 /**
- * Reads v2 first (valid edits are kept even if some entries are damaged). If there is no usable
- * v2, falls back to migrating the v1 save: the raw v1 payload is backed up (first time only), the
- * v1 key stays byte-identical, and the migrated save is written to the v2 key. A damaged v2 is
- * copied to a `.bad` key first, and is only replaced once that copy exists. If a key cannot be
- * READ, nothing is migrated or written: he plays from a fresh world in memory, nothing is lost.
+ * Reads v3 first (valid edits are kept even if some entries are damaged; a damaged v3 is copied to
+ * a `.bad` key, and is only ever replaced once that copy exists). Only when the v3 key is ABSENT does
+ * it migrate an older save: a present-but-unusable v3 means a fresh world in memory. With no v3, migrates the
+ * v2 save: the raw v2 payload is backed up (first time only), checked in the 96 box, shifted by
+ * +48 once, and written to the v3 key. With no usable v2 either, migrates v1 the same way (v1 backup
+ * as before, then v1 to v2 to v3). The v1 and v2 keys stay byte-identical. If a key cannot be READ,
+ * nothing is migrated or written: he plays from a fresh world in memory, nothing is lost.
  */
 export function readSave(storage: Storage | null): SaveData | null {
   if (!storage) return null;
   try {
     const session = sessionOf(storage);
     session.mode = 'ok';
-    const v2 = readKey(storage, SAVE_KEY);
-    if (!v2.ok) { session.mode = 'unreadable'; return null; }
-    const current = inspectSave(v2.raw);
+    const v3 = readKey(storage, SAVE_KEY);
+    if (!v3.ok) { session.mode = 'unreadable'; return null; }
+    const current = inspectSave(v3.raw, [3]);
     if (current) {
-      if (current.skipped > 0) preserveBad(storage, v2.raw as string); // retried by storeSave if it fails now
+      if (current.skipped > 0) preserveBad(storage, v3.raw as string); // retried by storeSave if it fails now
       return current.data;
     }
-    const v1 = readKey(storage, LEGACY_SAVE_KEY);
-    if (!v1.ok) { session.mode = 'unreadable'; return null; }
-    const migrated = parseSave(v1.raw);
-    if (!migrated || v1.raw === null) return null;
-    if (v2.raw !== null) preserveBad(storage, v2.raw);
-    backupLegacy(storage, v1.raw);
-    session.pendingMigration = true;
-    storeSave(storage, migrated); // refused (and retried by the autosave) if the damaged v2 could not be kept
-    return migrated;
+    // Migration happens ONLY when the v3 key is ABSENT. A v3 that is present but unusable (damaged,
+    // a newer version, an old payload under the new key) is never replaced by the older v2 or v1
+    // game: a newer version is never touched at all; a damaged one is copied to a .bad slot (the
+    // existing rule, so a later save may replace it only once that copy exists). He plays a fresh
+    // world in memory and the old keys keep his older game untouched.
+    if (v3.raw !== null) {
+      const stored = parseExisting(v3.raw);
+      if (!(stored && typeof stored.version === 'number' && stored.version > 3)) preserveBad(storage, v3.raw);
+      return null;
+    }
+    for (const [key, backup] of [[V2_SAVE_KEY, BACKUP_V2_KEY], [LEGACY_SAVE_KEY, BACKUP_KEY]] as const) {
+      const old = readKey(storage, key);
+      if (!old.ok) { session.mode = 'unreadable'; return null; }
+      if (old.raw === null) continue;
+      backupOnce(storage, backup, old.raw);
+      // The v2 key only ever held v1 or v2 payloads; the v1 key only v1.
+      const migrated = inspectSave(old.raw, key === V2_SAVE_KEY ? [1, 2] : [1]);
+      if (!migrated) continue; // a corrupt v2 falls back to v1, as the step 2 build did
+      session.pendingMigration = true;
+      storeSave(storage, migrated.data); // refused (and retried by the autosave) if a damaged v3 could not be kept
+      return migrated.data;
+    }
+    return null;
   } catch {
     return null;
   }

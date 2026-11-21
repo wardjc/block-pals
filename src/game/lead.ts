@@ -1,5 +1,5 @@
 import type { Cell } from '../core/pathfind';
-import { VILLAGE_PLAN, type Rect } from '../core/village';
+import type { Rect } from '../core/village';
 
 export const LEAD_SPEED = 3; // blocks/s; the player walks at 3.5
 /** Catching up after he overtakes Pip (Pip's follow speed). */
@@ -44,7 +44,8 @@ export class LeadToVillage {
     private readonly route: Cell[],
     private readonly square: Rect,
     flagSet: boolean,
-    private readonly pad: Rect = VILLAGE_PLAN.pad,
+    /** The village pad (or, for the tower walk, the hilltop), from the layout (world coordinates). */
+    private readonly pad: Rect,
     /** An extra condition for the offer (the walk to the tower needs a gem, say). The timers still run while it is false. */
     private readonly canOffer: (playerCell: Cell) => boolean = () => true,
   ) {

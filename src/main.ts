@@ -33,12 +33,10 @@ import { LeadToVillage } from './game/lead';
 import { GreetTracker } from './game/villagers';
 import { DeferredOnce, LockedHold, allowLine, craftSpeech, helperDt, leadPaused, mayGreet, mayPipSpeakQueued, type SpeechContext } from './game/speechPolicy';
 import { DOOR_EMBLEMS, FERN_LINES, VILLAGERS, VILLAGER_LINES, pickVillagerLine, type VillagerId } from './content/villagers';
-import { isStandable } from './core/pathfind';
+import { isStandable, settleCell } from './core/pathfind';
 import { UsageTracker } from './core/usage';
 import { GrownUps } from './ui/grownups';
 import { createAutosaveControl } from './game/autosaveControl';
-import { TOWER_PLAN } from './core/tower';
-import { VILLAGE_PLAN } from './core/village';
 import type { Puzzle } from './core/puzzles';
 import { WIZARD_STOCK, newWizardState } from './game/wizardTrade';
 import { WizardVisit } from './game/wizardVisit';
@@ -59,7 +57,7 @@ export const hadSave: boolean = saved !== null; // for Pip's welcome-back line (
 const seed = saved?.seed ?? 2026;
 const loaded = saved ? applySave(saved) : null;
 const initial = loaded ?? generateWorld(seed);
-const { world, spawn, village, tower, towerRoute } = initial;
+const { world, spawn, village, tower, towerRoute, towerPad } = initial;
 const game = new Game(initial);
 // Plants are blocks; the farm keeps their timers. Offline growth (capped at 8 h) is applied, and any
 // pending stage changes are shown, before the first mesh is built so a catch-up costs no chunk rebuilds.
@@ -160,8 +158,10 @@ const sayLine = (key: LineKey): void => {
   clearTimeout(bubbleTimer);
   bubbleTimer = window.setTimeout(() => hud.hideBubble(), 3000);
 };
+// Pip starts beside him, in a free cell of the replayed world (never inside a block he placed).
+const pipStart = settleCell(world, [Math.floor(spawn.x + 1.8), Math.floor(spawn.y), Math.floor(spawn.z + 1.2)]);
 const pal = new Pal(
-  { x: Math.floor(spawn.x + 1.8) + 0.5, y: spawn.y, z: Math.floor(spawn.z + 1.2) + 0.5 },
+  { x: pipStart[0] + 0.5, y: pipStart[1], z: pipStart[2] + 0.5 },
   sayLine,
 );
 pal.setHasWood(() => game.inventory.count(BlockId.Wood) > 0);
@@ -388,6 +388,9 @@ const grownUps = new GrownUps(document.getElementById('ui')!, {
   onMappingSaved: m => { pad = new GamepadInput(m); },
   stopAutosave: () => autosave.stop(),
   resumeAutosave: () => autosave.resume(),
+  // "Save a copy" never hands out stale progress: write the game now, else copy the live game.
+  flushSave: () => !autosave.frozen && saveGame(),
+  snapshotSave: () => JSON.stringify(serialise(game, seed, flags, Date.now(), herd.toJSON(), wizard)),
   onOpenChange: syncOverlays,
 });
 
@@ -557,13 +560,13 @@ let tapped = false; // the first tap / button unlocks audio
 const feet: Cell = [0, 0, 0]; // reused every frame
 const isAudioLocked = (): boolean => audioLocked(tapped, sfx.audioOut()?.ctx.state);
 const lockedHold = new LockedHold();
-const lead = new LeadToVillage(village.route, village.square, flags.ledToVillage);
+const lead = new LeadToVillage(village.route, village.square, flags.ledToVillage, village.pad);
 // Pip's second walk: to the wizard, once per save, only once he has a gem and the village walk is done.
-const leadTower = makeTowerLead(tower, towerRoute, TOWER_PLAN.pad, wizard.led, {
+const leadTower = makeTowerLead(tower, towerRoute, towerPad, wizard.led, {
   hasGem: () => game.inventory.count(WIZARD_STOCK.gem as StackId) > 0,
   ledToVillage: () => flags.ledToVillage,
   villageLeading: () => lead.state === 'leading',
-  villagePad: VILLAGE_PLAN.pad,
+  villagePad: village.pad,
 });
 const visit = new WizardVisit();
 let currentWizardHello: string | null = null;

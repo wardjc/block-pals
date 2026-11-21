@@ -195,7 +195,7 @@ describe('LeadToVillage', () => {
     if (l.takeFlagSet()) flags.ledToVillage = true;
     const game = new Game(generateWorld(2026));
     expect(storeSave(localStorage, serialise(game, 2026, flags))).toBe(true);
-    const raw = localStorage.getItem('blockpals.save.v2')!;
+    const raw = localStorage.getItem('blockpals.save.v3')!;
     expect(parseSave(raw)!.flags.ledToVillage).toBe(true);
     const restored = applySave(readSave(localStorage)!);
     expect(restored.flags.ledToVillage).toBe(true);

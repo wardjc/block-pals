@@ -1,6 +1,8 @@
 import { describe, expect, it, vi } from 'vitest';
 import { BLOCKS, BlockId } from '../../src/core/blocks';
-import { WORLD } from '../../src/core/bounds';
+// The stamp works in meadow coordinates (it runs on the ShiftedWorld view of the big world), so these
+// tests use the old 96 x 20 x 96 box; legacyIdentical.test.ts checks the stamp in the big world.
+import { V2_WORLD as WORLD } from '../../src/core/bounds';
 import { findPath, isStandable, type Cell } from '../../src/core/pathfind';
 import { stampTower, TOWER_GROUND_Y, TOWER_PLAN, type TowerInfo } from '../../src/core/tower';
 import { World } from '../../src/core/world';

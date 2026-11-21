@@ -1,19 +1,18 @@
 import { describe, expect, it } from 'vitest';
 import { generateWorld } from '../../src/core/worldgen';
-import { TOWER_PLAN } from '../../src/core/tower';
-import { VILLAGE_PLAN } from '../../src/core/village';
 import type { Cell } from '../../src/core/pathfind';
 import { LEAD_GIVE_UP, LEAD_OFFER_AFTER_ACTION, LEAD_OFFER_AFTER_LOAD, LeadToVillage, type LeadEvent } from '../../src/game/lead';
 import { doorstepRect, makeTowerLead, NEAR_ROUTE, towerOffer } from '../../src/game/leadTower';
 
-const { tower, towerRoute, village } = generateWorld(2026);
-const hilltop = TOWER_PLAN.pad;
+// World coordinates throughout (the tower and village as the game uses them, +48 from the meadow).
+const { tower, towerRoute, village, towerPad } = generateWorld(2026);
+const hilltop = towerPad;
 
 function facts(o: Partial<{ gem: boolean; village: boolean; villageLeading: boolean }> = {}) {
   const f = { gem: true, village: true, villageLeading: false, ...o };
   return {
     state: f,
-    facts: { hasGem: () => f.gem, ledToVillage: () => f.village, villageLeading: () => f.villageLeading, villagePad: VILLAGE_PLAN.pad },
+    facts: { hasGem: () => f.gem, ledToVillage: () => f.village, villageLeading: () => f.villageLeading, villagePad: village.pad },
   };
 }
 const inSquare: Cell = [village.square.x0 + 1, 5, village.square.z0 + 1];
@@ -31,7 +30,7 @@ describe('Pip leads him to the tower once (spec §7g)', () => {
   it('the real route starts in the village and ends at the door front', () => {
     expect(towerRoute.length).toBeGreaterThan(50);
     const first = towerRoute[0];
-    const r = VILLAGE_PLAN.pad;
+    const r = village.pad;
     expect(first[0] >= r.x0 && first[0] <= r.x1 && first[2] >= r.z0 && first[2] <= r.z1).toBe(true);
     const last = towerRoute[towerRoute.length - 1];
     expect(Math.hypot(last[0] - tower.doorFront[0], last[2] - tower.doorFront[2])).toBeLessThanOrEqual(1.5);
@@ -43,7 +42,7 @@ describe('Pip leads him to the tower once (spec §7g)', () => {
       expect(run(l, 60, inSquare, true)).toEqual([]);
       expect(l.state).toBe('waiting');
     }
-    const far: Cell = [5, 5, 5]; // the far north-west corner
+    const far: Cell = [53, 53, 53]; // the far north-west corner of the meadow
     const offer = towerOffer(towerRoute, facts().facts);
     expect(offer(far)).toBe(false);
     expect(offer(inSquare)).toBe(true);

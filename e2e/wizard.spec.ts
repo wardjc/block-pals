@@ -7,7 +7,7 @@ import { drag, frames, press, ready, URL, walkTo, type Cell } from './helpers';
 // grumps step: the gem tests run once giveGem() really adds one, and are skipped (with a note) before.
 const MYTHICAL = [40, 41, 42, 43, 44, 45, 46, 47];
 const RAINBOW = 41;
-const SAVE = 'blockpals.save.v2';
+const SAVE = 'blockpals.save.v3';
 type Tower = {
   groundY: number; doorFront: Cell; doorInside: Cell; wizardSpot: Cell; route: Cell[];
   floors: Array<{ y: number; cells: Cell[]; ceilingY: number }>; rect: { x0: number; z0: number; x1: number; z1: number };
@@ -353,9 +353,10 @@ test.describe('the wizard\'s tower', () => {
   test('old saves load: a version 2 save without the wizard fields keeps his bag and spot, the tower exists', async ({ page: first }) => {
     await ready(first);
     const spawn = await first.evaluate(() => (window as any).__debug.playerPos());
+    // A v2 save is in meadow coordinates (the 96 world): the big world puts it at +48 on every axis.
     const v2 = JSON.stringify({
       version: 2, gen: 2, seed: 2026, edits: [[20, 9, 20, 3]], inventory: { 4: 6 }, order: [4],
-      player: spawn, flags: { ledToVillage: true },
+      player: { x: spawn.x - 48, y: spawn.y - 48, z: spawn.z - 48 }, flags: { ledToVillage: true },
     });
     const page = await first.context().newPage();
     await first.close();
@@ -368,13 +369,50 @@ test.describe('the wizard\'s tower', () => {
     await page.goto(URL);
     await page.waitForFunction(() => !!(window as any).__debug);
     const t = await tower(page);
-    expect(t.wizardSpot).toEqual([34, 10, 82]);
+    expect(t.wizardSpot).toEqual([34 + 48, 10 + 48, 82 + 48]);
     expect(await ev(page, d => d.game.inventory.count(4))).toBe(6);
-    expect(await ev(page, d => d.game.world.get(20, 9, 20))).toBe(3);
+    expect(await ev(page, d => d.game.world.get(68, 57, 68))).toBe(3);
     const p = await ev<any>(page, d => d.playerPos());
     expect(Math.hypot(p.x - spawn.x, p.z - spawn.z)).toBeLessThan(0.5);
     expect(await wizardState(page)).toEqual({ gift: false, met: false, led: false, solved: 0, clean: 0, bought: 0, hints: expect.any(Array) });
     expect(await page.evaluate(() => localStorage.getItem('blockpals.save.v1'))).toBeNull();
+    expect(await page.evaluate(() => localStorage.getItem('blockpals.save.v2'))).toBe(v2);
+  });
+
+  test('his live save (v2, gen 3) with the wizard\'s fields and a block on the tower hill moves into v3 unchanged', async ({ page: first }) => {
+    await ready(first);
+    const t0 = await tower(first);
+    // Meadow coordinates: a Moon block on the hilltop in front of the door, and the top lamp swapped for a Sun block.
+    const [fx, fy, fz] = t0.doorFront;
+    const hill: Cell = [fx - 48 - 2, fy - 48, fz - 48];
+    const top = await ev<Cell>(first, d => d.tower().topLamp ?? null);
+    const edits: number[][] = [[hill[0], hill[1], hill[2], 43]];
+    if (top) edits.push([top[0] - 48, top[1] - 48, top[2] - 48, 44]);
+    const wizard = { gift: true, met: true, led: true, solved: 6, clean: 4, bought: 2, hints: ['seeLight', 'towerHint'] };
+    const v2 = JSON.stringify({
+      version: 2, gen: 3, seed: 2026, edits, inventory: { 40: 2, 41: 3 }, order: [40, 41],
+      player: { x: fx - 48 + 0.5, y: fy - 48, z: fz - 48 + 0.5 }, flags: { ledToVillage: true }, wizard,
+    });
+    const page = await first.context().newPage();
+    await first.close();
+    await page.addInitScript(raw => {
+      if (sessionStorage.getItem('seeded')) return;
+      sessionStorage.setItem('seeded', '1');
+      localStorage.clear();
+      localStorage.setItem('blockpals.save.v2', raw);
+    }, v2);
+    await page.goto(URL);
+    await page.waitForFunction(() => !!(window as any).__debug);
+    expect(await wizardState(page)).toEqual(wizard);
+    for (const [x, y, z, id] of edits) expect(await ev(page, (d, c) => d.game.world.get(c[0], c[1], c[2]), [x + 48, y + 48, z + 48])).toBe(id);
+    expect(await ev(page, d => d.game.inventory.count(41))).toBe(3);
+    const p = await ev<any>(page, d => d.playerPos());
+    expect(Math.hypot(p.x - (fx + 0.5), p.z - (fz + 0.5))).toBeLessThan(0.5);
+    const keys = await page.evaluate(() => ({ v2: localStorage.getItem('blockpals.save.v2'), v3: localStorage.getItem('blockpals.save.v3') }));
+    expect(keys.v2).toBe(v2);
+    const v3 = JSON.parse(keys.v3!);
+    expect(v3.version).toBe(3);
+    expect(v3.wizard).toEqual(wizard);
   });
 
   for (const [w, h] of [[800, 600], [667, 375]] as const) {

@@ -1,19 +1,20 @@
 import { beforeAll, describe, expect, it } from 'vitest';
 import { BLOCKS, BlockId } from '../../src/core/blocks';
-import { WORLD } from '../../src/core/bounds';
+import { ORIGIN, V2_WORLD as WORLD } from '../../src/core/bounds';
 import { findPath, isStandable, type Cell } from '../../src/core/pathfind';
 import { GROUND_Y, VILLAGE_PLAN, type FarmLayout, type Rect, type VillageLayout } from '../../src/core/village';
-import { applySave } from '../../src/core/save';
-import type { World } from '../../src/core/world';
-import { generateWorld } from '../../src/core/worldgen';
+import { applySave, parseSave } from '../../src/core/save';
+import type { WorldCells } from '../../src/core/shifted';
+import { generateLegacy } from '../helpers/legacy';
 
-let world: World;
+let world: WorldCells;
 let village: VillageLayout;
 let farm: FarmLayout;
 let spawn: Cell;
 
 beforeAll(() => {
-  const g = generateWorld(2026);
+  // The old meadow in its own coordinates (tests/helpers/legacy.ts).
+  const g = generateLegacy(2026);
   world = g.world;
   village = g.village;
   farm = village.farm;
@@ -169,7 +170,7 @@ describe('farm layout', () => {
   });
 
   it('step 1 stamps unchanged: houses, doors, route and the square', () => {
-    const again = generateWorld(2026).village;
+    const again = generateLegacy(2026).village;
     expect(again.route).toEqual(village.route);
     expect([...again.routeCells]).toEqual([...village.routeCells]);
     expect(village.houses).toHaveLength(5);
@@ -179,7 +180,7 @@ describe('farm layout', () => {
   });
 
   it('is deterministic', () => {
-    const again = generateWorld(2026);
+    const again = generateLegacy(2026);
     for (const [x, z] of [[72, 35], [81, 35], [74, 46], [62, 46], [83, 54]] as Array<[number, number]>) {
       expect(again.world.get(x, GROUND_Y, z)).toBe(world.get(x, GROUND_Y, z));
       expect(again.world.get(x, GROUND_Y + 1, z)).toBe(world.get(x, GROUND_Y + 1, z));
@@ -193,12 +194,15 @@ describe('farm layout', () => {
       [farm.fence[3][0], farm.fence[3][1], farm.fence[3][2], BlockId.Air], // a fence block taken
       [82, GROUND_Y, 35, BlockId.Dirt], // filled in the pool
     ];
-    const loaded = applySave({
+    // A v2 save (meadow coordinates) is read, shifted to the big world and applied, as a reload does.
+    const data = parseSave(JSON.stringify({
       version: 2, gen: 1, seed: 2026, edits, inventory: {}, player: { x: 24.5, y: 6, z: 24.5 }, flags: { ledToVillage: false },
-    });
-    for (const [x, y, z, id] of edits) expect(loaded.world.get(x, y, z)).toBe(id);
+    }))!;
+    const loaded = applySave(data);
+    const at = (x: number, y: number, z: number): BlockId => loaded.world.get(x + ORIGIN.x, y + ORIGIN.y, z + ORIGIN.z);
+    for (const [x, y, z, id] of edits) expect(at(x, y, z)).toBe(id);
     // An old (gen 1) save regenerates the farm around his edits.
-    expect(loaded.world.get(72, GROUND_Y, 35)).toBe(BlockId.Farmland);
-    expect(loaded.world.get(farm.fence[0][0], farm.fence[0][1], farm.fence[0][2])).toBe(BlockId.Fence);
+    expect(at(72, GROUND_Y, 35)).toBe(BlockId.Farmland);
+    expect(at(farm.fence[0][0], farm.fence[0][1], farm.fence[0][2])).toBe(BlockId.Fence);
   });
 });

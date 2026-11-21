@@ -1,18 +1,22 @@
 import { describe, expect, it, vi } from 'vitest';
 import { BLOCKS, BlockId } from '../../src/core/blocks';
-import { WORLD } from '../../src/core/bounds';
+// Meadow coordinates: the tower is stamped on the ShiftedWorld view (tests/helpers/legacy.ts).
+import { V2_WORLD as WORLD } from '../../src/core/bounds';
 import { canStep, findPath, isStandable, smoothPath, type Cell } from '../../src/core/pathfind';
-import { applySave } from '../../src/core/save';
+import { applySave, parseSave } from '../../src/core/save';
+import { ShiftedWorld } from '../../src/core/shifted';
 import { TOWER_GROUND_Y, TOWER_PLAN } from '../../src/core/tower';
 import { buildVillage, VILLAGE_PLAN, type Rect } from '../../src/core/village';
-import type { World } from '../../src/core/world';
+import type { WorldCells } from '../../src/core/shifted';
 import { GEN_VERSION, generateMeadowStage, generateWorld } from '../../src/core/worldgen';
+import { legacyView } from '../helpers/legacy';
 
 vi.setConfig({ testTimeout: 60_000 });
 
 const t0 = performance.now();
-const generated = generateWorld(2026);
+const real = generateWorld(2026);
 const genMs = performance.now() - t0;
+const generated = legacyView(real);
 const { world, village, tower, towerRoute, towerRects } = generated;
 const spawn: Cell = [Math.floor(generated.spawn.x), Math.floor(generated.spawn.y), Math.floor(generated.spawn.z)];
 const G = TOWER_GROUND_Y;
@@ -21,7 +25,7 @@ const foot = TOWER_PLAN.footprint;
 
 const TERRAIN = new Set([BlockId.Grass, BlockId.Dirt, BlockId.Stone, BlockId.Sand, BlockId.PathStone, BlockId.Bedrock, BlockId.Farmland]);
 /** Ground height ignoring trees and buildings. */
-function ground(w: World, x: number, z: number): number {
+function ground(w: WorldCells, x: number, z: number): number {
   for (let y = w.sizeY - 1; y >= 0; y--) if (TERRAIN.has(w.get(x, y, z))) return y;
   return 0;
 }
@@ -31,8 +35,8 @@ const gap = (a: Rect, b: Rect): number => Math.max(a.x0 - b.x1, b.x0 - a.x1, a.z
 const solid = (x: number, y: number, z: number): boolean => BLOCKS[world.get(x, y, z)].solid;
 
 describe('the tower in the generated world', () => {
-  it('bumps GEN_VERSION to 3 (the tower changes the terrain)', () => {
-    expect(GEN_VERSION).toBe(3);
+  it('GEN_VERSION is above 3 (the tower changed the terrain; the big world is 4)', () => {
+    expect(GEN_VERSION).toBeGreaterThanOrEqual(4);
   });
 
   it('stands on a real hilltop: the highest ground within 6 blocks and 2 above the ground 10 cells north', () => {
@@ -143,7 +147,7 @@ describe('the tower in the generated world', () => {
     for (const r of towerRects) {
       expect(r.x0 >= -6 && r.z0 >= -6 && r.x1 <= WORLD.x + 6 && r.z1 <= WORLD.z + 6).toBe(true);
     }
-    const again = generateWorld(2026);
+    const again = legacyView(generateWorld(2026));
     expect(again.tower).toEqual(tower);
     expect(again.towerRoute).toEqual(towerRoute);
     for (let x = pad.x0 - 6; x <= pad.x1 + 6; x++) for (let z = pad.z0 - 6; z < WORLD.z; z++) for (let y = 0; y < WORLD.y; y++) {
@@ -158,7 +162,7 @@ describe('the tower in the generated world', () => {
     expect([...old.routeCells]).toEqual([...village.routeCells]);
     const rects: Rect[] = [...village.houses.map(h => h.rect), village.square, village.farmPlot, village.farm.pasture, village.quarry];
     for (const r of rects) {
-      for (let x = r.x0; x <= r.x1; x++) for (let z = r.z0; z <= r.z1; z++) for (let y = 0; y < WORLD.y; y++) {
+      for (let x = r.x0; x <= r.x1; x++) for (let z = r.z0; z <= r.z1; z++) for (let y = 1; y < WORLD.y; y++) { // old y 0 is D1
         expect(world.get(x, y, z), `${x},${y},${z}`).toBe(before.get(x, y, z));
       }
     }
@@ -183,35 +187,39 @@ describe('the tower in the generated world', () => {
     const wall: [number, number, number, number] = [foot.x0, G + 2, foot.z0 + 1, BlockId.Air];
     const [px, py, pz] = towerRoute[40];
     const path: [number, number, number, number] = [px, py - 1, pz, BlockId.Bricks];
-    const loaded = applySave({
+    // A v2 save as stored by the live game: read through the parser, shifted +48 into the big world.
+    const loaded = applySave(parseSave(JSON.stringify({
       version: 2, gen: 2, seed: 2026, edits: [wall, path], inventory: {}, player: { x: 24.5, y: 6, z: 24.5 }, flags: { ledToVillage: false },
-    });
-    expect(loaded.world.get(wall[0], wall[1], wall[2])).toBe(BlockId.Air);
-    expect(loaded.world.get(px, py - 1, pz)).toBe(BlockId.Bricks);
+    }))!);
+    const view = new ShiftedWorld(loaded.world);
+    expect(view.get(wall[0], wall[1], wall[2])).toBe(BlockId.Air);
+    expect(view.get(px, py - 1, pz)).toBe(BlockId.Bricks);
     // An old (gen 2) save gets the tower around his edits.
-    expect(loaded.world.get(...tower.topLamp)).toBe(BlockId.Lamp);
-    expect(loaded.world.get(foot.x0, G + 3, foot.z0 + 1)).toBe(BlockId.Stone);
-    expect(loaded.world.get(towerRoute[41][0], towerRoute[41][1] - 1, towerRoute[41][2])).toBe(BlockId.PathStone);
-    // Both edits stay in every later save.
-    expect(loaded.world.edits()).toEqual(expect.arrayContaining([wall, path]));
+    expect(view.get(...tower.topLamp)).toBe(BlockId.Lamp);
+    expect(view.get(foot.x0, G + 3, foot.z0 + 1)).toBe(BlockId.Stone);
+    expect(view.get(towerRoute[41][0], towerRoute[41][1] - 1, towerRoute[41][2])).toBe(BlockId.PathStone);
+    // Both edits stay in every later save (in world coordinates).
+    const up = ([x, y, z, id]: [number, number, number, number]): [number, number, number, number] => [x + 48, y + 48, z + 48, id];
+    expect(loaded.world.edits()).toEqual(expect.arrayContaining([up(wall), up(path)]));
   });
 
   it('old saves load: his spot is kept, and a spot now inside the tower means the spawn', () => {
     const base = { version: 2 as const, seed: 2026, edits: [], inventory: { [BlockId.Wood]: 3 }, flags: { ledToVillage: true } };
-    const kept = applySave({ ...base, gen: 2, player: { x: 60.5, y: 6, z: 29.5 } });
-    expect(kept.spawn).toEqual({ x: 60.5, y: 6, z: 29.5 });
+    const load = (v2: object) => applySave(parseSave(JSON.stringify(v2))!);
+    const kept = load({ ...base, gen: 2, player: { x: 60.5, y: 6, z: 29.5 } });
+    expect(kept.spawn).toEqual({ x: 108.5, y: 54, z: 77.5 });
     expect(kept.inventory.count(BlockId.Wood)).toBe(3);
-    expect(kept.tower).toEqual(tower);
-    expect(kept.towerRoute).toEqual(towerRoute);
+    expect(kept.tower).toEqual(real.tower);
+    expect(kept.towerRoute).toEqual(real.towerRoute);
     const [wx, wy, wz] = tower.wizardSpot;
-    const inside = applySave({ ...base, gen: 1, player: { x: wx + 0.5, y: wy, z: wz + 0.5 } });
-    expect(inside.spawn).toEqual(generated.spawn);
+    const inside = load({ ...base, gen: 1, player: { x: wx + 0.5, y: wy, z: wz + 0.5 } });
+    expect(inside.spawn).toEqual(real.spawn);
     // Where the hill rose under an old spot, he is never put inside the ground.
-    const buried = applySave({ ...base, gen: 2, player: { x: 30.5, y: 7, z: 80.5 } });
-    expect(buried.spawn).toEqual(generated.spawn);
+    const buried = load({ ...base, gen: 2, player: { x: 30.5, y: 7, z: 80.5 } });
+    expect(buried.spawn).toEqual(real.spawn);
   });
 
-  it('generateWorld with the tower stays under the existing build-time guard', () => {
+  it('generateWorld (the big world) with the tower stays under the existing build-time guard', () => {
     console.log(`generateWorld with the tower: ${genMs.toFixed(0)} ms`);
     expect(genMs).toBeLessThan(2500);
   });

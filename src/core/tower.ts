@@ -2,7 +2,7 @@ import { BLOCKS, BlockId } from './blocks';
 import { DOOR_HEIGHT, DOOR_WIDTH, type Rect } from './houses';
 import type { Cell } from './pathfind';
 import { boundsOf, grow, groundTop, inRect, pave, polyline, reshape, widen } from './village';
-import type { World } from './world';
+import type { WorldCells } from './shifted';
 
 /**
  * Every number that places the wizard's tower lives here, in meadow coordinates (the 96 × 96
@@ -76,7 +76,7 @@ export interface TowerInfo {
  * ground room and a star room joined by a stair of one-block steps, Lamps in the slab and the
  * ceiling, a stepped RoofTile roof with a Lamp as its very top block. Clears everything above first.
  */
-export function stampTower(world: World): TowerInfo {
+export function stampTower(world: WorldCells): TowerInfo {
   const g = TOWER_GROUND_Y;
   const r = TOWER_PLAN.footprint;
   const set = (x: number, y: number, z: number, id: BlockId): void => world.set(x, y, z, id);
@@ -216,7 +216,7 @@ export interface TowerLayout {
  * gentle skirt, shapes the path's legs over natural ground (trees touching them go whole), stamps
  * the tower and paves a 3-wide PathStone path from the village square to its door.
  */
-export function buildTower(world: World): TowerLayout {
+export function buildTower(world: WorldCells): TowerLayout {
   const plan = TOWER_PLAN;
   const centre = polyline(plan.waypoints);
   // The first legs run on the village pad, which is already level: they are only paved, so no

@@ -8,13 +8,47 @@ export class World {
   private readonly changedCells = new Map<number, Edit>();
   private readonly listeners: ChangeListener[] = [];
   private dirty = false;
+  /** Nesting depth of beginBulk; while above 0, set() writes the cell only. */
+  private bulk = 0;
 
   constructor(
     readonly sizeX: number,
     readonly sizeY: number,
     readonly sizeZ: number,
+    cells?: Uint8Array,
   ) {
-    this.cells = new Uint8Array(sizeX * sizeY * sizeZ);
+    this.cells = cells ?? new Uint8Array(sizeX * sizeY * sizeZ);
+  }
+
+  /** Wraps an existing cell buffer (World.index order) without copying it: the world takes it. */
+  static fromBuffer(sx: number, sy: number, sz: number, cells: Uint8Array): World {
+    if (cells.length !== sx * sy * sz) throw new Error(`World.fromBuffer: ${cells.length} cells for ${sx} x ${sy} x ${sz}`);
+    return new World(sx, sy, sz, cells);
+  }
+
+  /** The raw cells (World.index order), for transfer to and from the generation worker. */
+  get buffer(): Uint8Array {
+    return this.cells;
+  }
+
+  /**
+   * Generation mode. While bulk, set() writes the cell only: no edit record, no listeners, no
+   * dirty flag (at 2.5 million cells, recording every generated set would cost hundreds of MB).
+   * Calls nest; normal play never uses it.
+   */
+  beginBulk(): void {
+    this.bulk++;
+  }
+
+  endBulk(): void {
+    this.bulk = Math.max(0, this.bulk - 1);
+  }
+
+  /** One whole horizontal layer in one typed-array fill (no edit record, like bulk mode). */
+  fillLayer(y: number, id: BlockId): void {
+    if (!Number.isInteger(y) || y < 0 || y >= this.sizeY) return;
+    const layer = this.sizeX * this.sizeZ;
+    this.cells.fill(id, y * layer, (y + 1) * layer);
   }
 
   private index(x: number, y: number, z: number): number {
@@ -41,6 +75,7 @@ export class World {
     if (this.cells[index] === id) return;
 
     this.cells[index] = id;
+    if (this.bulk > 0) return;
     this.changedCells.set(index, [x, y, z, id]);
     this.dirty = true;
     for (const listener of this.listeners) listener(x, y, z);

@@ -2,12 +2,13 @@ import { describe, expect, it } from 'vitest';
 import { BLOCKS, BlockId } from '../../src/core/blocks';
 import { canStep, findPath, isStandable, type Cell } from '../../src/core/pathfind';
 import { mulberry32, valueNoise2D } from '../../src/core/rng';
-import { World } from '../../src/core/world';
+import type { WorldCells } from '../../src/core/shifted';
 import fixture from '../fixtures/legacy-meadow-2026.json';
 import { insideWall } from '../../src/core/bounds';
 import { generateMeadowStage, generateWorld, GEN_VERSION, heightAt } from '../../src/core/worldgen';
+import { generateLegacy } from '../helpers/legacy';
 
-function cells(world: World): BlockId[] {
+function cells(world: WorldCells): BlockId[] {
   const result: BlockId[] = [];
   for (let y = 0; y < world.sizeY; y++) {
     for (let z = 0; z < world.sizeZ; z++) {
@@ -17,7 +18,7 @@ function cells(world: World): BlockId[] {
   return result;
 }
 
-function grassY(world: World, x: number, z: number): number {
+function grassY(world: WorldCells, x: number, z: number): number {
   for (let y = world.sizeY - 1; y >= 0; y--) {
     if (world.get(x, y, z) === BlockId.Grass) return y;
   }
@@ -65,18 +66,18 @@ describe('generateWorld', () => {
   it('is deterministic for the same seed', () => {
     const first = generateWorld(2026);
     const second = generateWorld(2026);
-    expect(cells(first.world)).toEqual(cells(second.world));
+    expect(first.world.buffer).toEqual(second.world.buffer);
     expect(first.spawn).toEqual(second.spawn);
   });
 
   it('different seeds differ', () => {
-    expect(cells(generateWorld(2026).world)).not.toEqual(cells(generateWorld(2027).world));
+    expect(cells(generateLegacy(2026).world)).not.toEqual(cells(generateLegacy(2027).world));
   });
 
-  it('defaults to seed 2026 and creates a 96×20×96 world', () => {
+  it('defaults to seed 2026 and creates a 192×68×192 world (the old region is the 96×20×96 middle)', () => {
     const { world, spawn } = generateWorld();
-    expect([world.sizeX, world.sizeY, world.sizeZ]).toEqual([96, 20, 96]);
-    expect(cells(world)).toEqual(cells(generateWorld(2026).world));
+    expect([world.sizeX, world.sizeY, world.sizeZ]).toEqual([192, 68, 192]);
+    expect(world.buffer).toEqual(generateWorld(2026).world.buffer);
     expect(spawn).toEqual(generateWorld(2026).spawn);
   });
 
@@ -90,11 +91,12 @@ describe('generateWorld', () => {
   });
 
   describe.each([2026, 2027, 0, 1, -1, 0xffffffff])('seed %s', (seed) => {
-    const { world, spawn } = generateWorld(seed);
+    // The old meadow, in its own coordinates (tests/helpers/legacy.ts).
+    const { world, spawn } = generateLegacy(seed);
 
-    it('bedrock at y=0 everywhere', () => {
+    it('the old bedrock row (old y 0) is Stone now (documented difference D1)', () => {
       for (let x = 0; x < 48; x++) {
-        for (let z = 0; z < 48; z++) expect(world.get(x, 0, z)).toBe(BlockId.Bedrock);
+        for (let z = 0; z < 48; z++) expect(world.get(x, 0, z)).toBe(BlockId.Stone);
       }
     });
 
@@ -197,7 +199,7 @@ describe('generateWorld', () => {
 
   it('every land column at the spawn plateau is reachable', () => {
     for (const seed of [2026, 2027, 0, 1, -1, 0xffffffff]) {
-      const { world, spawn } = generateWorld(seed);
+      const { world, spawn } = generateLegacy(seed);
       const from: Cell = [spawn.x, spawn.y, spawn.z];
       // Check the tree-free spawn clearing, including the slope towards the pond.
       for (let x = spawn.x - 3; x <= spawn.x + 3; x++) {
@@ -249,9 +251,9 @@ describe('worldgen stages', () => {
     }
   });
 
-  it('heightAt matches the generated surface and GEN_VERSION is 3', () => {
+  it('heightAt matches the generated surface and GEN_VERSION is 4 (the big world; 3 was the tower)', () => {
     const { world } = generateMeadowStage(2026);
-    expect(GEN_VERSION).toBe(3);
+    expect(GEN_VERSION).toBe(4);
     for (const [x, z] of [[0, 0], [24, 24], [34, 12], [14, 32], [70, 70], [95, 95]]) {
       const h = heightAt(2026, x, z);
       expect(BLOCKS[world.get(x, h, z)].solid).toBe(true);
@@ -259,11 +261,11 @@ describe('worldgen stages', () => {
     }
   });
 
-  it('size, bedrock and surface heights', () => {
-    const { world } = generateWorld(2026);
+  it('size, old bedrock row (now Stone, D1) and surface heights', () => {
+    const { world } = generateLegacy(2026);
     expect([world.sizeX, world.sizeY, world.sizeZ]).toEqual([96, 20, 96]);
     for (let x = 0; x < 96; x++) for (let z = 0; z < 96; z++) {
-      expect(world.get(x, 0, z)).toBe(BlockId.Bedrock);
+      expect(world.get(x, 0, z)).toBe(BlockId.Stone);
       const ground = heightAt(2026, x, z);
       expect(ground).toBeGreaterThanOrEqual(3);
       expect(ground).toBeLessThanOrEqual(12);
@@ -271,7 +273,7 @@ describe('worldgen stages', () => {
   });
 
   it('trees stay inside the soft wall and keep the spawn clear', () => {
-    const { world, spawn } = generateWorld(2026);
+    const { world, spawn } = generateLegacy(2026);
     for (let x = 0; x < 96; x++) for (let z = 0; z < 96; z++) {
       for (let y = 0; y < 20; y++) {
         const id = world.get(x, y, z);
@@ -284,7 +286,7 @@ describe('worldgen stages', () => {
   });
 
   it('edge ring: at least 3 trees within 4 cells of each edge', () => {
-    const { world } = generateWorld(2026);
+    const { world } = generateLegacy(2026);
     const near = [0, 0, 0, 0];
     for (let x = 0; x < 96; x++) for (let z = 0; z < 96; z++) {
       if (world.get(x, heightAt(2026, x, z) + 1, z) !== BlockId.Wood) continue;
@@ -297,7 +299,7 @@ describe('worldgen stages', () => {
   });
 
   it('no tree stands on water or sand, and every tree has grass under it', () => {
-    const { world } = generateWorld(2026);
+    const { world } = generateLegacy(2026);
     for (let x = 0; x < 96; x++) for (let z = 0; z < 96; z++) {
       const g = heightAt(2026, x, z);
       if (world.get(x, g + 1, z) === BlockId.Wood) expect(world.get(x, g, z)).toBe(BlockId.Grass);
@@ -305,7 +307,7 @@ describe('worldgen stages', () => {
   });
 
   it('new ground has extra trees beyond the v1 area', () => {
-    const { world } = generateWorld(2026);
+    const { world } = generateLegacy(2026);
     let trunks = 0;
     for (let x = 48; x < 96; x++) for (let z = 0; z < 96; z++) {
       if (world.get(x, heightAt(2026, x, z) + 1, z) === BlockId.Wood) trunks++;
@@ -315,12 +317,12 @@ describe('worldgen stages', () => {
 
   it('final world differs from the meadow only at stamps', () => {
     const meadow = generateMeadowStage(2026).world;
-    const { world, village, towerRects } = generateWorld(2026);
+    const { world, village, towerRects } = generateLegacy(2026);
     const within = (rects: typeof towerRects, x: number, z: number): boolean => rects.some(r => x >= r.x0 && x <= r.x1 && z >= r.z0 && z <= r.z1);
     let differing = 0;
     for (let x = 0; x < 48; x++) {
       for (let z = 0; z < 48; z++) {
-        for (let y = 0; y < world.sizeY; y++) {
+        for (let y = 1; y < world.sizeY; y++) { // old y 0 is D1
           if (world.get(x, y, z) === meadow.get(x, y, z)) continue;
           expect(within(village.stampedRects, x, z) || within(towerRects, x, z), `${x},${y},${z}`).toBe(true);
           // The village's own changes keep their old limit; the tower's skirt edge is counted separately.

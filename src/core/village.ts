@@ -1,6 +1,7 @@
 import { BlockId } from './blocks';
 import { stampHouse, type HouseInfo, type HouseSpec, type Rect } from './houses';
 import type { Cell } from './pathfind';
+import type { WorldCells } from './shifted';
 import { World } from './world';
 
 export type { Rect };
@@ -38,6 +39,8 @@ export interface VillageLayout {
   farmPlot: Rect;
   farm: FarmLayout;
   quarry: Rect;
+  /** The level village pad (standing in it counts as reaching the village). */
+  pad: Rect;
   stampedRects: Rect[];
 }
 
@@ -84,13 +87,13 @@ export const grow = (r: Rect, m: number): Rect => ({ x0: r.x0 - m, z0: r.z0 - m,
 const isTerrain = (id: BlockId): boolean => id !== BlockId.Air && id !== BlockId.Wood && id !== BlockId.Leaves;
 
 /** Height of the topmost ground block, ignoring trees. */
-export function groundTop(world: World, x: number, z: number): number {
+export function groundTop(world: WorldCells, x: number, z: number): number {
   for (let y = world.sizeY - 1; y >= 0; y--) if (isTerrain(world.get(x, y, z))) return y;
   return 0;
 }
 
 /** Removes the whole tree (trunk and 3x3 canopy) whose trunk stands at x, z. */
-function removeTree(world: World, x: number, z: number): void {
+function removeTree(world: WorldCells, x: number, z: number): void {
   for (let dx = -1; dx <= 1; dx++) {
     for (let dz = -1; dz <= 1; dz++) {
       for (let y = 1; y < world.sizeY; y++) {
@@ -104,7 +107,7 @@ function removeTree(world: World, x: number, z: number): void {
 }
 
 /** Removes every tree whose trunk or canopy touches any of the columns. */
-export function clearTreesTouching(world: World, columns: Iterable<number>): void {
+export function clearTreesTouching(world: WorldCells, columns: Iterable<number>): void {
   const sx = world.sizeX;
   for (const key of columns) {
     const x = key % sx;
@@ -122,7 +125,7 @@ export function clearTreesTouching(world: World, columns: Iterable<number>): voi
   }
 }
 
-function setColumn(world: World, x: number, z: number, h: number): void {
+function setColumn(world: WorldCells, x: number, z: number, h: number): void {
   for (let y = 1; y <= h; y++) {
     world.set(x, y, z, y === h ? BlockId.Grass : y >= h - 2 ? BlockId.Dirt : BlockId.Stone);
   }
@@ -138,7 +141,7 @@ export interface Pin { rect: Rect; height: number }
  * cutting the higher one. Trees touching a changed column (or `keepClear`) go whole.
  * Returns the final ground height of every column of the world.
  */
-export function reshape(world: World, pins: Pin[], region: Rect[], keepClear: Iterable<number> = []): Int16Array {
+export function reshape(world: WorldCells, pins: Pin[], region: Rect[], keepClear: Iterable<number> = []): Int16Array {
   const { sizeX, sizeZ } = world;
   const natural = new Int16Array(sizeX * sizeZ);
   const target = new Int16Array(sizeX * sizeZ);
@@ -203,10 +206,10 @@ export function line(a: [number, number], b: [number, number], xFirst = true): A
   return cells;
 }
 
-const key = (world: World, x: number, z: number): number => x + world.sizeX * z;
+const key = (world: WorldCells, x: number, z: number): number => x + world.sizeX * z;
 
 /** Columns within `radius` (Chebyshev) of any centre cell. */
-export function widen(world: World, centre: Array<[number, number]>, radius: number, offset = -radius): Set<number> {
+export function widen(world: WorldCells, centre: Array<[number, number]>, radius: number, offset = -radius): Set<number> {
   const out = new Set<number>();
   for (const [cx, cz] of centre) {
     for (let dx = offset; dx <= offset + 2 * radius; dx++) {
@@ -232,7 +235,7 @@ export function boundsOf(points: Array<[number, number]>, margin: number): Rect 
 }
 
 /** Paves columns with PathStone on top of the (already shaped) ground, with clear headroom. */
-export function pave(world: World, columns: Iterable<number>, skip: Rect[] = []): void {
+export function pave(world: WorldCells, columns: Iterable<number>, skip: Rect[] = []): void {
   for (const k of columns) {
     const x = k % world.sizeX;
     const z = Math.floor(k / world.sizeX);
@@ -245,7 +248,7 @@ export function pave(world: World, columns: Iterable<number>, skip: Rect[] = [])
 }
 
 /** Eases the ground to groundY inside rect (see reshape). */
-export function levelPad(world: World, rect: Rect, groundY: number): void {
+export function levelPad(world: WorldCells, rect: Rect, groundY: number): void {
   reshape(world, [{ rect, height: groundY }], [grow(rect, 6)]);
 }
 
@@ -254,7 +257,7 @@ export function levelPad(world: World, rect: Rect, groundY: number): void {
  * trees, and smooths heights so neighbouring route cells differ by at most 1.
  * Returns the ordered centre line (feet cells).
  */
-export function carveRoute(world: World, waypoints: Array<[number, number]>): Cell[] {
+export function carveRoute(world: WorldCells, waypoints: Array<[number, number]>): Cell[] {
   const centre = polyline(waypoints);
   const corridor = widen(world, centre, 1);
   reshape(world, [], [grow(boundsOf(centre, 1), 5)], widen(world, centre, 2));
@@ -266,7 +269,7 @@ export function carveRoute(world: World, waypoints: Array<[number, number]>): Ce
  * Farmland beds, the small walled pool, the pasture floor, its one-block fence with a 2-wide gate,
  * and the path from the plot to the gate. Ground is already level (pad and pasture pins).
  */
-function stampFarm(world: World, plan: typeof VILLAGE_PLAN): FarmLayout {
+function stampFarm(world: WorldCells, plan: typeof VILLAGE_PLAN): FarmLayout {
   const cells = (r: Rect): Array<[number, number]> => {
     const out: Array<[number, number]> = [];
     for (let x = r.x0; x <= r.x1; x++) for (let z = r.z0; z <= r.z1; z++) out.push([x, z]);
@@ -301,7 +304,7 @@ function stampFarm(world: World, plan: typeof VILLAGE_PLAN): FarmLayout {
   };
 }
 
-export function buildVillage(world: World, spawn: { x: number; y: number; z: number }): VillageLayout {
+export function buildVillage(world: WorldCells, spawn: { x: number; y: number; z: number }): VillageLayout {
   const plan = VILLAGE_PLAN;
   const spawnGround = Math.floor(spawn.y) - 1;
   const [cottageSpec, ...villageSpecs] = plan.houses;
@@ -395,7 +398,7 @@ export function buildVillage(world: World, spawn: { x: number; y: number; z: num
   }
 
   return {
-    houses, route, routeCells, gate, square: sq, farmPlot: fp, farm, quarry: q,
+    houses, route, routeCells, gate, square: sq, farmPlot: fp, farm, quarry: q, pad: plan.pad,
     stampedRects: region,
   };
 }
@@ -408,6 +411,6 @@ export function emptyVillage(): VillageLayout {
       beds: [], pool: { x0: 0, z0: 0, x1: 0, z1: 0 }, irrigation: { x0: 0, z0: 0, x1: 0, z1: 0 },
       pasture: { x0: 0, z0: 0, x1: 0, z1: 0 }, gate: [], fence: [], herdSpawns: [], path: { x0: 0, z0: 0, x1: 0, z1: 0 },
     },
-    quarry: { x0: 0, z0: 0, x1: 0, z1: 0 }, stampedRects: [],
+    quarry: { x0: 0, z0: 0, x1: 0, z1: 0 }, pad: { x0: 0, z0: 0, x1: 0, z1: 0 }, stampedRects: [],
   };
 }

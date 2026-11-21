@@ -3,7 +3,7 @@ import { afterEach, beforeEach, describe, expect, test, vi } from 'vitest';
 import { BLOCKS, BlockId } from '../../src/core/blocks';
 import { isStandable } from '../../src/core/pathfind';
 import {
-  ALL_SAVE_KEYS, BACKUP_KEY, BAD_V2_KEY, LEGACY_SAVE_KEY, SAVE_KEY, applySave, inspectSave, migrateV1, parseSave, readSave, serialise,
+  ALL_SAVE_KEYS, BACKUP_KEY, BAD_V3_KEY, LEGACY_SAVE_KEY, SAVE_KEY, V2_SAVE_KEY, applySave, inspectSave, migrateV1, parseSave, readSave, serialise,
   startAutosave, storeSave, type SaveData,
 } from '../../src/core/save';
 import { GEN_VERSION } from '../../src/core/worldgen';
@@ -18,7 +18,8 @@ function makeGame(seed = 1234): Game {
 }
 
 function validSave(): SaveData {
-  return { version: 2, gen: 1, seed: 1234, edits: [], inventory: {}, player: { x: 24, y: 9, z: 24 }, flags: { ledToVillage: false } };
+  // Version 3: world coordinates in the 192 x 68 x 192 world.
+  return { version: 3, gen: 1, origin: [48, 48, 48], seed: 1234, edits: [], inventory: {}, player: { x: 72, y: 57, z: 72 }, flags: { ledToVillage: false } };
 }
 
 beforeEach(() => localStorage.clear());
@@ -57,10 +58,10 @@ describe('save data', () => {
     game.player.pos.x += 0.5;
     game.player.pos.z += 0.25;
     const data = serialise(game, 1234);
-    expect(SAVE_KEY).toBe('blockpals.save.v2');
+    expect(SAVE_KEY).toBe('blockpals.save.v3');
     expect(LEGACY_SAVE_KEY).toBe('blockpals.save.v1');
     expect(data).toEqual({
-      version: 2, gen: GEN_VERSION, seed: 1234, flags: { ledToVillage: false },
+      version: 3, gen: GEN_VERSION, origin: [48, 48, 48], seed: 1234, flags: { ledToVillage: false },
       edits: [[24, 1, 24, BlockId.Air], [25, 14, 25, BlockId.Bricks]],
       inventory: { [BlockId.Wood]: 7, [BlockId.Glass]: 99 }, player: game.player.pos,
       order: [BlockId.Wood, BlockId.Glass], savedAt: expect.any(Number),
@@ -73,13 +74,7 @@ describe('save data', () => {
     expect(restored.spawn).toEqual(game.player.pos);
     expect(restored.world.isDirty()).toBe(false);
     expect(restored.world.edits()).toEqual(data.edits);
-    for (let x = 0; x < 96; x++) {
-      for (let y = 0; y < 20; y++) {
-        for (let z = 0; z < 96; z++) {
-          expect(restored.world.get(x, y, z)).toBe(game.world.get(x, y, z));
-        }
-      }
-    }
+    expect(restored.world.buffer).toEqual(game.world.buffer);
   });
 
   test('serialise returns an independent snapshot', () => {
@@ -92,7 +87,7 @@ describe('save data', () => {
     data.player.x = 10;
     expect(game.world.edits()).toEqual([[24, 1, 24, BlockId.Air]]);
     expect(game.inventory.count(BlockId.Wood)).toBe(3);
-    expect(game.player.pos.x).toBe(24);
+    expect(game.player.pos.x).toBe(generateWorld(1234).spawn.x);
   });
 
   test.each([null, '{', 'null', '[]', '42', '{}', '{"version":2}'])('ignores corrupt save: %s', raw => {
@@ -103,7 +98,7 @@ describe('save data', () => {
     { seed: '1234' }, { seed: null }, { seed: 1.5 },
     { edits: null }, { edits: {} },
     { gen: 0 }, { gen: 'x' },
-    { version: 3 }, { version: 0 },
+    { version: 4 }, { version: 0 },
     { player: null }, { player: [] },
     { player: { x: 24, y: 9 } }, { player: { x: '24', y: 9, z: 24 } },
   ])('rejects malformed fields: %j', patch => {
@@ -111,7 +106,7 @@ describe('save data', () => {
   });
 
   const BAD_EDITS: unknown[] = [[1, 2, 3], [1, 2, 3, 4, 5], [1, 2, 3, -1], [1, 2, 3, FIRST_INVALID_ID], [1, 2, 3, 999], [1, 2, 3, '4'],
-    [1, 2, 3, 1.5], [-1, 2, 3, 4], [96, 2, 3, 4], [1, 20, 3, 4], [1, 2, 96, 4], [1.5, 2, 3, 4], null];
+    [1, 2, 3, 1.5], [-1, 2, 3, 4], [192, 2, 3, 4], [1, 68, 3, 4], [1, 2, 192, 4], [1.5, 2, 3, 4], null];
 
   test.each(BAD_EDITS.map(e => [e]))('one invalid edit %j is skipped, the valid ones are kept', bad => {
     const good: Array<[number, number, number, number]> = [[5, 5, 5, BlockId.Stone], [90, 6, 90, BlockId.Planks]];
@@ -130,8 +125,9 @@ describe('save data', () => {
 
   test('rejects non-finite JSON numbers and missing required fields', () => {
     expect(parseSave(JSON.stringify(validSave()).replace('1234', '1e400'))).toBeNull();
-    expect(parseSave(JSON.stringify(validSave()).replace('"x":24', '"x":1e400'))).toBeNull();
-    for (const key of Object.keys(validSave()).filter(k => k !== 'inventory' && k !== 'flags')) {
+    expect(parseSave(JSON.stringify(validSave()).replace('"x":72', '"x":1e400'))).toBeNull();
+    // origin is informational (a v3 save without it still loads, unshifted: tests/core/saveV3.test.ts).
+    for (const key of Object.keys(validSave()).filter(k => k !== 'inventory' && k !== 'flags' && k !== 'origin')) {
       const data: Record<string, unknown> = { ...validSave() };
       delete data[key];
       expect(parseSave(JSON.stringify(data))).toBeNull();
@@ -162,22 +158,32 @@ describe('save data', () => {
     const { x, y, z } = data.player;
     if (kind === 'underground') data.player.y = 1;
     if (kind === 'outside') data.player.x = -5;
-    if (kind === 'water') data.player = { x: 14, y: 4, z: 32 };
+    if (kind === 'water') data.player = { x: 62, y: 52, z: 80 }; // in the meadow pond (old 14, 4, 32)
     if (kind === 'edited feet') data.edits.push([x, y, z, BlockId.Stone]);
     if (kind === 'edited head') data.edits.push([x, y + 1, z, BlockId.Stone]);
     if (kind === 'removed support') data.edits.push([x, y - 1, z, BlockId.Air]);
     expect(parseSave(JSON.stringify(data))).toEqual(data);
     const restored = applySave(data);
-    expect(restored.spawn).toEqual(generateWorld(1234).spawn);
+    const spawn = generateWorld(1234).spawn;
+    if (kind.startsWith('edited') || kind === 'removed support') {
+      // His saved spot IS the spawn here, so the spawn itself is now buried or over a hole: it moves
+      // to the nearest free standing cell (a block or two away), never left inside a block.
+      const c: [number, number, number] = [Math.floor(restored.spawn.x), restored.spawn.y, Math.floor(restored.spawn.z)];
+      expect(isStandable(restored.world, c)).toBe(true);
+      expect(c).not.toEqual([Math.floor(spawn.x), spawn.y, Math.floor(spawn.z)]);
+      expect(Math.hypot(c[0] - spawn.x, c[1] - spawn.y, c[2] - spawn.z)).toBeLessThan(4);
+    } else {
+      expect(restored.spawn).toEqual(spawn);
+    }
     expect(restored.world.edits()).toEqual(data.edits);
   });
 
   test('checks standability after replaying edits', () => {
     const data = validSave();
-    data.player = { x: 25.5, y: 14, z: 25.5 };
-    data.edits = [[25, 13, 25, BlockId.Planks]];
+    data.player = { x: 73.5, y: 62, z: 73.5 };
+    data.edits = [[73, 61, 73, BlockId.Planks]];
     const restored = applySave(data);
-    expect(isStandable(restored.world, [25, 14, 25])).toBe(true);
+    expect(isStandable(restored.world, [73, 62, 73])).toBe(true);
     expect(restored.spawn).toEqual(data.player);
   });
 });
@@ -265,10 +271,10 @@ describe('save extras', () => {
     const d = parseSave(JSON.stringify({ ...validSave(), inventory: { 4: n } }));
     expect(d!.inventory).toEqual({ 4: n });
   });
-  test('keeps edits but empties a bad inventory', () => {
+  test('keeps edits but empties a bad inventory (a v2 payload: the edit is shifted by 48)', () => {
     const raw = JSON.stringify({ version: 2, gen: 1, seed: 1, edits: [[1, 5, 1, 2]], inventory: { '999': 3 }, player: { x: 1, y: 5, z: 1 } });
     const d = parseSave(raw);
-    expect(d?.edits).toEqual([[1, 5, 1, 2]]);
+    expect(d?.edits).toEqual([[49, 53, 49, 2]]);
     expect(d?.inventory).toEqual({});
   });
   test('saves on pagehide', () => {
@@ -282,7 +288,7 @@ describe('save extras', () => {
 });
 
 
-// ---- Village step 1: version 2 on its own key, migration from v1 ----
+// ---- Village step 1 (v2 on its own key, migration from v1), carried to version 3: the v1 chain ends shifted by +48 ----
 
 import fixture from '../fixtures/legacy-meadow-2026.json';
 
@@ -324,17 +330,21 @@ function findTreeTrunk(): [number, number, number] {
 
 import { generateMeadowStage as generateMeadowStageForTests } from '../../src/core/worldgen';
 
-describe('save v2 and migration', () => {
-  test('migrates v1 to v2 carrying everything over', () => {
+const shift = (e: number[]): [number, number, number, number] => [e[0] + 48, e[1] + 48, e[2] + 48, e[3]];
+const shiftedPlayer = (p: { x: number; y: number; z: number }) => ({ x: p.x + 48, y: p.y + 48, z: p.z + 48 });
+
+describe('save v3 and migration from v1', () => {
+  test('migrates v1 to v3 carrying everything over (shifted by 48 into the big world)', () => {
     const { raw, edits } = legacySave();
     const data = parseSave(raw)!;
-    expect(data.version).toBe(2);
+    expect(data.version).toBe(3);
+    expect(data.migratedFrom).toBe(1);
     expect(data.gen).toBe(1);
     expect(data.seed).toBe(2026);
-    expect(data.edits).toEqual(edits);
+    expect(data.edits).toEqual(edits.map(shift));
     expect(data.inventory).toEqual({ [BlockId.Wood]: 12, [BlockId.Bricks]: 99, [BlockId.Lamp]: 3 });
     expect(data.order).toEqual([BlockId.Bricks, BlockId.Wood, BlockId.Lamp]);
-    expect(data.player).toEqual(legacyPlayer());
+    expect(data.player).toEqual(shiftedPlayer(legacyPlayer()));
     expect(data.flags.ledToVillage).toBe(false);
     expect(migrateV1(JSON.parse(raw)).edits).toEqual(edits);
   });
@@ -342,25 +352,26 @@ describe('save v2 and migration', () => {
   test('keeps every edit at its coordinates, the bag, the order and his position', () => {
     const { raw, edits } = legacySave();
     const restored = applySave(parseSave(raw)!);
-    for (const [x, y, z, id] of edits) expect(restored.world.get(x, y, z), `${x},${y},${z}`).toBe(id);
-    expect(restored.world.edits()).toEqual(edits);
+    for (const [x, y, z, id] of edits.map(shift)) expect(restored.world.get(x, y, z), `${x},${y},${z}`).toBe(id);
+    expect(restored.world.edits()).toEqual(edits.map(shift));
     expect(restored.inventory.count(BlockId.Bricks)).toBe(99);
     expect(restored.inventory.hotbar()).toEqual([BlockId.Bricks, BlockId.Wood, BlockId.Lamp]);
-    expect(restored.spawn).toEqual(legacyPlayer());
+    expect(restored.spawn).toEqual(shiftedPlayer(legacyPlayer()));
   });
 
   test('edits win over stamps (cottage, path)', () => {
     const { raw } = legacySave();
     const fresh = generateWorld(2026).world;
     const restored = applySave(parseSave(raw)!).world;
+    const at = (w: typeof fresh, x: number, y: number, z: number) => w.get(x + 48, y + 48, z + 48);
     // Sanity: these cells really are stamped differently in the fresh world.
-    expect(fresh.get(16, 8, 18)).not.toBe(BlockId.Grass);
-    expect(restored.get(16, 8, 18)).toBe(BlockId.Grass);
-    expect(restored.get(14, 9, 15)).toBe(BlockId.Glass);
-    expect(restored.get(20, 9, 21)).toBe(BlockId.Planks);
-    expect(restored.get(26, 7, 24)).toBe(BlockId.Air);
-    expect(restored.get(28, 8, 24)).toBe(BlockId.Bricks);
-    expect(restored.get(36, 7, 17)).toBe(BlockId.Wood);
+    expect(at(fresh, 16, 8, 18)).not.toBe(BlockId.Grass);
+    expect(at(restored, 16, 8, 18)).toBe(BlockId.Grass);
+    expect(at(restored, 14, 9, 15)).toBe(BlockId.Glass);
+    expect(at(restored, 20, 9, 21)).toBe(BlockId.Planks);
+    expect(at(restored, 26, 7, 24)).toBe(BlockId.Air);
+    expect(at(restored, 28, 8, 24)).toBe(BlockId.Bricks);
+    expect(at(restored, 36, 7, 17)).toBe(BlockId.Wood);
   });
 
   test('a legacy save with no edits matches the fixture meadow outside the stamps', () => {
@@ -368,8 +379,8 @@ describe('save v2 and migration', () => {
       version: 1, seed: 2026, edits: [], inventory: {}, player: { x: 24.5, y: fixture.spawn.y, z: 24.5 },
     }))!;
     const { world, spawn } = applySave(data);
-    expect(spawn.y).toBe(fixture.spawn.y);
-    expect(world.sizeX).toBe(96);
+    expect(spawn.y).toBe(fixture.spawn.y + 48);
+    expect(world.sizeX).toBe(192);
     expect(world.edits()).toEqual([]);
   });
 
@@ -377,17 +388,19 @@ describe('save v2 and migration', () => {
     const game = makeGame(2026);
     const base = parseSave(legacySave().raw)!;
     const ok = applySave(base);
-    expect(isStandable(ok.world, [10, Math.floor(base.player.y), 4])).toBe(true);
+    expect(isStandable(ok.world, [58, Math.floor(base.player.y), 52])).toBe(true);
     expect(ok.spawn).toEqual(base.player);
-    const inWall = applySave({ ...base, edits: [], player: { x: 14.5, y: 9, z: 18.5 } });
+    const inWall = applySave({ ...base, edits: [], player: { x: 62.5, y: 57, z: 66.5 } }); // the cottage wall (old 14.5, 9, 18.5)
     expect(inWall.spawn).toEqual(game.player.pos);
   });
 
-  test('v1 edit outside 48 is skipped; v2 allows up to 95/19/95', () => {
+  test('v1 edit outside 48 is skipped; v2 allows up to 95/19/95 (then shifted); v3 up to 191/67/191', () => {
     const v1 = JSON.parse(legacySave().raw);
     expect(parseSave(JSON.stringify({ ...v1, edits: [[60, 5, 5, BlockId.Stone]] }))!.edits).toEqual([]);
-    expect(parseSave(JSON.stringify({ ...validSave(), edits: [[95, 19, 95, BlockId.Stone]] }))).not.toBeNull();
-    expect(parseSave(JSON.stringify({ ...validSave(), edits: [[96, 19, 95, BlockId.Stone]] }))!.edits).toEqual([]);
+    expect(parseSave(JSON.stringify({ ...validSave(), version: 2, edits: [[95, 19, 95, BlockId.Stone]] }))!.edits).toEqual([[143, 67, 143, BlockId.Stone]]);
+    expect(parseSave(JSON.stringify({ ...validSave(), version: 2, edits: [[96, 19, 95, BlockId.Stone]] }))!.edits).toEqual([]);
+    expect(parseSave(JSON.stringify({ ...validSave(), edits: [[191, 67, 191, BlockId.Stone]] }))!.edits).toEqual([[191, 67, 191, BlockId.Stone]]);
+    expect(parseSave(JSON.stringify({ ...validSave(), edits: [[192, 67, 191, BlockId.Stone]] }))!.edits).toEqual([]);
   });
 
   test('accepts new block ids in edits and bag', () => {
@@ -410,17 +423,18 @@ describe('save v2 and migration', () => {
     const { raw } = legacySave();
     localStorage.setItem(LEGACY_SAVE_KEY, raw);
     const data = readSave(localStorage)!;
-    expect(data.version).toBe(2);
+    expect(data.version).toBe(3);
     expect(localStorage.getItem(LEGACY_SAVE_KEY)).toBe(raw);
     expect(localStorage.getItem(BACKUP_KEY)).toBe(raw);
   });
 
-  test('v2 is written to its own key', () => {
+  test('v3 is written to its own key (never the v1 or v2 key)', () => {
     const { raw } = legacySave();
     localStorage.setItem(LEGACY_SAVE_KEY, raw);
     readSave(localStorage);
     const stored = JSON.parse(localStorage.getItem(SAVE_KEY)!);
-    expect(stored.version).toBe(2);
+    expect(stored.version).toBe(3);
+    expect(localStorage.getItem(V2_SAVE_KEY)).toBeNull();
     expect(storeSave(localStorage, serialise(makeGame(), 1234))).toBe(true);
     expect(localStorage.getItem(LEGACY_SAVE_KEY)).toBe(raw);
   });
@@ -431,33 +445,36 @@ describe('save v2 and migration', () => {
     localStorage.setItem(LEGACY_SAVE_KEY, raw);
     const game = new Game(applySave(readSave(localStorage)!));
     const stop = startAutosave(game, 2026, localStorage);
-    game.world.set(40, 10, 40, BlockId.Stone);
+    game.world.set(88, 58, 88, BlockId.Stone);
     vi.advanceTimersByTime(10_000);
     stop();
     vi.useRealTimers();
     expect(localStorage.getItem(LEGACY_SAVE_KEY)).toBe(raw);
-    expect(readSave(localStorage)!.edits.some(e => e[0] === 40 && e[1] === 10)).toBe(true);
+    expect(localStorage.getItem(V2_SAVE_KEY)).toBeNull();
+    expect(readSave(localStorage)!.edits.some(e => e[0] === 88 && e[1] === 58)).toBe(true);
   });
 
-  test('second launch loads v2 and does not migrate again', () => {
+  test('second launch loads v3 and does not migrate again', () => {
     const { raw } = legacySave();
     localStorage.setItem(LEGACY_SAVE_KEY, raw);
     readSave(localStorage);
     const game = new Game(applySave(readSave(localStorage)!));
-    game.world.set(41, 10, 41, BlockId.Stone);
+    game.world.set(89, 58, 89, BlockId.Stone);
     expect(storeSave(localStorage, serialise(game, 2026))).toBe(true);
     const write = vi.spyOn(Storage.prototype, 'setItem');
     const again = readSave(localStorage)!;
     expect(write).not.toHaveBeenCalled();
-    expect(again.edits.some(e => e[0] === 41)).toBe(true);
+    expect(again.edits.some(e => e[0] === 89)).toBe(true);
   });
 
-  test('a corrupt v2 falls back to migrating v1', () => {
-    const { raw, edits } = legacySave();
+  test('a corrupt v3 does NOT fall back to migrating v1: kept, copied to .bad, a fresh world in memory', () => {
+    const { raw } = legacySave();
     localStorage.setItem(LEGACY_SAVE_KEY, raw);
     localStorage.setItem(SAVE_KEY, '{oops');
-    expect(readSave(localStorage)!.edits).toEqual(edits);
-    expect(parseSave(localStorage.getItem(SAVE_KEY))!.edits).toEqual(edits);
+    expect(readSave(localStorage)).toBeNull();
+    expect(localStorage.getItem(SAVE_KEY)).toBe('{oops');
+    expect(localStorage.getItem(BAD_V3_KEY)).toBe('{oops');
+    expect(localStorage.getItem(LEGACY_SAVE_KEY)).toBe(raw);
   });
 
   test('the backup is never overwritten', () => {
@@ -476,13 +493,13 @@ describe('save v2 and migration', () => {
       if (k === BACKUP_KEY) throw new Error('Quota');
       real.call(this, k, v);
     });
-    expect(readSave(localStorage)!.edits).toEqual(edits);
+    expect(readSave(localStorage)!.edits).toEqual(edits.map(shift));
     expect(localStorage.getItem(SAVE_KEY)).not.toBeNull();
     expect(localStorage.getItem(BACKUP_KEY)).toBeNull();
   });
 
   test('newer saves and unknown versions never crash and are never overwritten', () => {
-    const newer = JSON.stringify({ ...validSave(), version: 3, extra: 'later' });
+    const newer = JSON.stringify({ ...validSave(), version: 4, extra: 'later' });
     localStorage.setItem(SAVE_KEY, newer);
     expect(readSave(localStorage)).toBeNull();
     expect(storeSave(localStorage, serialise(makeGame(), 1234))).toBe(false);
@@ -495,32 +512,35 @@ describe('save v2 and migration', () => {
     expect(JSON.parse(localStorage.getItem(SAVE_KEY)!).gen).toBe(5);
   });
 
-  test('a bad v2 payload is backed up once when v1 is used instead', () => {
+  test('a bad v3 payload is backed up once (v1 is not used instead)', () => {
     const { raw } = legacySave();
     localStorage.setItem(LEGACY_SAVE_KEY, raw);
-    localStorage.setItem(SAVE_KEY, '{"version":2,"broken":true}');
-    expect(readSave(localStorage)).not.toBeNull();
-    expect(localStorage.getItem(BAD_V2_KEY)).toBe('{"version":2,"broken":true}');
-    // A second bad v2 never overwrites the first backup.
+    localStorage.setItem(SAVE_KEY, '{"version":3,"broken":true}');
+    expect(readSave(localStorage)).toBeNull();
+    expect(localStorage.getItem(BAD_V3_KEY)).toBe('{"version":3,"broken":true}');
+    // A second bad v3 never overwrites the first backup.
     localStorage.setItem(SAVE_KEY, 'garbage');
     readSave(localStorage);
-    expect(localStorage.getItem(BAD_V2_KEY)).toBe('{"version":2,"broken":true}');
+    expect(localStorage.getItem(BAD_V3_KEY)).toBe('{"version":3,"broken":true}');
   });
 
-  test('no backup when v2 is simply absent', () => {
+  test('no backup when v3 is simply absent', () => {
     localStorage.setItem(LEGACY_SAVE_KEY, legacySave().raw);
     readSave(localStorage);
-    expect(localStorage.getItem(BAD_V2_KEY)).toBeNull();
+    expect(localStorage.getItem(BAD_V3_KEY)).toBeNull();
   });
 
-  test.each([1, 2])('a v%i saved position inside any house footprint falls back to spawn', version => {
+  test.each([1, 2, 3])('a v%i saved position inside any house footprint falls back to spawn', version => {
     const { village, spawn } = generateWorld(1234);
     for (const house of village.houses) {
       const r = house.rect;
-      const data = { ...validSave(), player: { x: r.x0 + 1.5, y: house.groundY + 1, z: r.z0 + 1.5 } };
+      const world = { x: r.x0 + 1.5, y: house.groundY + 1, z: r.z0 + 1.5 };
+      // v1 and v2 saves hold meadow coordinates (48 less on every axis).
+      const meadow = { x: world.x - 48, y: world.y - 48, z: world.z - 48 };
       const raw = version === 1
-        ? JSON.stringify({ version: 1, seed: 1234, edits: [], inventory: {}, player: data.player })
-        : JSON.stringify(data);
+        ? JSON.stringify({ version: 1, seed: 1234, edits: [], inventory: {}, player: meadow })
+        : version === 2 ? JSON.stringify({ ...validSave(), version: 2, player: meadow })
+          : JSON.stringify({ ...validSave(), player: world });
       const parsed = parseSave(raw);
       // v1 saves only validate inside the old 48x48 meadow; the cottage is the one that can be there.
       if (!parsed) { expect(version).toBe(1); continue; }
@@ -528,14 +548,14 @@ describe('save v2 and migration', () => {
     }
   });
 
-  test('the reset key list covers v2, v1 and the backup', () => {
-    expect([...ALL_SAVE_KEYS]).toEqual(expect.arrayContaining([BACKUP_KEY, BAD_V2_KEY, LEGACY_SAVE_KEY, SAVE_KEY]));
+  test('the reset key list covers v3, v2, v1 and the backups', () => {
+    expect([...ALL_SAVE_KEYS]).toEqual(expect.arrayContaining([BACKUP_KEY, BAD_V3_KEY, LEGACY_SAVE_KEY, SAVE_KEY, V2_SAVE_KEY]));
   });
 });
 
 describe('save safety: damaged, unreadable and failing storage', () => {
   const PLANK_EDIT = [30, 6, 30, BlockId.Planks];
-  const lossyV2 = (): string => JSON.stringify({ ...validSave(), edits: [PLANK_EDIT, [1, 2, 3, 999]] });
+  const lossyV3 = (): string => JSON.stringify({ ...validSave(), edits: [PLANK_EDIT, [1, 2, 3, 999]] });
   const throwOn = (keys: string[], what: 'getItem' | 'setItem') => {
     const real = Storage.prototype[what] as (this: Storage, ...a: string[]) => string | null | void;
     return vi.spyOn(Storage.prototype, what).mockImplementation(function (this: Storage, k: string, v?: string) {
@@ -544,24 +564,24 @@ describe('save safety: damaged, unreadable and failing storage', () => {
     } as never);
   };
 
-  test('S1: a damaged v2 keeps its valid edits and is preserved once before the next save', () => {
-    const raw = lossyV2();
+  test('S1: a damaged v3 keeps its valid edits and is preserved once before the next save', () => {
+    const raw = lossyV3();
     localStorage.setItem(SAVE_KEY, raw);
     localStorage.setItem(LEGACY_SAVE_KEY, legacySave().raw);
     const data = readSave(localStorage)!;
     expect(data.edits).toEqual([PLANK_EDIT]); // not v1's edits
-    expect(localStorage.getItem(BAD_V2_KEY)).toBe(raw);
+    expect(localStorage.getItem(BAD_V3_KEY)).toBe(raw);
     const game = new Game(applySave(data));
     expect(storeSave(localStorage, serialise(game, 1234))).toBe(true);
     expect(parseSave(localStorage.getItem(SAVE_KEY))!.edits).toEqual([PLANK_EDIT]);
-    expect(localStorage.getItem(BAD_V2_KEY)).toBe(raw);
+    expect(localStorage.getItem(BAD_V3_KEY)).toBe(raw);
   });
 
-  test('S1: if the copy of a damaged v2 cannot be kept, v2 is not replaced and the next tick retries', () => {
+  test('S1: if the copy of a damaged v3 cannot be kept, v3 is not replaced and the next tick retries', () => {
     vi.useFakeTimers();
-    const raw = lossyV2();
+    const raw = lossyV3();
     localStorage.setItem(SAVE_KEY, raw);
-    throwOn([BAD_V2_KEY, `${BAD_V2_KEY}.2`, `${BAD_V2_KEY}.3`, `${BAD_V2_KEY}.4`], 'setItem');
+    throwOn([BAD_V3_KEY, `${BAD_V3_KEY}.2`, `${BAD_V3_KEY}.3`, `${BAD_V3_KEY}.4`], 'setItem');
     const data = readSave(localStorage)!;
     const game = new Game(applySave(data));
     const stop = startAutosave(game, 1234, localStorage);
@@ -570,20 +590,20 @@ describe('save safety: damaged, unreadable and failing storage', () => {
     expect(localStorage.getItem(SAVE_KEY)).toBe(raw); // untouched
     vi.restoreAllMocks();
     vi.advanceTimersByTime(10_000); // the copy works now: the retry saves and the original is kept
-    expect(localStorage.getItem(BAD_V2_KEY)).toBe(raw);
+    expect(localStorage.getItem(BAD_V3_KEY)).toBe(raw);
     expect(parseSave(localStorage.getItem(SAVE_KEY))!.edits).toEqual(expect.arrayContaining([PLANK_EDIT]));
     expect(parseSave(localStorage.getItem(SAVE_KEY))!.edits).toHaveLength(2);
     stop();
     vi.useRealTimers();
   });
 
-  test('S2: a corrupt v2 plus v1: when the .bad write throws, v2 is not overwritten by the older v1', () => {
-    localStorage.setItem(SAVE_KEY, '{"version":2,"broken":true}');
+  test('S2: a corrupt v3 plus v1: when the .bad write throws, v3 is not overwritten by the older v1', () => {
+    localStorage.setItem(SAVE_KEY, '{"version":3,"broken":true}');
     localStorage.setItem(LEGACY_SAVE_KEY, legacySave().raw);
-    throwOn([BAD_V2_KEY, `${BAD_V2_KEY}.2`, `${BAD_V2_KEY}.3`, `${BAD_V2_KEY}.4`], 'setItem');
+    throwOn([BAD_V3_KEY, `${BAD_V3_KEY}.2`, `${BAD_V3_KEY}.3`, `${BAD_V3_KEY}.4`], 'setItem');
     const data = readSave(localStorage);
-    expect(data).not.toBeNull(); // he still plays (in memory)
-    expect(localStorage.getItem(SAVE_KEY)).toBe('{"version":2,"broken":true}');
+    expect(data).toBeNull(); // he still plays (a fresh world in memory); the older v1 is never loaded over it
+    expect(localStorage.getItem(SAVE_KEY)).toBe('{"version":3,"broken":true}');
   });
 
   test('a second damaged payload goes to a spare slot, the first copy is never overwritten', () => {
@@ -592,11 +612,11 @@ describe('save safety: damaged, unreadable and failing storage', () => {
     readSave(localStorage);
     localStorage.setItem(SAVE_KEY, 'garbage-two');
     readSave(localStorage);
-    expect(localStorage.getItem(BAD_V2_KEY)).toBe('garbage-one');
-    expect(localStorage.getItem(`${BAD_V2_KEY}.2`)).toBe('garbage-two');
+    expect(localStorage.getItem(BAD_V3_KEY)).toBe('garbage-one');
+    expect(localStorage.getItem(`${BAD_V3_KEY}.2`)).toBe('garbage-two');
   });
 
-  test('S3: a throwing v2 READ is not "absent": v1 is not migrated and nothing is written', () => {
+  test('S3: a throwing v3 READ is not "absent": v1 is not migrated and nothing is written', () => {
     const v2 = JSON.stringify({ ...validSave(), edits: [PLANK_EDIT] });
     localStorage.setItem(SAVE_KEY, v2);
     localStorage.setItem(LEGACY_SAVE_KEY, legacySave().raw);
@@ -613,8 +633,8 @@ describe('save safety: damaged, unreadable and failing storage', () => {
     expect(localStorage.getItem(SAVE_KEY)).toBe(v2);
   });
 
-  test('S3: a throwing read of a version-3 guard cannot be overwritten', () => {
-    const newer = JSON.stringify({ ...validSave(), version: 3 });
+  test('S3: a throwing read of a version-4 guard cannot be overwritten', () => {
+    const newer = JSON.stringify({ ...validSave(), version: 4 });
     localStorage.setItem(SAVE_KEY, newer);
     throwOn([SAVE_KEY], 'getItem');
     expect(storeSave(localStorage, serialise(makeGame(), 1234))).toBe(false);
@@ -622,7 +642,7 @@ describe('save safety: damaged, unreadable and failing storage', () => {
     expect(localStorage.getItem(SAVE_KEY)).toBe(newer);
   });
 
-  test('S3: a throwing v1 read with no v2 does not start a blind overwrite either', () => {
+  test('S3: a throwing v1 read with no v3 or v2 does not start a blind overwrite either', () => {
     localStorage.setItem(LEGACY_SAVE_KEY, legacySave().raw);
     throwOn([LEGACY_SAVE_KEY], 'getItem');
     expect(readSave(localStorage)).toBeNull();

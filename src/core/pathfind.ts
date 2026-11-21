@@ -1,9 +1,9 @@
 import { BLOCKS, BlockId } from './blocks';
-import type { World } from './world';
+import type { WorldCells } from './shifted';
 
 export type Cell = [number, number, number]; // Feet cell.
 
-export function isStandable(world: World, [x, y, z]: Cell): boolean {
+export function isStandable(world: WorldCells, [x, y, z]: Cell): boolean {
   // Support must be inside the world; World.get supplies air above its roof.
   return world.inBounds(x, y - 1, z)
     && BLOCKS[world.get(x, y - 1, z)].solid
@@ -13,12 +13,12 @@ export function isStandable(world: World, [x, y, z]: Cell): boolean {
 }
 
 /** Every step clears both bodies and the lower ceiling; diagonals also clear both flanks. */
-export function canStep(world: World, from: Cell, to: Cell, allowed: (cell: Cell) => boolean = () => true): boolean {
+export function canStep(world: WorldCells, from: Cell, to: Cell, allowed: (cell: Cell) => boolean = () => true): boolean {
   return checkStep(world, from, to, allowed, cell => isStandable(world, cell));
 }
 
 function checkStep(
-  world: World, from: Cell, to: Cell, allowed: (cell: Cell) => boolean,
+  world: WorldCells, from: Cell, to: Cell, allowed: (cell: Cell) => boolean,
   standable: (cell: Cell) => boolean,
 ): boolean {
   const dx = Math.abs(from[0] - to[0]);
@@ -38,7 +38,51 @@ function checkStep(
     }));
 }
 
-export function nearestStandable(world: World, x: number, z: number): Cell | null {
+/**
+ * A body (him, Pip, Orlo, a villager, an animal) placed at `cell` after his edits replayed: never
+ * buried, never in the void, never inside a block. TOTAL: it always returns a cell whose two body
+ * cells are not solid.
+ *  - A standable cell is returned as it is.
+ *  - Otherwise every column is scanned top to bottom (including the original height, and the cell
+ *    on top of the world's highest block), ring by rings outwards, to the whole world if needed;
+ *    the nearest standable cell wins (blocks moved sideways plus blocks moved up or down; a buried
+ *    body prefers going up, one over a hole prefers going down).
+ *  - Only if no standable cell exists anywhere: the cell above the highest solid block of its own
+ *    column (two non-solid body cells, as the world's roof is open air).
+ */
+export function settleCell(world: WorldCells, cell: Cell): Cell {
+  if (isStandable(world, cell)) return cell;
+  const [x, y, z] = cell;
+  const buried = BLOCKS[world.get(x, y, z)].solid || BLOCKS[world.get(x, y + 1, z)].solid;
+  // Smaller is better: blocks moved sideways (ring) plus blocks moved up or down, then the preferred direction.
+  const vert = (cy: number): number => Math.abs(cy - y) * 2 + ((buried ? cy < y : cy > y) ? 1 : 0);
+  const bestIn = (cx: number, cz: number): Cell | null => {
+    let best: Cell | null = null;
+    for (let cy = 1; cy <= world.sizeY; cy++) {
+      if (isStandable(world, [cx, cy, cz]) && (!best || vert(cy) < vert(best[1]))) best = [cx, cy, cz];
+    }
+    return best;
+  };
+  const maxR = Math.max(world.sizeX, world.sizeZ);
+  let best: Cell | null = null;
+  let bestCost = Infinity;
+  for (let r = 0; r <= maxR && 2 * r <= bestCost; r++) {
+    for (let dx = -r; dx <= r; dx++) {
+      for (let dz = -r; dz <= r; dz++) {
+        if (Math.max(Math.abs(dx), Math.abs(dz)) !== r || !world.inBounds(x + dx, 0, z + dz)) continue;
+        const c = bestIn(x + dx, z + dz);
+        const cost = c ? 2 * r + vert(c[1]) : Infinity;
+        if (c && cost < bestCost) { best = c; bestCost = cost; }
+      }
+    }
+  }
+  if (best) return best;
+  const cx = world.inBounds(x, 0, z) ? x : 0;
+  const cz = world.inBounds(x, 0, z) ? z : 0;
+  return [cx, world.topSolidY(cx, cz) + 1, cz];
+}
+
+export function nearestStandable(world: WorldCells, x: number, z: number): Cell | null {
   const cell: Cell = [x, world.topSolidY(x, z) + 1, z];
   return isStandable(world, cell) ? cell : null;
 }
@@ -83,7 +127,7 @@ class Frontier {
 }
 
 export function findPath(
-  world: World, from: Cell, to: Cell, maxNodes = 4000,
+  world: WorldCells, from: Cell, to: Cell, maxNodes = 4000,
   allowed: (cell: Cell) => boolean = () => true,
 ): Cell[] | null {
   if (!isStandable(world, from) || !isStandable(world, to) || !allowed(to)) return null;
@@ -139,7 +183,7 @@ export function findPath(
 }
 
 /** Circle-versus-block clearance at a world-space feet position. */
-function bodyClear(world: World, x: number, y: number, z: number, radius: number): boolean {
+function bodyClear(world: WorldCells, x: number, y: number, z: number, radius: number): boolean {
   for (let bx = Math.floor(x - radius); bx <= Math.floor(x + radius); bx++) {
     for (let bz = Math.floor(z - radius); bz <= Math.floor(z + radius); bz++) {
       const dx = Math.max(bx - x, 0, x - bx - 1);
@@ -151,7 +195,7 @@ function bodyClear(world: World, x: number, y: number, z: number, radius: number
   return true;
 }
 
-function lineClear(world: World, from: Cell, to: Cell, allowed: (cell: Cell) => boolean): boolean {
+function lineClear(world: WorldCells, from: Cell, to: Cell, allowed: (cell: Cell) => boolean): boolean {
   if (from[1] !== to[1]) return false;
   const length = Math.hypot(to[0] - from[0], to[2] - from[2]);
   const samples = Math.max(1, Math.ceil(length / 0.1));
@@ -177,7 +221,7 @@ function lineClear(world: World, from: Cell, to: Cell, allowed: (cell: Cell) => 
 const SMOOTH_LOOKAHEAD = 16;
 
 export function smoothPath(
-  world: World, path: Cell[], from?: Cell, allowed: (cell: Cell) => boolean = () => true,
+  world: WorldCells, path: Cell[], from?: Cell, allowed: (cell: Cell) => boolean = () => true,
 ): Cell[] {
   if (path.length === 0) return [];
   const points = from ? [from, ...path] : path;
@@ -229,7 +273,7 @@ export function goalDistance([x, y, z]: Cell, goal: Cell): number {
  * Returns null when `from` is not standable.
  */
 export function pathTowards(
-  world: World, from: Cell, goal: Cell,
+  world: WorldCells, from: Cell, goal: Cell,
   allowed: (cell: Cell) => boolean = () => true, maxNodes = 8000,
 ): Approach | null {
   if (!isStandable(world, from)) return null;
