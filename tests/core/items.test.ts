@@ -6,7 +6,7 @@ const ids = Object.values(ItemId).filter((v): v is ItemId => typeof v === 'numbe
 
 describe('items', () => {
   test('item ids are stable', () => {
-    expect(ids).toEqual([100, 101, 102, 103, 104, 105, 106, 107, 108, 109, 110]);
+    expect(ids).toEqual([100, 101, 102, 103, 104, 105, 106, 107, 108, 109, 110, 123]);
     expect(ItemId.WheatSeed).toBe(100);
     expect(ItemId.CarrotSeed).toBe(101);
     expect(ItemId.PotatoSeed).toBe(102);
@@ -18,6 +18,7 @@ describe('items', () => {
     expect(ItemId.Egg).toBe(108);
     expect(ItemId.Milk).toBe(109);
     expect(ItemId.Wool).toBe(110);
+    expect(ItemId.Gem).toBe(123); // the caves step (one stack with the grumps' gems)
     expect(Math.min(...ids)).toBeGreaterThanOrEqual(100);
   });
 

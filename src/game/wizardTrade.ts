@@ -1,4 +1,5 @@
 import { MAX_STACK } from '../core/inventory';
+import { ItemId } from '../core/items';
 import { BUNDLE, MYTHICAL, PRICE } from '../core/mythical';
 
 /**
@@ -23,12 +24,12 @@ export interface WizardStock {
   gem: number;
 }
 
-/** The gem item is added by the grumps step (`ItemId.Gem = 123`); the blocks come from `src/core/mythical.ts`. */
+/** The gem is the real Gem item (dug in the caves, found in chests); the blocks come from `src/core/mythical.ts`. */
 export const WIZARD_STOCK: WizardStock = {
   order: MYTHICAL,
   price: PRICE,
   bundle: BUNDLE,
-  gem: 123,
+  gem: ItemId.Gem,
 };
 
 export type TradeResult =

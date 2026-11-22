@@ -81,7 +81,7 @@ describe('review of PR #32 (chunk B)', () => {
     // A RoofTile cap over the middle 50 x 50 (no open ground within 24 of the centre), grass outside it.
     for (let x = 0; x < 60; x++) for (let z = 0; z < 60; z++) w.set(x, 20, z, Math.max(Math.abs(x - 30), Math.abs(z - 30)) <= 25 ? BlockId.RoofTile : BlockId.Grass);
     for (let y = 8; y < 11; y++) w.set(30, y, 30, BlockId.Air);
-    const spot = homeSpot(w, [30, 8, 30], { mouths: [[30, 8, 30]] }, null, [30, 10, 31]);
+    const spot = homeSpot(w, [30, 8, 30], { mouths: [{ cell: [30, 8, 30] }] }, null, [30, 10, 31]);
     expect(spot).not.toEqual([30, 8, 30]);
     expect(isStandable(w, spot)).toBe(true);
     expect(isDeep(w, spot, true)).toBe(false);

@@ -1,4 +1,12 @@
 import { BlockId } from './blocks';
+import { coneFloor, sq2 } from './exactMath';
+import {
+  carveField, carveMouth, carveStairs, floorFromFields, groundTops, inOld, layTrail, planCaves, repairFloors,
+  EMPTY_CAVES, type CaveLayout, type Mouth, type MouthContext,
+} from './caves';
+import { dressCaves } from './caveDress';
+import { stampRuin } from './ruin';
+import { placeTreasureRooms, stampTreasure } from './treasure';
 import { insideWall, LEGACY_WORLD, ORIGIN, V2_WORLD, WORLD } from './bounds';
 import { generateOuter, type OuterInfo } from './outer';
 import type { Cell } from './pathfind';
@@ -11,7 +19,9 @@ import { World } from './world';
 /**
  * Bump when later steps add stamps, so saves can tell which generator made the world. Never lowered.
  * 2: village step 2 (96 x 20 x 96). 3: the wizard's tower, its hill and its path (still 96 x 20 x 96).
- * 4: the 192 x 68 x 192 world, the gen 3 meadow (tower included) unchanged at +ORIGIN.
+ * 4: the 192 x 68 x 192 world, the gen 3 meadow (tower included) unchanged at +ORIGIN, with the caves
+ *    (chunk C was built before 4 shipped, so the caves are part of 4: no save was ever written by a
+ *    gen 4 world without them).
  * Old saves regenerate and replay his edits on top.
  */
 export const GEN_VERSION = 4;
@@ -21,20 +31,35 @@ type Tree = { x: number; z: number };
 
 interface Column { height: number; inPond: boolean; onShore: boolean }
 
+/**
+ * round(5 + (h - 5) * max(0, (d - 6) / 4)) with d = sqrt(d2), exactly: the largest m with
+ * (h - 5) d >= 4m - 22 + 6(h - 5) (Math.round rounds halves up, as floor(x + 0.5)). The v1 meadow is
+ * never below 5 (5 + noise * 4, a plateau of at least 5), so h - 5 >= 0.
+ */
+function pondEase(h: number, d2: number): number {
+  const k = h - 5;
+  if (k <= 0 || d2 <= 36) return 5;
+  for (let m = h; m > 5; m--) {
+    const rhs = 4 * m - 22 + 6 * k;
+    if (rhs <= 0 || d2 * k * k >= rhs * rhs) return m;
+  }
+  return 5;
+}
+
 function column(noise: (x: number, z: number) => number, plateau: number, x: number, z: number): Column {
   const spawnDistance = Math.max(Math.abs(x - 24), Math.abs(z - 24));
   const blend = Math.min(1, Math.max(0, (spawnDistance - 3) / 5));
   const meadow = 5 + noise(x / 12, z / 12) * 4;
-  const hill = Math.floor(11 - Math.hypot(x - 34, z - 12) * 0.75);
+  // Exact integer forms of the v1 formulas (same results, the same on every engine): the hill is
+  // floor(11 - 0.75 d), the pond eases the meadow down by round(5 + (h - 5)(d - 6) / 4).
+  const hill = coneFloor(11, 3, 4, sq2(x - 34, z - 12));
   let height = Math.max(Math.round(plateau + (meadow - plateau) * blend), hill);
 
-  const pondDistance = Math.hypot(x - 14, z - 32);
-  const inPond = pondDistance <= 5;
-  const onShore = pondDistance > 5 && pondDistance <= 6;
+  const pd2 = sq2(x - 14, z - 32);
+  const inPond = pd2 <= 25;
+  const onShore = pd2 > 25 && pd2 <= 36;
   // Ease the meadow down to the sandy bank; the pond has a solid sandy bed.
-  if (pondDistance < 10) {
-    height = Math.round(5 + (height - 5) * Math.max(0, (pondDistance - 6) / 4));
-  }
+  if (pd2 < 100) height = pondEase(height, pd2);
   if (inPond) height = 3;
   if (onShore) height = 5;
   return { height, inPond, onShore };
@@ -68,6 +93,8 @@ export interface GeneratedWorld {
   towerRects: Rect[];
   /** The tower's level hilltop (TOWER_PLAN.pad moved by ORIGIN): arriving there ends Pip's walk. */
   towerPad: Rect;
+  /** The caves: rooms, mouths, stairs, the trail, lights, gems, treasure rooms and the Old Hideout. */
+  caves: CaveLayout;
 }
 
 function plantTree(
@@ -224,7 +251,7 @@ export function generateMeadowWorld(
  * Stages 2 and 3 add the outer land (src/core/outer.ts) around the old rectangle, never inside it.
  * Everything runs in bulk mode: no edit records, a clean world.
  */
-export function generateWorld(seed = 2026): GeneratedWorld {
+export function generateWorld(seed = 2026, opts: { caves?: boolean } = {}): GeneratedWorld {
   const world = new World(WORLD.x, WORLD.y, WORLD.z);
   world.beginBulk();
 
@@ -248,10 +275,81 @@ export function generateWorld(seed = 2026): GeneratedWorld {
   // Stages 2 and 3: the outer ring (its own streams; only columns outside the old rectangle).
   const outer = generateOuter(world, seed);
 
+  // Stages 4 to 9: the caves (their own streams, seed ^ 0xca7e5 and sub-streams). `caves: false` is
+  // for the tests of the earlier stages only; the game always has them.
+  const caves = opts.caves === false ? EMPTY_CAVES : generateCaves(world, seed, {
+    spawn,
+    keepOff: [...village.houses.map(h => h.rect), village.farmPlot, village.farm.pasture, tower.info.rect, ...tower.stampedRects],
+    pathColumns: [
+      ...[...village.routeCells].map(k => { const x = k % world.sizeX; return [x, Math.floor(k / world.sizeX) % world.sizeZ] as [number, number]; }),
+      ...tower.route.map(c => [c[0], c[2]] as [number, number]),
+    ],
+    quarry: village.quarry,
+    outerTrees: outer.trees,
+  });
+
+  // Trees a mouth's open trench cleared are gone from the list too.
+  outer.trees = outer.trees.filter(t => world.get(t.x, world.topSolidY(t.x, t.z), t.z) === BlockId.Leaves);
+
   world.endBulk();
   world.clearEdits();
   world.markClean();
   const p = TOWER_PLAN.pad;
   const towerPad: Rect = { x0: p.x0 + ORIGIN.x, z0: p.z0 + ORIGIN.z, x1: p.x1 + ORIGIN.x, z1: p.z1 + ORIGIN.z };
-  return { world, spawn, village, outer, tower: tower.info, towerRoute: tower.route, towerRects: tower.stampedRects, towerPad };
+  return { world, spawn, village, outer, tower: tower.info, towerRoute: tower.route, towerRects: tower.stampedRects, towerPad, caves };
+}
+
+/**
+ * The caves, in order (plan Task 18): plan rooms (avoiding the Old Hideout's hall), mouths and
+ * stairs, tunnels; treasure rooms; repair the floors; carve the layers, the mouths and the stairs;
+ * stamp the treasure rooms and the Old Hideout; lay the trail; then light everything and set the
+ * gems (the trail, lamps and furnishings are never replaced). Runs in bulk mode inside generateWorld.
+ */
+export function generateCaves(world: World, seed: number, ctx: MouthContext): CaveLayout {
+  const now = (): number => (typeof performance !== 'undefined' ? performance.now() : Date.now());
+  let t = now();
+  const lap = (): number => { const n = now(); const d = n - t; t = n; return d; };
+  const ground = groundTops(world);
+  const plan = planCaves(world, seed, ground, ctx);
+  const treasure = placeTreasureRooms(seed, plan.rooms, { shallow: plan.shallow, deep: plan.deep }, plan.reserved, plan.mouths.map(m => ({ cell: m.o })), plan.thin);
+  repairFloors(plan.shallow);
+  repairFloors(plan.deep);
+  const planMs = lap();
+  const n = world.sizeX * world.sizeY * world.sizeZ;
+  const carved = new Uint8Array(n);
+  const walk = new Uint8Array(n);
+  carveField(world, plan.shallow, carved, walk);
+  carveField(world, plan.deep, carved, walk);
+  const floorOf = floorFromFields([plan.shallow, plan.deep]);
+  const mouths: Mouth[] = plan.mouths.map((m, id) => {
+    const rect = carveMouth(world, ground, m, carved, walk, floorOf);
+    const ramp = m.steps.map(s => [s.x, s.f, s.z] as Cell);
+    return { id, cell: [...m.o] as Cell, rect, stamped: inOld(m.o[0], m.o[2]), room: m.room.id, kind: m.kind, dir: m.dir, ramp };
+  });
+  const stairs = plan.stairs.map(st => carveStairs(world, st, carved, walk, floorOf));
+  const carveMs = lap();
+  for (const tr of treasure) stampTreasure(world, plan.rooms, tr);
+  const ruin = stampRuin(world, seed);
+  const stampMs = lap();
+  const stampedRects = mouths.filter(m => m.stamped).map(m => m.rect);
+  const ring = { x0: ruin.rect.x0 - 1, z0: ruin.rect.z0 - 1, x1: ruin.rect.x1 + 1, z1: ruin.rect.z1 + 1, y0: 0, y1: 27 };
+  const { trail } = layTrail(world, plan.rooms, mouths, walk, [ring, ...treasure.map(tr => ({ ...tr.rect, y0: tr.floorY - 1, y1: tr.floorY + 5 }))]);
+  const trailMs = lap();
+  const dress = dressCaves(world, seed, carved, stampedRects);
+  const dressMs = lap();
+  const tunnels = plan.lines.map(l => {
+    const seen = new Set<string>();
+    const line: Cell[] = [];
+    for (const p of l.points) {
+      const c: Cell = [Math.floor(p.x), p.f, Math.floor(p.z)];
+      const k = `${c[0]},${c[2]}`;
+      if (!seen.has(k)) { seen.add(k); line.push(c); }
+    }
+    return { a: l.a, b: l.b, line };
+  });
+  return {
+    rooms: plan.rooms, edges: plan.edges, mouths, stairs, trail,
+    lights: dress.lights, ore: dress.ore, airCells: dress.airCells, treasure, ruin, stampedRects, tunnels,
+    timings: { plan: planMs, carve: carveMs, stamp: stampMs, trail: trailMs, dress: dressMs },
+  };
 }

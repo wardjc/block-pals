@@ -16,6 +16,12 @@ export enum ItemId {
   Egg,
   Milk,
   Wool,
+  /**
+   * A shiny gem (spec 7f, 7g, 7h): dug from gem stone in the caves, found in treasure chests and,
+   * later, left by cheered-up grumps. One stack, one id: the wizard takes it for his magic blocks.
+   * 111 to 119 stay for baked foods, 120 to 122 for the grumps step's friendly weapons.
+   */
+  Gem = 123,
 }
 
 /** A bag stack: a block or an item. */
@@ -47,6 +53,7 @@ export const ITEMS: Record<ItemId, ItemDef> = {
   [ItemId.Egg]: def(ItemId.Egg, 'egg', '🥚', 'gift', false),
   [ItemId.Milk]: def(ItemId.Milk, 'milk', '🥛', 'food', true),
   [ItemId.Wool]: def(ItemId.Wool, 'wool', '🧶', 'gift', false),
+  [ItemId.Gem]: def(ItemId.Gem, 'gem', '💎', 'gift', false),
 };
 
 export const isItemId = (n: number): n is ItemId => Number.isInteger(n) && Object.hasOwn(ITEMS, n);

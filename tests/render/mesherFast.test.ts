@@ -46,11 +46,26 @@ describe('the fast section mesher on the real 192 x 68 x 192 world', () => {
   });
 
   it('the deep stone sections (y 0..47) of the plain deep world emit almost nothing', () => {
+    const plain = generateWorld(2026, { caves: false }).world;
     let quads = 0;
     for (let cz = 1; cz < czs - 1; cz++) for (let cx = 1; cx < cxs - 1; cx++) {
-      for (let sy = 0; sy < 3; sy++) quads += buildSectionGeometry(world, cx, sy, cz, uvFor).indices.length / 6;
+      for (let sy = 0; sy < 3; sy++) quads += buildSectionGeometry(plain, cx, sy, cz, uvFor).indices.length / 6;
     }
-    // No caves yet: solid rock wall to wall; only the quarry and pond beds can dip into section 2.
+    // Without the caves: solid rock wall to wall; only the quarry and pond beds can dip into section 2.
     expect(quads).toBeLessThan(200);
+  });
+
+  it('with the caves the deep sections hold the cave walls, and the busiest still meshes quickly', () => {
+    let quads = 0, worst = 0;
+    for (let cz = 1; cz < czs - 1; cz++) for (let cx = 1; cx < cxs - 1; cx++) {
+      for (let sy = 0; sy < 3; sy++) {
+        const t0 = performance.now();
+        quads += buildSectionGeometry(world, cx, sy, cz, uvFor).indices.length / 6;
+        worst = Math.max(worst, performance.now() - t0);
+      }
+    }
+    console.log(`mesherFast: cave sections ${quads} quads, slowest ${worst.toFixed(2)} ms`);
+    expect(quads).toBeGreaterThan(20_000);
+    expect(worst).toBeLessThan(30);
   });
 });

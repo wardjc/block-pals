@@ -27,9 +27,9 @@ describe('mythical block ids', () => {
     expect(BlockId.Potato3).toBe(35);
   });
 
-  test('36..39 and 48..55 are unused (spare), and nothing reaches the cave ids 56..71', () => {
+  test('36..39 and 48..55 are unused (spare); the caves follow at 56..64 (see caveBlocks.test.ts)', () => {
     for (const id of [36, 37, 38, 39, 48, 49, 50, 51, 52, 53, 54, 55]) expect(Object.hasOwn(BLOCKS, id)).toBe(false);
-    expect(Math.max(...Object.keys(BLOCKS).map(Number))).toBe(47);
+    expect(Math.max(...Object.keys(BLOCKS).map(Number))).toBe(64);
   });
 
   test('MYTHICAL holds the eight in the fixed order', () => {
@@ -87,8 +87,8 @@ describe('mythical block definitions', () => {
       .toEqual({ solid: glass.solid, collectable: glass.collectable, transparent: glass.transparent });
   });
 
-  test('light flag is exactly Starlight, Moon and Sun', () => {
-    const lit = (Object.values(BLOCKS)).filter(d => d.light).map(d => d.id);
+  test('among the mythical blocks the light flag is exactly Starlight, Moon and Sun', () => {
+    const lit = (Object.values(BLOCKS)).filter(d => d.light && (MYTHICAL as readonly number[]).includes(d.id)).map(d => d.id);
     expect(lit).toEqual([BlockId.StarlightCrystal, BlockId.MoonBlock, BlockId.SunBlock]);
   });
 

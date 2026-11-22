@@ -3,8 +3,8 @@ import { test, expect, type Page } from '@playwright/test';
 import { drag, frames, press, ready, URL, walkTo, type Cell } from './helpers';
 
 // The wizard's tower (spec §7g): the browser story. Mythical blocks are ids 40..47 (Starlight,
-// Rainbow, Cloud, Moon, Sun, Dragon-scale, Star, Magic mirror). The gem item (123) arrives with the
-// grumps step: the gem tests run once giveGem() really adds one, and are skipped (with a note) before.
+// Rainbow, Cloud, Moon, Sun, Dragon-scale, Star, Magic mirror). The gem is the real Gem item (123),
+// added with the caves (dug from gem stone, found in chests); giveGem() puts real gems in the bag.
 const MYTHICAL = [40, 41, 42, 43, 44, 45, 46, 47];
 const RAINBOW = 41;
 const SAVE = 'blockpals.save.v3';
@@ -131,8 +131,7 @@ test.describe('the wizard\'s tower', () => {
     await ev(page, (d, c) => d.teleport(c[0] + 0.5, c[1], c[2] + 0.5), t.route[2]);
     await page.waitForTimeout(27_000);
     expect(await ev(page, d => d.leadTowerState())).not.toBe('leading');
-    const got = await ev<number>(page, d => d.giveGem(1));
-    test.skip(got === 0, 'gems arrive with the grumps step: the gem lead is covered by tests/game/leadTower.test.ts until then');
+    expect(await ev<number>(page, d => d.giveGem(1))).toBe(1);
     await expect.poll(() => ev(page, d => d.leadTowerState()), { timeout: 30_000 }).toBe('leading');
   });
 
@@ -178,8 +177,7 @@ test.describe('the wizard\'s tower', () => {
     expect(await total(page)).toBe(before);
     expect(await ev(page, d => d.wizard().lastKey())).toBe('needGem');
     await expect(page.locator('.wiz-tab[data-tab="puzzle"]')).toHaveClass(/pulse/);
-    const got = await ev<number>(page, d => d.giveGem(1));
-    test.skip(got === 0, 'gems arrive with the grumps step: buying is covered by tests/ui/wizard.test.ts until then');
+    expect(await ev<number>(page, d => d.giveGem(1))).toBe(1);
     await ev(page, d => { d.wizard().tab('puzzle'); d.wizard().tab('trade'); });
     await tapEl(page, '.wiz-card', 2); // Cloud: 1 gem
     expect(await ev(page, d => d.game.inventory.count(42))).toBe(4);
@@ -279,6 +277,10 @@ test.describe('the wizard\'s tower', () => {
     // Stand 3 south of the Rainbow block, looking north at it.
     await ev(page, (d, c) => { d.teleport(c[0] + 0.5, c[1], c[2] + 3.5); d.setCamera(Math.PI, 0.5); }, cells[1]);
     await frames(page, 30);
+    // The quarry's cave mouth is near the square, so the caves below are drawn too: let their lazy
+    // section builds finish first (the check is that the shimmer itself never rebuilds a section).
+    await expect.poll(() => ev<number>(page, d => d.sections().queued), { timeout: 30_000 }).toBe(0);
+    await frames(page, 10);
     const s0 = await ev<any>(page, d => d.stats());
     await page.waitForTimeout(2000);
     const s1 = await ev<any>(page, d => d.stats());

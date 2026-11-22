@@ -1,3 +1,8 @@
+import type { StackId } from './items';
+
+/** ItemId.Gem (items.ts imports this file, so the number is repeated here; a test pins them equal). */
+const GEM_ITEM = 123;
+
 export enum BlockId {
   Air = 0,
   Grass,
@@ -47,6 +52,16 @@ export enum BlockId {
   DragonScaleBlock,
   StarBlock,
   MagicMirror,
+  // The caves (spec 7h). 65 to 71 stay reserved. Existing ids still never change.
+  GlowMushroom = 56,
+  CrystalBlue,
+  CrystalPink,
+  CrystalGreen,
+  GemOre,
+  MossyBricks,
+  Chest,
+  ChestOpen,
+  RuinCrystal,
 }
 
 export interface BlockDef {
@@ -70,6 +85,13 @@ function mythical(id: BlockId, name: string, icon: string, flags: { light?: bool
   const def: BlockDef = { id, name, solid: true, collectable: true, transparent: flags.transparent ?? false, icon };
   if (flags.light) def.light = true;
   if (flags.shimmer) def.shimmer = true;
+  return def;
+}
+
+/** A plain cave cube: solid, collectable; `light` for the glow blocks. */
+function cave(id: BlockId, name: string, icon: string, light = false): BlockDef {
+  const def: BlockDef = { id, name, solid: true, collectable: true, transparent: false, icon };
+  if (light) def.light = true;
   return def;
 }
 
@@ -126,11 +148,35 @@ export const BLOCKS: Record<BlockId, BlockDef> = {
   [BlockId.DragonScaleBlock]: mythical(BlockId.DragonScaleBlock, 'dragon scale block', 'dragonScale'),
   [BlockId.StarBlock]: mythical(BlockId.StarBlock, 'star block', 'star', { shimmer: true }),
   [BlockId.MagicMirror]: mythical(BlockId.MagicMirror, 'magic mirror', 'mirror', { shimmer: true, transparent: true }),
+  // The caves: full bright cubes. Glow is a bright tile (like the Lamp), never a real light.
+  [BlockId.GlowMushroom]: cave(BlockId.GlowMushroom, 'glowing mushroom', 'glowMushroom', true),
+  [BlockId.CrystalBlue]: cave(BlockId.CrystalBlue, 'blue crystal', 'crystalBlue', true),
+  [BlockId.CrystalPink]: cave(BlockId.CrystalPink, 'pink crystal', 'crystalPink', true),
+  [BlockId.CrystalGreen]: cave(BlockId.CrystalGreen, 'green crystal', 'crystalGreen', true),
+  // Digging it gives a Gem (yieldOf), never the ore itself.
+  [BlockId.GemOre]: cave(BlockId.GemOre, 'gem stone', 'gemOre'),
+  [BlockId.MossyBricks]: cave(BlockId.MossyBricks, 'mossy bricks', 'mossyBricks'),
+  // A closed chest opens with a tap and can never be dug or carried (so it can never be lost or doubled).
+  [BlockId.Chest]: { id: BlockId.Chest, name: 'chest', solid: true, collectable: false, transparent: false, icon: 'chest' },
+  [BlockId.ChestOpen]: cave(BlockId.ChestOpen, 'open chest', 'chestOpen'),
+  // Only from the Old Hideout: decoration and light, never sold, never a recipe.
+  [BlockId.RuinCrystal]: cave(BlockId.RuinCrystal, 'ruin crystal', 'ruinCrystal', true),
 };
 
 /** What digging this block leaves in the bag: tilled soil gives plain dirt, everything else itself. */
 export function dropFor(id: BlockId): BlockId {
   return id === BlockId.Farmland ? BlockId.Dirt : id;
+}
+
+/**
+ * What digging this block gives the bag, or null when it gives nothing (air, bedrock, a closed
+ * chest). Gem stone gives one Gem item (the same gem the wizard takes and the grumps leave);
+ * everything else gives what dropFor says. Plants go through the farm instead.
+ */
+export function yieldOf(id: BlockId): StackId | null {
+  if (id === BlockId.GemOre) return GEM_ITEM as StackId;
+  const drop = dropFor(id);
+  return isCarriable(drop) ? drop : null;
 }
 
 /** A growing crop or sapling: a block in the world, never a thing he carries. */
@@ -144,5 +190,6 @@ export function isPlantBlock(id: BlockId): boolean {
  */
 export function isCarriable(id: number): id is BlockId {
   return Number.isInteger(id) && Object.hasOwn(BLOCKS, id)
-    && id !== BlockId.Air && id !== BlockId.Bedrock && id !== BlockId.AppleLeaves && !isPlantBlock(id);
+    && id !== BlockId.Air && id !== BlockId.Bedrock && id !== BlockId.AppleLeaves && !isPlantBlock(id)
+    && id !== BlockId.GemOre && id !== BlockId.Chest;
 }

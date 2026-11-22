@@ -3,6 +3,7 @@ import { BLOCKS, BlockId } from './core/blocks';
 import type { Cell } from './core/pathfind';
 import { applySave, readSave, serialise, startAutosave, storeSave } from './core/save';
 import { generateAsync } from './render/genWorker';
+import { mouthCells } from './core/caves';
 import { GrowthClock } from './core/growth';
 import { cropBlock, seedFor, type CropKind } from './core/crops';
 import { Game } from './game/game';
@@ -64,7 +65,7 @@ const generated = await generateAsync(seed, { onFallback: reason => console.warn
 const genMs = performance.now() - genStart;
 const loaded = saved ? applySave(saved, Date.now(), generated) : null;
 const initial = loaded ?? generated;
-const { world, spawn, village, tower, towerRoute, towerPad } = initial;
+const { world, spawn, village, tower, towerRoute, towerPad, caves } = initial;
 const game = new Game(initial);
 // Plants are blocks; the farm keeps their timers. Offline growth (capped at 8 h) is applied, and any
 // pending stage changes are shown, before the first mesh is built so a catch-up costs no chunk rebuilds.
@@ -81,6 +82,8 @@ if (loaded) herd.restore(loaded.animals, village.farm.herdSpawns, world, roam, l
 else herd.populate(village.farm.herdSpawns);
 game.herd = herd;
 const scene = new GameScene(document.getElementById('game')!, world);
+// Within reach of a cave mouth the layers below are drawn too, so looking into a tunnel never shows a hole.
+scene.setMouths(mouthCells(caves));
 // How far he can see (Task 10b): Auto starts at 40 and grows with the tablet's speed; a grown-up can pin it.
 // The clock has an offset only the ?viewtest feed moves (fake frame times in the e2e test).
 let viewClockOffset = 0;
@@ -582,7 +585,7 @@ const lockedHold = new LockedHold();
 const lead = new LeadToVillage(village.route, village.square, flags.ledToVillage, village.pad);
 // Pip's second walk: to the wizard, once per save, only once he has a gem and the village walk is done.
 const leadTower = makeTowerLead(tower, towerRoute, towerPad, wizard.led, {
-  hasGem: () => game.inventory.count(WIZARD_STOCK.gem as StackId) > 0,
+  hasGem: () => game.inventory.count(ItemId.Gem) > 0,
   ledToVillage: () => flags.ledToVillage,
   villageLeading: () => lead.state === 'leading',
   villagePad: village.pad,
@@ -892,6 +895,15 @@ if (debugOn) {
     deep: () => game.isDeep(),
     goHome: () => game.goHome(),
     genMs: () => genMs,
+    caves: () => ({
+      mouths: caves.mouths.map(m => ({ kind: m.kind, cell: m.cell, ramp: m.ramp })),
+      rooms: caves.rooms.map(r => ({ id: r.id, layer: r.layer, centre: [r.cx, r.floorY, r.cz] })),
+      treasure: caves.treasure.map(t => ({ id: t.id, chest: t.chest, entrance: t.entrance, front: [t.chest[0] - t.dir[0], t.floorY, t.chest[2] - t.dir[1]] })),
+      ruin: caves.ruin && { rect: caves.ruin.rect, floorY: caves.ruin.floorY, chest: caves.ruin.chest },
+      ore: caves.ore.slice(0, 20),
+      lights: caves.lights.length,
+      timings: caves.timings,
+    }),
     look: () => scene.lookNow(),
     loading: () => !!document.getElementById('loading') && !document.getElementById('loading')!.classList.contains('done'),
     sections: () => {
@@ -972,7 +984,7 @@ if (debugOn) {
       },
       entityAt: (x: number, y: number) => entityAt(x, y),
     }),
-    giveGem: (n: number) => { game.inventory.add(WIZARD_STOCK.gem as StackId, n); renderHud(); return game.inventory.count(WIZARD_STOCK.gem as StackId); },
+    giveGem: (n: number) => { game.inventory.add(ItemId.Gem, n); renderHud(); return game.inventory.count(ItemId.Gem); },
     beacon: () => ({ ...lastBeacon, markerVisible: edgeMarker.visible, spriteVisible: beacon.sprite.visible }),
     leadTowerState: () => leadTower.state,
     depthBits: () => {

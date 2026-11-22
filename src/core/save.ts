@@ -10,6 +10,7 @@ import { isStandable, settleCell, type Cell } from './pathfind';
 import type { TowerInfo } from './tower';
 import type { Rect, VillageLayout } from './village';
 import type { World } from './world';
+import type { CaveLayout } from './caves';
 import { GEN_VERSION, generateWorld, type GeneratedWorld } from './worldgen';
 
 /**
@@ -476,6 +477,8 @@ export interface Applied {
   towerRoute: Cell[];
   /** The tower's hilltop, world coordinates. */
   towerPad: Rect;
+  /** The caves as generated (his edits replayed on top: an opened chest stays open). */
+  caves: CaveLayout;
   flags: SaveFlags;
   items: Record<number, number>;
   /** Plant timers to hand to Farm.restore after the edits are in. */
@@ -494,7 +497,7 @@ export interface Applied {
 export function applySave(data: SaveData, now: number = Date.now(), generated?: GeneratedWorld): Applied {
   // Stamps first, then his edits: whatever he built or dug always wins over generated houses and paths.
   const fresh = generated && generated.world.edits().length === 0 ? generated : generateWorld(data.seed);
-  const { world, spawn, village, tower, towerRoute, towerPad } = fresh;
+  const { world, spawn, village, tower, towerRoute, towerPad, caves } = fresh;
   for (const [x, y, z, id] of data.edits) world.replayEdit(x, y, z, id);
   // Replayed edits must remain in every later save, even while the world is clean.
   world.markClean();
@@ -522,6 +525,7 @@ export function applySave(data: SaveData, now: number = Date.now(), generated?: 
     tower: settledTower,
     towerRoute,
     towerPad,
+    caves,
     flags: cleanFlags(data.flags as unknown as Record<string, unknown>),
     items: { ...(data.items ?? {}) },
     farm: {

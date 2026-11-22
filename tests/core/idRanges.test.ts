@@ -5,26 +5,32 @@ import { ATLAS_ROWS } from '../../src/render/atlas';
 
 /**
  * Guards for the caves chunks (bigger-world plan, reconciled with the wizard): the mythical blocks
- * own 40 to 47 with 48 to 55 kept for later ones; the caves blocks will be 56 to 64 (65 to 71
- * reserved); their atlas tiles go after the mythical rows (12 rows today); BlockDef.light already
- * exists on main and is reused, never duplicated.
+ * own 40 to 47 with 48 to 55 kept for later ones; the caves blocks are 56 to 64 (65 to 71
+ * reserved); their atlas tiles go after the mythical rows (rows 12 and 13); BlockDef.light
+ * existed on main and is reused, never duplicated.
  */
-describe('block id ranges and the atlas, before the caves blocks are added', () => {
+describe('block id ranges and the atlas, with the caves blocks added', () => {
   const ids = Object.keys(BLOCKS).map(Number);
 
-  test('the mythical blocks are 40 to 47, and 48 to 71 are free for later mythical and cave blocks', () => {
+  test('the mythical blocks are 40 to 47 with 48 to 55 free; the caves use 56 to 64 and 65 to 71 stay free', () => {
     expect([...MYTHICAL]).toEqual([40, 41, 42, 43, 44, 45, 46, 47]);
-    for (let id = 48; id <= 71; id++) expect(ids, `id ${id}`).not.toContain(id);
-    expect(Math.max(...ids)).toBe(BlockId.MagicMirror);
+    for (let id = 48; id <= 55; id++) expect(ids, `id ${id}`).not.toContain(id);
+    for (let id = 56; id <= 64; id++) expect(ids, `id ${id}`).toContain(id);
+    for (let id = 65; id <= 71; id++) expect(ids, `id ${id}`).not.toContain(id);
+    expect(Math.max(...ids)).toBe(BlockId.RuinCrystal);
     expect(BlockId.MagicMirror).toBe(47);
   });
 
-  test('the atlas has 12 rows (farm 10, mythical 2): cave tiles start at row 12', () => {
-    expect(ATLAS_ROWS).toBe(12);
+  test('the atlas has 14 rows (farm 10, mythical 2, caves 2): the cave tiles start at row 12', () => {
+    expect(ATLAS_ROWS).toBe(14);
   });
 
-  test('BlockDef.light exists and is set only on the lights the wizard step made (and the Lamp is not one of them)', () => {
+  test('BlockDef.light is set on the wizard\'s three lights and the five cave glow blocks (the Lamp is not one of them)', () => {
     const lit = ids.filter(id => BLOCKS[id as BlockId].light === true);
-    expect(lit.sort((a, b) => a - b)).toEqual([BlockId.StarlightCrystal, BlockId.MoonBlock, BlockId.SunBlock]);
+    expect(lit.sort((a, b) => a - b)).toEqual([
+      BlockId.StarlightCrystal, BlockId.MoonBlock, BlockId.SunBlock,
+      BlockId.GlowMushroom, BlockId.CrystalBlue, BlockId.CrystalPink, BlockId.CrystalGreen, BlockId.RuinCrystal,
+    ]);
+    expect(BLOCKS[BlockId.Lamp].light).toBeUndefined();
   });
 });

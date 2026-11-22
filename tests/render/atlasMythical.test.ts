@@ -25,8 +25,8 @@ describe('mythical tiles', () => {
   test('there are eight, appended after the farm tiles; the old positions never move', () => {
     expect(MYTHICAL_TILES).toEqual(['starlight', 'rainbow', 'cloud', 'moon', 'sun', 'dragonScale', 'star', 'mirror']);
     expect(TILE_NAMES.indexOf('potato3')).toBe(37);
-    expect(TILE_NAMES.slice(38)).toEqual(MYTHICAL_TILES);
-    expect(ATLAS_ROWS).toBe(12);
+    expect(TILE_NAMES.slice(38, 46)).toEqual(MYTHICAL_TILES);
+    expect(ATLAS_ROWS).toBe(14); // the cave tiles follow in rows 12 and 13
     expect(TILE_NAMES.length).toBeLessThanOrEqual(ATLAS_COLS * ATLAS_ROWS);
   });
 
