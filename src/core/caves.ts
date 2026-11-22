@@ -695,16 +695,22 @@ export function planCaves(world: World, seed: number, ground: Int16Array, ctx: M
 
   // Mouths first (they only need the land): one candidate of each kind, all keeping clear of each
   // other, found by a deterministic backtracking search. A plan is accepted only with every mouth
-  // and all three stairs. A mouth whose entrance room could not be joined up is banned and the
-  // search runs again; a plan short of stairs is made again with the rooms laid out afresh (a new
-  // variant of their streams). Bounded: at most PLAN_ATTEMPTS plans; the fullest one is kept.
+  // and all three stairs. Each retry lays the rooms out afresh (a new variant of their streams). A
+  // mouth whose entrance room could not be joined up is set aside so the search tries another, but
+  // only while a full set of mouths is still possible without it: once setting aside would leave a
+  // kind with nothing, every candidate is allowed again (a failure in one layout is not a failure
+  // in the next). Bounded: at most PLAN_ATTEMPTS plans; the fullest one is kept.
   const candidates = mouthCandidates(world, seed, ground, thin, ctx);
   const wanted = candidates.filter(l => l.length > 0).length;
   const banned = new Set<string>();
   let best: CavePlan | null = null;
   const fullness = (p: CavePlan): number => p.mouths.length * 10 + p.stairs.length;
   for (let attempt = 0; attempt < PLAN_ATTEMPTS; attempt++) {
-    const picked = pickMouths(candidates, banned);
+    let picked = pickMouths(candidates, banned);
+    if (picked.length < wanted && banned.size > 0) {
+      banned.clear();
+      picked = pickMouths(candidates, banned);
+    }
     const result = planWith(world, seed, thin, hall, ruinRoom, picked.map(p => ({ ...p.plan, room: { ...p.plan.room } })), attempt);
     if (!best || fullness(result) > fullness(best)) best = result;
     if (result.mouths.length === wanted && result.stairs.length === 3) return result;
