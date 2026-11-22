@@ -148,6 +148,12 @@ describe.each(SEEDS)('caves, seed %i', seed => {
 });
 
 describe('cave pieces', () => {
+  test.each([237, 560])('reconsiders mouths after a failed room layout for seed %i', seed => {
+    const { caves } = caveWorld(seed);
+    expect(caves.mouths.map(m => m.kind).sort()).toEqual(['east', 'hill', 'north', 'quarry', 'south', 'west']);
+    expect(caves.stairs).toHaveLength(3);
+  });
+
   test('carving is deterministic (same buffer hash twice)', async () => {
     const { generateWorld } = await import('../../src/core/worldgen');
     const h = (b: Uint8Array): string => createHash('sha256').update(b).digest('hex');
