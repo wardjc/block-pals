@@ -4,7 +4,10 @@ import { canCraft, craft } from '../core/crafting';
 import { cropOf, yields } from '../core/crops';
 import { Inventory, MAX_STACK } from '../core/inventory';
 import { FEEDS, GIFT, isItemId, ITEMS, type ItemId, type StackId } from '../core/items';
-import { findPath, isStandable, pathTowards, smoothPath, type Cell } from '../core/pathfind';
+import { findPath, GENTLE_DROP, isStandable, pathTowards, smoothPath, type Cell } from '../core/pathfind';
+import { EMPTY_CAVES, type CaveLayout } from '../core/caves';
+import { homeSpot, isDeep } from '../core/home';
+import type { Rect, VillageLayout } from '../core/village';
 
 import { canCollect, canPlace, withinPickReach, withinReach } from '../core/placement';
 import { RECIPES } from '../core/recipes';
@@ -22,8 +25,12 @@ export type GameEvent =
   | { type: 'crafted'; recipe: string }
   | { type: 'full'; id: StackId }
   | { type: 'noPath' }
+  /** A tap he cannot walk to while deep underground: the way-up hint, not the plain one. */
+  | { type: 'noPathDeep' }
   | { type: 'walking'; to: Cell }
   | { type: 'lifted' }
+  /** The Home lift put him on the surface (Pip follows). */
+  | { type: 'homeLift' }
   /** A food went to an animal and its gift is in the bag. */
   | { type: 'fed'; animal: number; kind: AnimalKind; gift: ItemId; food: ItemId }
   /** The animal is resting after a gift: it was only happy, nothing was used. */
@@ -69,10 +76,25 @@ export class Game {
   private idleFor = 0;
   private idleHints = 0;
 
-  constructor(opts: { world: World; spawn: { x: number; y: number; z: number }; inventory?: Inventory }) {
+  /** For the Home lift: where the houses, farm beds and mouths are (world coordinates). */
+  private readonly village: VillageLayout | null;
+  private readonly caves: CaveLayout;
+  private readonly homeAvoid: Rect[];
+  private readonly spawnCell: Cell;
+  private deep = false;
+
+  constructor(opts: {
+    world: World; spawn: { x: number; y: number; z: number }; inventory?: Inventory;
+    village?: VillageLayout; caves?: CaveLayout; tower?: { rect: Rect };
+  }) {
     this.world = opts.world;
     this.inventory = opts.inventory ?? new Inventory();
     this.player = new Player(opts.spawn);
+    this.village = opts.village ?? null;
+    this.caves = opts.caves ?? EMPTY_CAVES;
+    this.homeAvoid = opts.tower ? [opts.tower.rect] : [];
+    this.spawnCell = [Math.floor(opts.spawn.x), Math.floor(opts.spawn.y), Math.floor(opts.spawn.z)];
+    this.deep = isDeep(this.world, this.player.feetCell(), false);
     this.farm = new Farm(this.world, this.inventory);
     this.occupiedFn = () => {
       const [x, y, z] = this.player.feetCell();
@@ -232,9 +254,9 @@ export class Game {
   private walk(goal: Cell, mayLift = true, avoid?: (cell: Cell) => boolean): void {
     const allowed = avoid ? (c: Cell) => this.insideWall(c) && !avoid(c) : this.insideWall;
     const start = this.player.feetCell();
-    const approach = pathTowards(this.world, start, goal, allowed);
+    const approach = pathTowards(this.world, start, goal, allowed, 8000, GENTLE_DROP);
     if (approach && approach.distance < approach.startDistance) {
-      const route = findPath(this.world, start, approach.end, 4000, allowed);
+      const route = findPath(this.world, start, approach.end, 4000, allowed, GENTLE_DROP);
       this.player.setPath(route ? smoothPath(this.world, route, start, allowed) : approach.path);
       this.emit({ type: 'walking', to: approach.end });
       return;
@@ -245,7 +267,29 @@ export class Game {
       this.walk(goal, false, avoid);
       return;
     }
-    this.emit({ type: 'noPath' });
+    // Deep underground a failed tap points him at the way up instead (the Home button wobbles).
+    this.emit({ type: this.isDeep() ? 'noPathDeep' : 'noPath' });
+  }
+
+  /** True while he is deep underground (7 blocks in, 5 out), updated every frame. */
+  isDeep(): boolean {
+    return this.deep;
+  }
+
+  /**
+   * The Home lift: puts him on the nearest open surface (homeSpot) and nothing else changes: his bag,
+   * the world and the farm are untouched. Pip joins him (homeLift). Refused while the game is paused.
+   */
+  goHome(): boolean {
+    if (this.paused) return false;
+    const spot = homeSpot(this.world, this.player.feetCell(), this.caves, this.village, this.spawnCell, this.homeAvoid);
+    this.player.pos = { x: spot[0] + 0.5, y: spot[1], z: spot[2] + 0.5 };
+    this.player.setPath(null);
+    this.player.snapVisual();
+    this.deep = isDeep(this.world, spot, false);
+    this.active();
+    this.emit({ type: 'homeLift' });
+    return true;
   }
 
   /**
@@ -409,6 +453,7 @@ export class Game {
       this.player.update(this.world, dt);
       this.eating.update(dt);
     }
+    this.deep = isDeep(this.world, this.player.feetCell(), this.deep);
     this.normaliseSelection();
     if (this.paused) return;
     if (this.idleHints >= IDLE_SECONDS.length) return;

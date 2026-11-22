@@ -158,6 +158,7 @@ describe('the scene drives the shimmer', () => {
     const host = document.createElement('div');
     const scene = new GameScene(host, world);
     scene.followTarget(new THREE.Vector3(...player), 1 / 60);
+    scene.flush(); // every section in view, built once (they build lazily in play)
     return scene;
   }
 
@@ -165,7 +166,7 @@ describe('the scene drives the shimmer', () => {
     const scene = await sceneWith([8, 1, 12], [8, 1, 8]);
     expect(scene.anyVisibleShimmer()).toBe(true);
     const builds = scene.stats().chunkBuilds;
-    expect(builds).toBe(36); // the first build of every chunk
+    expect(builds).toBe(scene.stats().chunks); // the first build of every section in view, once each
     for (let i = 0; i <= 600; i++) scene.render(i / 60);
     const s = scene.stats();
     expect(s.chunkBuilds).toBe(builds);
@@ -195,11 +196,11 @@ describe('the scene drives the shimmer', () => {
     const scene = await sceneWith(null, [8, 1, 8]);
     const world = (scene as unknown as { world: World }).world;
     world.set(9, 1, 12, BlockId.StarBlock);
-    scene.rebuildChunkAt(9, 12);
+    scene.markSectionDirty(9, 1, 12);
     scene.flush();
     expect(scene.anyVisibleShimmer()).toBe(true);
     world.set(9, 1, 12, BlockId.Air);
-    scene.rebuildChunkAt(9, 12);
+    scene.markSectionDirty(9, 1, 12);
     scene.flush();
     expect(scene.anyVisibleShimmer()).toBe(false);
   });
@@ -217,7 +218,7 @@ describe('the scene drives the shimmer', () => {
     scene.render(0.5);
     expect(scene.stats().shimmerRepaints).toBe(1);
     (scene as unknown as { world: World }).world.set(8, 1, 12, BlockId.Air);
-    scene.rebuildChunkAt(8, 12);
+    scene.markSectionDirty(8, 1, 12);
     scene.flush();
     expect(scene.anyVisibleShimmer()).toBe(false);
     for (let i = 0; i < 60; i++) scene.render(1 + i / 60);

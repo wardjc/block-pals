@@ -88,37 +88,112 @@ class Builder {
   }
 }
 
-/** Builds geometry (in world coordinates) for the 16x16-column chunk (cx, cz). */
-export function buildChunkGeometry(world: World, cx: number, cz: number, uvFor: UvFor): ChunkGeometry {
+/** Mesh sections are 16 x 16 x 16: five per column in the 68-high world (y 0..15, ..., 64..67). */
+export const SECTION_HEIGHT = 16;
+export const sectionsPerColumn = (sizeY: number): number => Math.ceil(sizeY / SECTION_HEIGHT);
+
+/** Per block id: 0 nothing, 1 opaque cube, 2 transparent cube, 3 cross plant (looked up once per cell). */
+const KIND = new Uint8Array(256);
+/** 1 when a neighbour of this id lets a face show (air, or a transparent block). */
+const SEE_THROUGH = new Uint8Array(256);
+const SHIMMER = new Uint8Array(256);
+for (const [key, def] of Object.entries(BLOCKS)) {
+  const id = Number(key);
+  KIND[id] = id === BlockId.Air ? 0 : def.shape === 'cross' ? 3 : def.transparent ? 2 : 1;
+  SEE_THROUGH[id] = id === BlockId.Air || def.transparent ? 1 : 0;
+  SHIMMER[id] = def.shimmer ? 1 : 0;
+}
+SEE_THROUGH[BlockId.Air] = 1;
+
+/** uvFor answers allocate; the mesher asks the same few (id, face) pairs thousands of times. */
+const uvCaches = new WeakMap<UvFor, Array<[number, number, number, number] | undefined>>();
+const FACE_INDEX: Record<Face, number> = { top: 0, bottom: 1, south: 2, north: 3, east: 4, west: 5 };
+function cachedUv(uvFor: UvFor): (id: BlockId, face: Face) => [number, number, number, number] {
+  let cache = uvCaches.get(uvFor);
+  if (!cache) { cache = []; uvCaches.set(uvFor, cache); }
+  const c = cache;
+  return (id, face) => {
+    const k = id * 6 + FACE_INDEX[face];
+    return c[k] ?? (c[k] = uvFor(id, face));
+  };
+}
+
+/**
+ * Geometry (world coordinates) of the 16 x 16 x 16 section (cx, sy, cz). Every neighbour is read
+ * from the world buffer by index arithmetic. A neighbour outside the world in x or z counts as solid,
+ * so the world's four outside walls emit nothing (never seen from inside); below y 0 is bedrock and
+ * above the top is air, as World.get says. Faces otherwise as before: a cube face shows next to air or
+ * a different transparent block; a cross plant is two crossed planes in the transparent mesh.
+ */
+export function buildSectionGeometry(world: World, cx: number, sy: number, cz: number, uvFor: UvFor): ChunkGeometry {
   const solid = new Builder();
   const trans = new Builder();
-  const x0 = cx * CHUNK_SIZE;
-  const z0 = cz * CHUNK_SIZE;
-  const x1 = Math.min(x0 + CHUNK_SIZE, world.sizeX);
-  const z1 = Math.min(z0 + CHUNK_SIZE, world.sizeZ);
+  const uv = cachedUv(uvFor);
+  const SX = world.sizeX, SY = world.sizeY, SZ = world.sizeZ;
+  const layer = SX * SZ;
+  const cells = world.buffer;
+  const x0 = cx * CHUNK_SIZE, z0 = cz * CHUNK_SIZE, y0 = sy * SECTION_HEIGHT;
+  const x1 = Math.min(x0 + CHUNK_SIZE, SX), z1 = Math.min(z0 + CHUNK_SIZE, SZ), y1 = Math.min(y0 + SECTION_HEIGHT, SY);
   let hasShimmer = false;
+  const OUTSIDE = BlockId.Bedrock; // opaque: no face on the world's outside walls
+  // Neighbour ids in FACES order: top, bottom, south (+z), north (-z), east (+x), west (-x).
+  const n = [0, 0, 0, 0, 0, 0];
 
-  for (let y = 0; y < world.sizeY; y++) {
-    for (let z = z0; z < z1; z++) {
-      for (let x = x0; x < x1; x++) {
-        const id = world.get(x, y, z);
-        if (id === BlockId.Air) continue;
-        if (BLOCKS[id].shimmer) hasShimmer = true;
-        if (BLOCKS[id].shape === 'cross') {
-          trans.cross(x, y, z, uvFor(id, 'south'));
+  for (let y = Math.max(0, y0); y < y1; y++) {
+    for (let z = Math.max(0, z0); z < z1; z++) {
+      let i = x0 + SX * (z + SZ * y);
+      for (let x = Math.max(0, x0); x < x1; x++, i++) {
+        const id = cells[i];
+        const kind = KIND[id];
+        if (kind === 0) continue;
+        if (SHIMMER[id] === 1) hasShimmer = true;
+        if (kind === 3) {
+          trans.cross(x, y, z, uv(id, 'south'));
           continue;
         }
-        const isTrans = BLOCKS[id].transparent;
-        const target = isTrans ? trans : solid;
-        for (const def of FACES) {
-          const n = def.normal;
-          const nid = world.get(x + n[0], y + n[1], z + n[2]);
-          const show = nid === BlockId.Air || (BLOCKS[nid].transparent && nid !== id);
-          if (show) target.quad(x, y, z, def, uvFor(id, def.face));
+        n[0] = y + 1 < SY ? cells[i + layer] : BlockId.Air;
+        n[1] = y > 0 ? cells[i - layer] : BlockId.Bedrock;
+        n[2] = z + 1 < SZ ? cells[i + SX] : OUTSIDE;
+        n[3] = z > 0 ? cells[i - SX] : OUTSIDE;
+        n[4] = x + 1 < SX ? cells[i + 1] : OUTSIDE;
+        n[5] = x > 0 ? cells[i - 1] : OUTSIDE;
+        const target = kind === 2 ? trans : solid;
+        for (let f = 0; f < 6; f++) {
+          const nid = n[f];
+          if (SEE_THROUGH[nid] === 1 && (nid === BlockId.Air || nid !== id)) target.quad(x, y, z, FACES[f], uv(id, FACES[f].face));
         }
       }
     }
   }
 
   return { ...solid.finish(), transparent: trans.finish(), hasShimmer };
+}
+
+function concat(parts: MeshArrays[]): MeshArrays {
+  let p = 0, idx = 0;
+  for (const a of parts) { p += a.positions.length; idx += a.indices.length; }
+  const out: MeshArrays = {
+    positions: new Float32Array(p), normals: new Float32Array(p), uvs: new Float32Array((p / 3) * 2), indices: new Uint32Array(idx),
+  };
+  let vp = 0, ip = 0;
+  for (const a of parts) {
+    const base = vp / 3;
+    out.positions.set(a.positions, vp);
+    out.normals.set(a.normals, vp);
+    out.uvs.set(a.uvs, (vp / 3) * 2);
+    for (let k = 0; k < a.indices.length; k++) out.indices[ip + k] = a.indices[k] + base;
+    vp += a.positions.length;
+    ip += a.indices.length;
+  }
+  return out;
+}
+
+/**
+ * Geometry for the whole 16 x 16 column (cx, cz): its sections joined. Kept for the step 2 tests and
+ * budget checks; the scene draws sections.
+ */
+export function buildChunkGeometry(world: World, cx: number, cz: number, uvFor: UvFor): ChunkGeometry {
+  const parts: ChunkGeometry[] = [];
+  for (let sy = 0; sy < sectionsPerColumn(world.sizeY); sy++) parts.push(buildSectionGeometry(world, cx, sy, cz, uvFor));
+  return { ...concat(parts), transparent: concat(parts.map(g => g.transparent)), hasShimmer: parts.some(g => g.hasShimmer) };
 }

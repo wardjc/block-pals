@@ -2,7 +2,7 @@ import './ui/styles.css';
 import { BLOCKS, BlockId } from './core/blocks';
 import type { Cell } from './core/pathfind';
 import { applySave, readSave, serialise, startAutosave, storeSave } from './core/save';
-import { generateWorld } from './core/worldgen';
+import { generateAsync } from './render/genWorker';
 import { GrowthClock } from './core/growth';
 import { cropBlock, seedFor, type CropKind } from './core/crops';
 import { Game } from './game/game';
@@ -21,6 +21,8 @@ import { createDebouncer, resolveHold, resolveTap } from './input/tap';
 import { animatePalTrot, animatePlayerWalk, idleVillager, makeWalkState, makeEmblem, makePalModel, makePlayerModel, makeVillagerModel, placeEmblem, setEatPose } from './render/characters';
 import { pipHiddenFor } from './render/cameraRig';
 import { GameScene, PICK_RANGE } from './render/scene';
+import { ViewDistance, type ViewSetting } from './render/viewDistance';
+import { loadViewSetting } from './render/viewSetting';
 import { sfx } from './audio/sfx';
 import { CraftScreen } from './ui/craft';
 import { BagTray } from './ui/bag';
@@ -55,8 +57,13 @@ try { storage = window.localStorage; } catch { /* Storage may be blocked. */ }
 const saved = readSave(storage);
 export const hadSave: boolean = saved !== null; // for Pip's welcome-back line (Task 10)
 const seed = saved?.seed ?? 2026;
-const loaded = saved ? applySave(saved) : null;
-const initial = loaded ?? generateWorld(seed);
+// The world is made in a worker behind the loading picture (the main thread stays free to animate it);
+// without a worker the same generator runs here. His saved edits then replay on top, as before.
+const genStart = performance.now();
+const generated = await generateAsync(seed, { onFallback: reason => console.warn(`Block Pals: generating on the main thread (${reason})`) });
+const genMs = performance.now() - genStart;
+const loaded = saved ? applySave(saved, Date.now(), generated) : null;
+const initial = loaded ?? generated;
 const { world, spawn, village, tower, towerRoute, towerPad } = initial;
 const game = new Game(initial);
 // Plants are blocks; the farm keeps their timers. Offline growth (capped at 8 h) is applied, and any
@@ -74,6 +81,13 @@ if (loaded) herd.restore(loaded.animals, village.farm.herdSpawns, world, roam, l
 else herd.populate(village.farm.herdSpawns);
 game.herd = herd;
 const scene = new GameScene(document.getElementById('game')!, world);
+// How far he can see (Task 10b): Auto starts at 40 and grows with the tablet's speed; a grown-up can pin it.
+// The clock has an offset only the ?viewtest feed moves (fake frame times in the e2e test).
+let viewClockOffset = 0;
+const viewDistance = new ViewDistance(() => performance.now() + viewClockOffset);
+viewDistance.setSetting(loadViewSetting(storage));
+viewDistance.pause(3); // loading and the first frames
+scene.setViewDistance(viewDistance.distance);
 const animalView = new AnimalView(scene.scene);
 const sparkles = new Sparkles(scene.scene);
 const flags = loaded?.flags ?? { ledToVillage: false };
@@ -83,7 +97,7 @@ const wizard = loaded?.wizard ?? newWizardState();
 const saveGame = (): boolean => storeSave(storage, serialise(game, seed, flags, Date.now(), herd.toJSON(), wizard));
 const autosave = createAutosaveControl(() => startAutosave(game, seed, storage, flags, () => herd.toJSON(), wizard), saveGame);
 const usage = new UsageTracker(storage);
-world.onChange((x, _y, z) => scene.rebuildChunkAt(x, z));
+world.onChange((x, y, z) => scene.markSectionDirty(x, y, z));
 
 const playerModel = makePlayerModel();
 scene.add(playerModel);
@@ -392,13 +406,18 @@ const grownUps = new GrownUps(document.getElementById('ui')!, {
   flushSave: () => !autosave.frozen && saveGame(),
   snapshotSave: () => JSON.stringify(serialise(game, seed, flags, Date.now(), herd.toJSON(), wizard)),
   onOpenChange: syncOverlays,
+  getViewSetting: () => viewDistance.currentSetting,
+  onViewSettingSaved: s => viewDistance.setSetting(s),
 });
 
 const flushUsage = (): void => usage.flush();
 setInterval(flushUsage, 15_000);
 document.addEventListener('visibilitychange', () => {
   if (document.visibilityState === 'hidden') flushUsage();
-  else last = performance.now();
+  else {
+    last = performance.now();
+    viewDistance.pause(2); // the first frames back are not the tablet's real speed
+  }
 });
 window.addEventListener('pagehide', flushUsage);
 
@@ -870,6 +889,32 @@ if (debugOn) {
     },
     burst: (kind: 'water' | 'sun' | 'both' | 'heart' | 'crumb') => { const q = game.player.pos; sparkles.burst({ x: q.x + 1.2, y: q.y + 1.6, z: q.z }, kind); },
     worldSize: () => ({ x: world.sizeX, y: world.sizeY, z: world.sizeZ }),
+    deep: () => game.isDeep(),
+    goHome: () => game.goHome(),
+    genMs: () => genMs,
+    look: () => scene.lookNow(),
+    loading: () => !!document.getElementById('loading') && !document.getElementById('loading')!.classList.contains('done'),
+    sections: () => {
+      const s = scene.stats();
+      return { built: s.chunks, meshed: s.meshed, visible: s.visible, frustum: s.frustumVisible, queued: s.queued, zone: s.zone };
+    },
+    view: () => ({
+      distance: viewDistance.distance, setting: viewDistance.currentSetting, pinned: viewDistance.pinned,
+      emaMs: viewDistance.emaMs, ...scene.view(),
+    }),
+    setViewSetting: (s: ViewSetting) => viewDistance.setSetting(s),
+    ...(location.search.includes('viewtest') ? {
+      /** Test only: drives the controller with fake frame times on a fake clock for `seconds` (real frames ignored meanwhile). */
+      viewFeed: (ms: number, seconds: number, ctx?: { backlog?: number; drawCalls?: number; sections?: number }) => {
+        viewFeeding = true;
+        for (let t = 0; t < seconds * 1000; t += ms) {
+          viewClockOffset += ms;
+          viewDistance.frame(ms, ctx ?? { backlog: 0, drawCalls: 50, sections: 30 });
+        }
+        return viewDistance.distance;
+      },
+      viewFeedEnd: () => { viewFeeding = false; },
+    } : {}),
     saveNow,
     eating: () => ({ active: game.eating.active, progress: game.eating.progress, bite: game.eating.bite, food: game.eating.food }),
     layoutFarm: () => ({ beds: village.farm.beds, pool: village.farm.pool, irrigation: village.farm.irrigation, pasture, gate: village.farm.gate, fence: village.farm.fence, path: village.farm.path }),
@@ -939,6 +984,19 @@ if (debugOn) {
 }
 
 let usageMs = 0;
+/** The loading picture fades once the first frame of the world is drawn. */
+let loadingHidden = false;
+function hideLoading(): void {
+  loadingHidden = true;
+  const el = document.getElementById('loading');
+  if (!el) return;
+  el.classList.add('done');
+  window.setTimeout(() => el.remove(), 450);
+}
+let viewFrames = 0;
+let viewSections = 0;
+/** True while the ?viewtest feed drives the view controller (real frames are then ignored). */
+let viewFeeding = false;
 let pipGone = false;
 let debugHidePlayer = false; // ?debug screenshots only
 // Walk cycles advance by the distance actually moved each frame (blocked, paused or standing = 0 = ease to rest).
@@ -999,7 +1057,7 @@ function frame(now: number): void {
     usageMs = 0;
   }
   const p = game.player.pos;
-  playerModel.position.set(p.x, p.y, p.z);
+  playerModel.position.set(p.x, game.player.visualY, p.z); // a gentle drop is a glide
   playerModel.rotation.y = game.player.heading;
   animatePlayerWalk(playerModel, playerWalk, dt, Math.hypot(p.x - prevPlayerX, p.z - prevPlayerZ));
   prevPlayerX = p.x; prevPlayerZ = p.z;
@@ -1039,6 +1097,11 @@ function frame(now: number): void {
   scene.updateMarker(dt);
   updateTowerLight(dt, now / 1000);
   scene.render();
+  // The view distance watches the real frame time and the budgets (the frustum count every 10 frames).
+  if (++viewFrames % 10 === 0) viewSections = scene.frustumSections();
+  if (!viewFeeding) viewDistance.frame(rawMs, { backlog: scene.backlog, drawCalls: scene.renderer.info.render.calls, sections: viewSections });
+  scene.setViewDistance(viewDistance.distance);
+  if (!loadingHidden) hideLoading();
 
   // Redraw the hotbar only when a count or the selection changed.
   const rev = game.inventory.revision;

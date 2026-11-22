@@ -4,6 +4,10 @@ import { transferResetKeys } from '../core/saveTransfer';
 import { REMINDER_OPTIONS, type UsageTracker } from '../core/usage';
 import { saveMapping, type ButtonMapping } from '../input/mapping';
 import { createTransferSection } from './transferSection';
+import { VIEW_SETTINGS, type ViewSetting } from '../render/viewDistance';
+import { saveViewSetting } from '../render/viewSetting';
+
+const VIEW_LABELS: Record<ViewSetting, string> = { auto: 'Auto', near: 'Near', medium: 'Medium', far: 'Far' };
 
 export interface GrownUpsDeps {
   usage: UsageTracker;
@@ -22,6 +26,9 @@ export interface GrownUpsDeps {
   /** The running game as a v3 save, copied when it could not be written first (never stale progress). */
   snapshotSave?(): string;
   onOpenChange(open: boolean): void;
+  /** The grown-ups' "View distance" choice (stored by the panel under blockpals.view.v1). */
+  getViewSetting?(): ViewSetting;
+  onViewSettingSaved?(s: ViewSetting): void;
   reload?: () => void;
   /** Test seam for the checksum. */
   sha256?: (text: string) => Promise<string>;
@@ -208,6 +215,33 @@ export class GrownUps {
     }
     card.appendChild(sel);
     mark();
+
+    card.appendChild(el('h3', 'gu-sub', 'View distance'));
+    card.appendChild(el('p', 'gu-note', 'How far he can see (Auto adjusts to the tablet)'));
+    const views = el('div', 'gu-options gu-view');
+    const markView = (): void => {
+      const current = this.deps.getViewSetting?.() ?? 'auto';
+      views.querySelectorAll('button').forEach(b => {
+        const on = b.dataset.view === current;
+        b.classList.toggle('on', on);
+        b.setAttribute('aria-pressed', String(on));
+      });
+    };
+    for (const v of VIEW_SETTINGS) {
+      const label = VIEW_LABELS[v];
+      const b = el('button', 'gu-opt', label);
+      b.dataset.view = v;
+      b.setAttribute('aria-label', `View distance: ${label}`);
+      b.addEventListener('click', () => {
+        // Applies at once (no Close needed): a tablet setting, not part of the saved game.
+        saveViewSetting(this.deps.storage, v);
+        this.deps.onViewSettingSaved?.(v);
+        markView();
+      });
+      views.appendChild(b);
+    }
+    card.appendChild(views);
+    markView();
 
     const setup = el('button', 'gu-action', 'Set up controller');
     const status = el('p', 'gu-status');

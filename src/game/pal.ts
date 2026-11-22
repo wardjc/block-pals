@@ -1,6 +1,6 @@
 import type { LineKey } from '../content/lines';
 import { insideWall } from '../core/bounds';
-import { canStep, findPath, isStandable, smoothPath, type Cell } from '../core/pathfind';
+import { canStep, dropLanding, findPath, GENTLE_DROP, isStandable, smoothPath, type Cell } from '../core/pathfind';
 import type { World } from '../core/world';
 import type { GameEvent } from './game';
 import { LEAD_CATCH_UP_SPEED, LEAD_SPEED } from './lead';
@@ -41,6 +41,10 @@ export class Pal {
   private leadIndex: () => number = () => -1;
   private leadGoal: Cell | null = null;
   private avoid: Cell = [NaN, 0, NaN];
+  /** Set by a Home lift: Pip appears beside him at the next update. */
+  private liftPending = false;
+  /** His feet cell while Pip has to share it (no free cell near him); cleared when he moves. */
+  private sharing: Cell | null = null;
 
   constructor(
     start: Vec,
@@ -131,7 +135,12 @@ export class Pal {
         this.speak('upYouCome', true);
         return;
       case 'noPath':
+      case 'noPathDeep': // the caves' own way-up line comes with the Home button (Task 21)
         this.speak('noPath');
+        return;
+      case 'homeLift':
+        // He was lifted to the surface: Pip joins him there on the next update (never left behind).
+        this.liftPending = true;
         return;
       case 'idle':
         this.speak(this.hasWood() ? 'idleHint' : 'letsFindWood');
@@ -153,6 +162,11 @@ export class Pal {
   update(world: World, player: Player, dt: number): void {
     if (!Number.isFinite(dt) || dt <= 0) return;
     this.repathCooldown = Math.max(0, this.repathCooldown - dt);
+    if (this.liftPending) {
+      this.liftPending = false;
+      this.teleport(world, player);
+      return;
+    }
     if (this.leadRoute) {
       this.updateLead(world, player, dt);
       return;
@@ -164,8 +178,31 @@ export class Pal {
     const inPlayer = here[0] === playerCell[0] && here[2] === playerCell[2];
     const unsupported = !isStandable(world, here);
 
+    // Sharing his cell (nowhere else near him, e.g. a one-cell shaft) is fine until he moves off it.
+    if (this.sharing && !(this.sharing[0] === playerCell[0] && this.sharing[1] === playerCell[1] && this.sharing[2] === playerCell[2])) this.sharing = null;
+    if (this.sharing) { this.path = []; return; }
     if (dist > TELEPORT_DIST || inPlayer || unsupported || Math.abs(player.pos.y - this.pos.y) > 4) {
       this.teleport(world, player);
+      return;
+    }
+
+    // He is down a narrow hole Pip cannot walk into (no spot beside him at his height): Pip joins him
+    // rather than waiting at the rim (a rim spot within 3 sideways is never "done" while he is below).
+    if (Math.abs(player.pos.y - this.pos.y) > 1 && this.spots(world, player, [1, 2, 3], player.pos).length === 0) {
+      this.teleport(world, player);
+      return;
+    }
+
+    // More than a step above or below him (Pip shared his cell in a shaft and he climbed out, or Pip
+    // waits on a stair above him): being close sideways is not "there". Walk to a spot at his height;
+    // if there is no way within a second, appear beside him.
+    if (Math.abs(player.pos.y - this.pos.y) > 1) {
+      if (!this.pathLeadsNear(player) && this.repathCooldown <= 0) this.repath(world, player);
+      const before = { ...this.pos };
+      this.follow(world, player, dt);
+      if (Math.hypot(this.pos.x - before.x, this.pos.z - before.z) > SPEED * dt * 0.2) this.stuckFor = 0;
+      else this.stuckFor += dt;
+      if (this.stuckFor >= 1) this.teleport(world, player);
       return;
     }
 
@@ -244,7 +281,7 @@ export class Pal {
     const from = this.feetCell();
     const goals = this.leadRoute && this.leadGoal ? [this.leadGoal] : this.spots(world, player, [2, 1], this.pos).slice(0, 6);
     for (const goal of goals) {
-      const p = findPath(world, from, goal, 1500, this.allowed(world));
+      const p = findPath(world, from, goal, 1500, this.allowed(world), GENTLE_DROP);
       if (p) {
         this.path = smoothPath(world, p, from, this.allowed(world));
         return;
@@ -309,6 +346,9 @@ export class Pal {
       to[0] = nx; to[1] = from[1] + dy; to[2] = nz;
       if (canStep(world, from, to, allowed)) return [nx, to[1], nz];
     }
+    // A gentle drop, as he can take one (orthogonal only; canStep checks the column).
+    const landing = dropLanding(world, from, nx, nz, GENTLE_DROP);
+    if (landing !== null && canStep(world, from, [nx, landing, nz], allowed, GENTLE_DROP)) return [nx, landing, nz];
     return undefined;
   }
 
@@ -329,13 +369,37 @@ export class Pal {
     return insideWall(world, x, z);
   }
 
+  /**
+   * Beside him: the usual spots (rings 1 to 3 at his height +-1); else the nearest standable cell within
+   * 4 blocks sideways at his height +-1 (any column but his); else, in a one-cell shaft he glided into,
+   * Pip shares his column so he is never left at the rim.
+   */
   private teleport(world: World, player: Player): void {
-    const spot = this.spots(world, player, [1, 2, 3], player.pos)[0];
+    const spot = this.spots(world, player, [1, 2, 3], player.pos)[0] ?? this.nearestBeside(world, player);
     this.path = [];
     this.waypoint = 0;
     this.stuckFor = 0;
-    if (!spot) return;
-    this.pos = { x: spot[0] + 0.5, y: spot[1], z: spot[2] + 0.5 };
+    const p = player.feetCell();
+    const at: Cell = spot ?? p;
+    this.sharing = spot ? null : [p[0], p[1], p[2]];
+    this.pos = { x: at[0] + 0.5, y: at[1], z: at[2] + 0.5 };
     this.heading = player.heading;
+  }
+
+  private nearestBeside(world: World, player: Player): Cell | null {
+    const [px, py, pz] = player.feetCell();
+    let best: Cell | null = null;
+    let bestD = Infinity;
+    for (let dx = -4; dx <= 4; dx++) for (let dz = -4; dz <= 4; dz++) {
+      if (dx === 0 && dz === 0) continue;
+      if (!this.insideWall(world, [px + dx, 0, pz + dz])) continue;
+      // Only cells at his height (+-1): a spot on the rim above him is not beside him.
+      for (let dy = -1; dy <= 1; dy++) {
+        const cell: Cell = [px + dx, py + dy, pz + dz];
+        const d = Math.hypot(dx, dz) + Math.abs(dy) * 1.5;
+        if (d < bestD && isStandable(world, cell)) { best = cell; bestD = d; }
+      }
+    }
+    return best;
   }
 }
