@@ -4,15 +4,16 @@ import { readFileSync } from 'node:fs';
 import { BlockId } from '../../src/core/blocks';
 import { ItemId } from '../../src/core/items';
 import { CHEST_REWARDS } from '../../src/core/treasure';
-import { CHEST_REVEAL_SECONDS, ChestReveal } from '../../src/ui/chestReveal';
+import { CHEST_REVEAL_SECONDS, CHEST_TAP_GRACE_MS, ChestReveal } from '../../src/ui/chestReveal';
 
 function make() {
   document.body.replaceChildren();
   const root = document.createElement('div');
   document.body.appendChild(root);
   const opened: boolean[] = [];
-  const reveal = new ChestReveal(root, { iconFor: id => `tile-${id}`, onOpenChange: o => opened.push(o) });
-  return { root, reveal, opened };
+  const clock = { t: 1000 };
+  const reveal = new ChestReveal(root, { iconFor: id => `tile-${id}`, onOpenChange: o => opened.push(o), now: () => clock.t });
+  return { root, reveal, opened, clock };
 }
 const cards = (root: HTMLElement) => [...root.querySelectorAll<HTMLElement>('.chest-card')];
 
@@ -57,8 +58,9 @@ describe('ChestReveal (the picture cards after a chest opens)', () => {
   });
 
   test('closes on any tap, and the tap never reaches the world', () => {
-    const { root, reveal } = make();
+    const { root, reveal, clock } = make();
     reveal.show(CHEST_REWARDS.T2);
+    clock.t += CHEST_TAP_GRACE_MS;
     let reached = false;
     document.body.addEventListener('pointerdown', () => { reached = true; });
     const el = root.querySelector<HTMLElement>('.chest-reveal')!;
@@ -66,6 +68,18 @@ describe('ChestReveal (the picture cards after a chest opens)', () => {
     el.dispatchEvent(new Event('click', { bubbles: true }));
     expect(reveal.open).toBe(false);
     expect(reached).toBe(false);
+  });
+
+  test('the click of the very tap that opened the chest does not close the cards at once', () => {
+    const { root, reveal, clock } = make();
+    reveal.show(CHEST_REWARDS.T1);
+    const el = root.querySelector<HTMLElement>('.chest-reveal')!;
+    clock.t += 120;
+    el.dispatchEvent(new Event('click', { bubbles: true }));
+    expect(reveal.open).toBe(true);
+    clock.t += CHEST_TAP_GRACE_MS;
+    el.dispatchEvent(new Event('click', { bubbles: true }));
+    expect(reveal.open).toBe(false);
   });
 
   test('a second show while open replaces the cards and restarts the clock', () => {

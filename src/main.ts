@@ -150,6 +150,9 @@ const voice = new Voice(undefined, {
   audio: () => sfx.audioOut(),
 });
 const lastSpoken: Partial<Record<LineKey, string>> = {};
+/** ?debug only: the keys of Pip's lines in the order they were spoken. */
+const pipSaid: LineKey[] = [];
+const recordPip = import.meta.env.DEV || location.search.includes('debug');
 /** Pip's lead and idle lines: held until the audio context runs, never spoken by the tablet voice while it is locked. */
 const HELD_KEYS: ReadonlySet<LineKey> = new Set<LineKey>([
   'letsMeetNeighbours', 'comeOn', 'thisWay', 'weAreHere', 'cosyHome', 'idleHint', 'letsFindWood',
@@ -162,6 +165,7 @@ const speakVariant = (key: LineKey): void => {
   const text = pickLine(key, lastSpoken[key]);
   if (!text) return; // never speak '' - it would cancel current speech
   lastSpoken[key] = text;
+  if (recordPip && pipSaid.length < 500) pipSaid.push(key);
   orloLast = false;
   voice.say(text, 'pip', { holdForAudio: HELD_KEYS.has(key) });
 };
@@ -998,6 +1002,8 @@ if (debugOn) {
     homeButton: () => { const before = homeFade.running; startHomeLift(); return !before && homeFade.running; },
     home: () => ({ visible: hud.homeVisible, fading: homeFade.running, lead: leadHome.state, target: leadHome.targetIndex(), route: homeRoute?.length ?? 0 }),
     /** The worst straight-line distance from any cave air cell to a glowing block (the "never dark" rule: at most 6). */
+    pipSaid: () => [...pipSaid],
+    routeHome: (x: number, y: number, z: number) => routeHome(world, [x, y, z], caves),
     lightCheck: () => {
       const d = lightDistances(world, caves.airCells, 12);
       let worst = 0;
@@ -1012,7 +1018,8 @@ if (debugOn) {
       mouths: caves.mouths.map(m => ({ kind: m.kind, cell: m.cell, ramp: m.ramp })),
       rooms: caves.rooms.map(r => ({ id: r.id, layer: r.layer, centre: [r.cx, r.floorY, r.cz] })),
       treasure: caves.treasure.map(t => ({ id: t.id, chest: t.chest, entrance: t.entrance, front: [t.chest[0] - t.dir[0], t.floorY, t.chest[2] - t.dir[1]] })),
-      ruin: caves.ruin && { rect: caves.ruin.rect, floorY: caves.ruin.floorY, chest: caves.ruin.chest },
+      ruin: caves.ruin && { rect: caves.ruin.rect, floorY: caves.ruin.floorY, chest: caves.ruin.chest, gaps: caves.ruin.gaps },
+      stairs: caves.stairs.map(s => s.cells[Math.floor(s.cells.length / 2)]),
       ore: caves.ore.slice(0, 20),
       lights: caves.lights.length,
       timings: caves.timings,

@@ -5,11 +5,18 @@ import { stackPicture } from './picture';
 
 /** The cards close by themselves after this long (or on any tap). */
 export const CHEST_REVEAL_SECONDS = 4;
+/**
+ * A tap in the first moment after the cards appear does not close them: the very tap that opened
+ * the chest still sends its click (and a mouse-compatibility click) to whatever is under the finger.
+ */
+export const CHEST_TAP_GRACE_MS = 350;
 
 export interface ChestRevealDeps {
   iconFor(id: StackId): string;
   /** The game pauses while the cards are up (the existing overlay rule). */
   onOpenChange(open: boolean): void;
+  /** Clock in ms; injectable for tests. */
+  now?: () => number;
 }
 
 /**
@@ -22,6 +29,7 @@ export class ChestReveal {
   private readonly row = document.createElement('div');
   private open_ = false;
   private left = 0;
+  private shownAt = -Infinity;
 
   constructor(root: HTMLElement, private readonly deps: ChestRevealDeps) {
     this.el.className = 'chest-reveal';
@@ -35,10 +43,14 @@ export class ChestReveal {
     for (const type of ['pointerdown', 'pointerup', 'pointermove', 'touchstart', 'touchend', 'mousedown', 'mouseup', 'click']) {
       this.el.addEventListener(type, e => {
         e.stopPropagation();
-        if (type === 'pointerdown' || type === 'click') this.hide();
+        if ((type === 'pointerdown' || type === 'click') && this.now() - this.shownAt >= CHEST_TAP_GRACE_MS) this.hide();
       });
     }
     root.appendChild(this.el);
+  }
+
+  private now(): number {
+    return this.deps.now ? this.deps.now() : performance.now();
   }
 
   get open(): boolean {
@@ -48,6 +60,7 @@ export class ChestReveal {
   show(reward: readonly RewardEntry[]): void {
     this.row.replaceChildren(...reward.map(e => this.card(e)));
     this.left = CHEST_REVEAL_SECONDS;
+    this.shownAt = this.now();
     this.el.hidden = false;
     if (this.open_) return;
     this.open_ = true;
