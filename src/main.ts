@@ -8,7 +8,12 @@ import { GrowthClock } from './core/growth';
 import { cropBlock, seedFor, type CropKind } from './core/crops';
 import { Game } from './game/game';
 import { reactionKey } from './game/eating';
-import { FarmHints, type HintContext, type HintKey } from './game/hints';
+import { FarmHints, addHint, digDownReady, hasHint, mergeHints, type HintContext, type HintKey } from './game/hints';
+import { LeadHome } from './game/leadHome';
+import { CaveDiscovery } from './game/underground';
+import { HomeFade } from './ui/homeFade';
+import { routeHome } from './core/home';
+import { lightDistances } from './core/caveDress';
 import { fernGift } from './game/fern';
 import { Herd } from './game/animals';
 import { mulberry32 } from './core/rng';
@@ -150,6 +155,7 @@ const HELD_KEYS: ReadonlySet<LineKey> = new Set<LineKey>([
   'letsMeetNeighbours', 'comeOn', 'thisWay', 'weAreHere', 'cosyHome', 'idleHint', 'letsFindWood',
   'plantSome', 'needWaterSun', 'cropReady', 'holdOutFood', 'tryMunch',
   'letsVisitWizard', 'meetWizard', 'seeTowerLight',
+  'digDown', 'goUp',
 ]);
 const speakVariant = (key: LineKey): void => {
   if (!allowLine(hud.breakOpen, key)) return; // the break reminder is never cut by another line
@@ -288,7 +294,27 @@ const hud = new Hud(document.getElementById('ui')!, stackIcon, {
   onCraft: openCraft,
   onGrownUps: () => {},
   onGrownUpsHold: (down, id) => (down ? grownUps.holdStart(id) : grownUps.holdEnd(id)),
+  onHome: () => startHomeLift(),
 });
+
+// The Home lift (7h): the white-gold fade out, the move behind it, the fade back in. Touch or pad.
+const homeFade = new HomeFade(document.getElementById('ui')!);
+function startHomeLift(): void {
+  if (!game.isDeep() || homeFade.running || game.paused || hud.blockingOverlayOpen) return;
+  sfx.tap();
+  game.player.setPath(null);
+  game.player.setStick(0, 0);
+  homeFade.start(() => {
+    if (!game.goHome()) return;
+    // Pip joins him (the homeLift event) and the camera jumps with him behind the fade.
+    if (leadHome.state === 'leading') pal.setLead(null);
+    leadHome.reset();
+    homeRoute = null;
+    scene.snapFollow();
+    viewDistance.pause(2); // the frames round the lift are not the tablet's real speed
+  });
+}
+game.onHomeRequest = startHomeLift;
 
 hud.onMunch(() => game.applyIntent({ kind: 'eat' }));
 
@@ -594,6 +620,45 @@ const feet: Cell = [0, 0, 0]; // reused every frame
 const isAudioLocked = (): boolean => audioLocked(tapped, sfx.audioOut()?.ctx.state);
 const lockedHold = new LockedHold();
 const lead = new LeadToVillage(village.route, village.square, flags.ledToVillage, village.pad);
+// Underground (7h): Pip leads him home on foot after a quiet spell; first visits are saved as flags.
+const leadHome = new LeadHome();
+let homeRoute: Cell[] | null = null;
+const discovery = new CaveDiscovery(world, caves, flags);
+/** Pip's cave lines waiting for a quiet moment (a few seconds at most, then dropped), and what saying one sets. */
+const caveLines: Array<{ key: LineKey; left: number; said?: () => void }> = [];
+const queueCaveLine = (key: LineKey, seconds: number, said?: () => void): void => {
+  if (!caveLines.some(l => l.key === key)) caveLines.push({ key, left: seconds, said });
+};
+function beginLeadHome(cell: Cell): void {
+  // Never over another walk Pip is leading.
+  if (pal.leading || lead.state === 'leading' || leadTower.state === 'leading') { leadHome.decline(); return; }
+  const route = routeHome(world, [cell[0], cell[1], cell[2]], caves);
+  if (!route || route.length < 2) { leadHome.decline(); return; }
+  leadHome.begin(route, cell);
+  homeRoute = route;
+  pal.setLead(route, () => leadHome.targetIndex());
+  pendingPip = 'goUp';
+}
+const atRouteEnd = (cell: Cell): boolean => {
+  const end = homeRoute?.[homeRoute.length - 1];
+  return !!end && Math.hypot(cell[0] - end[0], cell[2] - end[2]) <= 2 && Math.abs(cell[1] - end[1]) <= 2;
+};
+game.on(e => {
+  if (e.type === 'noPathDeep') {
+    // A tap he cannot walk to while deep: the Home button wobbles and Pip offers the way up (once a trip).
+    hud.wobbleHome();
+    if (leadHome.offerNow()) beginLeadHome(game.player.feetCell());
+    else pal.react('noPath');
+  } else if (e.type === 'gem') {
+    if (!hasHint(flags, 'gemFound')) queueCaveLine('gemFound', 12, () => { addHint(flags, 'gemFound'); saveNow(); });
+  } else if (e.type === 'chestOpened') {
+    if (hints.reactionReady('treasureFound', Date.now())) queueCaveLine('treasureFound', 6, () => hints.reactionSaid('treasureFound', Date.now()));
+  }
+});
+// "Let's dig down and find caves": the second idle hint, once, after the village walk and before he has been deep.
+pal.setIdleLine(n => (digDownReady(flags, n) ? 'digDown' : null), k => {
+  if (k === 'digDown' && lineSpoken) { addHint(flags, 'digDown'); saveNow(); }
+});
 // Pip's second walk: to the wizard, once per save, only once he has a gem and the village walk is done.
 const leadTower = makeTowerLead(tower, towerRoute, towerPad, wizard.led, {
   hasGem: () => game.inventory.count(ItemId.Gem) > 0,
@@ -647,6 +712,10 @@ function updateVillage(dt: number): void {
   const pp = game.player.pos;
   feet[0] = Math.floor(pp.x); feet[1] = Math.floor(pp.y); feet[2] = Math.floor(pp.z);
   const cell = feet;
+  const evH = leadHome.update(dt, game.isDeep(), acted, leadPaused(paused, breakOpen), atRouteEnd(cell), cell);
+  if (evH === 'offer') beginLeadHome(cell);
+  else if (evH === 'arrive') { pal.setLead(null); homeRoute = null; pendingPip = 'backUp'; }
+  else if (evH === 'giveUp') { pal.setLead(null); homeRoute = null; }
   const ev = lead.update(dt, cell, acted, leadPaused(paused, breakOpen));
   const evT = leadTower.update(dt, cell, acted, leadPaused(paused, breakOpen));
   acted = false;
@@ -666,6 +735,7 @@ function updateVillage(dt: number): void {
     flags.ledToVillage = true;
     saveNow();
   }
+  updateUnderground(dt, cell, leadPaused(paused, breakOpen));
   if (paused) return;
   // Warm the clips of a neighbour he is walking towards.
   for (const { def, rect: r } of warmZones) {
@@ -727,7 +797,7 @@ function updateVillage(dt: number): void {
       // Checked again with fresh facts (he may have put the food away since it was queued).
       if (!hud.breakOpen && hints.shouldSay(said, hintContext(cell)) && pal.react(said) && lineSpoken) {
         hints.markSeen(said);
-        flags.hints = hints.seen();
+        flags.hints = mergeHints(flags.hints, hints.seen()); // the caves' hints stay beside the farm's
       }
     } else {
       sayLine(said);
@@ -784,6 +854,25 @@ function updateVillage(dt: number): void {
       cosySaid = true;
       pendingPip = 'cosyHome';
     }
+  }
+}
+
+/** First visits underground (saved at once) and Pip's cave lines, said when he is free to talk. */
+function updateUnderground(dt: number, cell: Cell, paused: boolean): void {
+  for (const ev of discovery.update(cell, game.isDeep())) {
+    if (ev === 'cavesSeen') { flags.cavesSeen = true; queueCaveLine('cavesLit', 10); }
+    else { flags.ruinFound = true; queueCaveLine('oldBase', 10); }
+    saveNow();
+  }
+  if (caveLines.length === 0 || hud.breakOpen) return;
+  const next = caveLines[0];
+  next.left -= dt;
+  if (next.left <= 0) { caveLines.shift(); return; }
+  if (paused && next.key !== 'treasureFound') return; // the chest's own line goes with its cards
+  if (pendingPip !== null || voice.speaking() || isAudioLocked()) return;
+  if (pal.react(next.key) && lineSpoken) {
+    caveLines.shift();
+    next.said?.();
   }
 }
 
@@ -905,6 +994,19 @@ if (debugOn) {
     worldSize: () => ({ x: world.sizeX, y: world.sizeY, z: world.sizeZ }),
     deep: () => game.isDeep(),
     goHome: () => game.goHome(),
+    /** The real Home button's path: the fade, then the lift (false when it would do nothing). */
+    homeButton: () => { const before = homeFade.running; startHomeLift(); return !before && homeFade.running; },
+    home: () => ({ visible: hud.homeVisible, fading: homeFade.running, lead: leadHome.state, target: leadHome.targetIndex(), route: homeRoute?.length ?? 0 }),
+    /** The worst straight-line distance from any cave air cell to a glowing block (the "never dark" rule: at most 6). */
+    lightCheck: () => {
+      const d = lightDistances(world, caves.airCells, 12);
+      let worst = 0;
+      for (let i = 0; i < d.length; i++) if (d[i] > worst) worst = d[i];
+      return worst;
+    },
+    openChests: () => [...caves.treasure.map(t => ({ id: t.id as string, cell: t.chest })), ...(caves.ruin ? [{ id: 'R', cell: caves.ruin.chest }] : [])]
+      .map(c => ({ ...c, open: world.get(c.cell[0], c.cell[1], c.cell[2]) === BlockId.ChestOpen })),
+    chestReveal: () => ({ open: chestReveal.open, cards: document.querySelectorAll('.chest-card').length }),
     genMs: () => genMs,
     caves: () => ({
       mouths: caves.mouths.map(m => ({ kind: m.kind, cell: m.cell, ramp: m.ramp })),
@@ -1045,7 +1147,7 @@ function frame(now: number): void {
   } else if (bagTray.isOpen) {
     game.player.setStick(0, 0);
     bagTray.padInput(stick, pressed);
-  } else if (hud.blockingOverlayOpen) {
+  } else if (hud.blockingOverlayOpen || homeFade.running) {
     game.player.setStick(0, 0);
     if (chestReveal.open && pressed.length > 0) chestReveal.hide(); // any pad button closes the chest cards too
   } else {
@@ -1074,6 +1176,8 @@ function frame(now: number): void {
   }
   sparkles.update(dt);
   chestReveal.update(dt);
+  homeFade.update(rawMs / 1000);
+  hud.setHomeVisible(game.isDeep() && !homeFade.running);
   updateShimmer(dt);
   // Usage is counted once a second, not every frame (it caps each tick at 5 s anyway).
   usageMs += rawMs;

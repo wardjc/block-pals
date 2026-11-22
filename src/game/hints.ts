@@ -1,4 +1,29 @@
 import type { LineKey } from '../content/lines';
+import type { SaveFlags } from '../core/save';
+
+/** The caves' once-hints (7h), saved in `flags.hints` beside the farm's. */
+export type CaveHint = 'digDown' | 'gemFound';
+
+export const hasHint = (flags: Pick<SaveFlags, 'hints'>, name: string): boolean => (flags.hints ?? []).includes(name);
+
+/** Adds a hint to the saved list once; every other hint stays (additive, never lowered). */
+export function addHint(flags: Pick<SaveFlags, 'hints'>, name: string): void {
+  if (hasHint(flags, name)) return;
+  flags.hints = [...(flags.hints ?? []), name];
+}
+
+/** Keeps every saved hint and adds the farm's (the farm tracker only knows its own five). */
+export function mergeHints(saved: readonly string[] | undefined, farm: readonly string[]): string[] {
+  return [...(saved ?? []), ...farm.filter(h => !(saved ?? []).includes(h))];
+}
+
+/**
+ * "Let's dig down and find caves": the second idle hint, once per save, only after the village
+ * walk and only while he has never been deep in a real cave.
+ */
+export function digDownReady(flags: Pick<SaveFlags, 'ledToVillage' | 'cavesSeen' | 'hints'>, idleNumber: number): boolean {
+  return idleNumber === 2 && flags.ledToVillage && flags.cavesSeen !== true && !hasHint(flags, 'digDown');
+}
 
 /** Once-only hints, saved (`flags.hints`). Each is a plain-word line from Pip. */
 export type HintKey = 'plantSome' | 'needWaterSun' | 'cropReady' | 'holdOutFood' | 'tryMunch';

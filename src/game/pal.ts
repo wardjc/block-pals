@@ -32,6 +32,8 @@ export class Pal {
   private placeCount = 0;
   private hop = false;
   private hasWood: () => boolean = () => true;
+  private idleLine: (n: number) => LineKey | null = () => null;
+  private idleSaid: (key: LineKey) => void = () => {};
   private speed = SPEED;
   private hushUntil = 0;
   /** True while someone Pip must never talk over is speaking (Orlo). */
@@ -57,6 +59,15 @@ export class Pal {
   /** Pip holds back every line (but the break reminder and his welcome) while this is true: Orlo is never cut off. */
   setQuiet(fn: () => boolean): void {
     this.quiet = fn;
+  }
+
+  /**
+   * A line that replaces an idle hint (the caves' digDown, once), or null for the usual one;
+   * `said` hears which line was really said.
+   */
+  setIdleLine(fn: (n: number) => LineKey | null, said: (key: LineKey) => void = () => {}): void {
+    this.idleLine = fn;
+    this.idleSaid = said;
   }
 
   /** Lets Pip know whether the player holds any wood (for the idle hint). */
@@ -135,16 +146,26 @@ export class Pal {
         this.speak('upYouCome', true);
         return;
       case 'noPath':
-      case 'noPathDeep': // the caves' own way-up line comes with the Home button (Task 21)
         this.speak('noPath');
         return;
-      case 'homeLift':
-        // He was lifted to the surface: Pip joins him there on the next update (never left behind).
-        this.liftPending = true;
+      case 'noPathDeep':
+        // Deep underground the game answers instead (the Home button wobbles and Pip offers the way up).
         return;
-      case 'idle':
+      case 'homeLift':
+        // He was lifted to the surface: Pip joins him there on the next update (never left behind),
+        // and says they are back in the daylight.
+        this.liftPending = true;
+        this.speak('backUp', true);
+        return;
+      case 'idle': {
+        const instead = this.idleLine(e.n ?? 0);
+        if (instead) {
+          if (this.speak(instead)) this.idleSaid(instead);
+          return;
+        }
         this.speak(this.hasWood() ? 'idleHint' : 'letsFindWood');
         return;
+      }
       default:
     }
   }

@@ -46,7 +46,8 @@ export type GameEvent =
   | { type: 'ate'; id: ItemId }
   /** He asked to talk to the wizard (a tap on him, or the pad facing him): main opens his screen. */
   | { type: 'talk' }
-  | { type: 'idle' };
+  /** n: which idle hint this is (1 after 20 s of quiet, 2 after another 60 s). */
+  | { type: 'idle'; n?: number };
 
 /** Seconds of quiet before each idle hint; after the last one Pip waits for the next action. */
 const IDLE_SECONDS = [20, 60];
@@ -74,6 +75,8 @@ export class Game {
   /** While true (overlay open) the player does not move. */
   paused = false;
   onCraftRequest: () => void = () => {};
+  /** The pad asked for the Home lift (main plays the fade, then calls goHome). */
+  onHomeRequest: () => void = () => {};
   /** True when the wizard is right in front of him (set by main): the pad's place button talks instead. */
   wizardInFront: () => boolean = () => false;
 
@@ -455,6 +458,12 @@ export class Game {
         this.active();
         this.onCraftRequest();
         return;
+      case 'home':
+        // The Home button's pad twin: only while he is deep (when the button shows), never while paused.
+        if (this.paused || !this.deep) return;
+        this.active();
+        this.onHomeRequest();
+        return;
     }
   }
 
@@ -497,7 +506,7 @@ export class Game {
     if (this.idleFor >= IDLE_SECONDS[this.idleHints]) {
       this.idleFor = 0;
       this.idleHints++;
-      this.emit({ type: 'idle' });
+      this.emit({ type: 'idle', n: this.idleHints });
     }
   }
 }
