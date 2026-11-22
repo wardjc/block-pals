@@ -654,7 +654,7 @@ game.on(e => {
     if (leadHome.offerNow()) beginLeadHome(game.player.feetCell());
     else pal.react('noPath');
   } else if (e.type === 'gem') {
-    if (!hasHint(flags, 'gemFound')) queueCaveLine('gemFound', 12, () => { addHint(flags, 'gemFound'); saveNow(); });
+    if (!hasHint(flags, 'gemFound')) queueCaveLine('gemFound', 20, () => { addHint(flags, 'gemFound'); saveNow(); });
   } else if (e.type === 'chestOpened') {
     if (hints.reactionReady('treasureFound', Date.now())) queueCaveLine('treasureFound', 6, () => hints.reactionSaid('treasureFound', Date.now()));
   }
@@ -720,8 +720,11 @@ function updateVillage(dt: number): void {
   if (evH === 'offer') beginLeadHome(cell);
   else if (evH === 'arrive') { pal.setLead(null); homeRoute = null; pendingPip = 'backUp'; }
   else if (evH === 'giveUp') { pal.setLead(null); homeRoute = null; }
-  const ev = lead.update(dt, cell, acted, leadPaused(paused, breakOpen));
-  const evT = leadTower.update(dt, cell, acted, leadPaused(paused, breakOpen));
+  // The walks to the village and the tower are never offered while he is deep underground (their
+  // clocks wait): down there the way up comes first, and Pip's own lead home must not be crowded out.
+  const holdOffer = (l: LeadToVillage): boolean => game.isDeep() && l.state === 'waiting';
+  const ev = lead.update(dt, cell, acted, leadPaused(paused, breakOpen) || holdOffer(lead));
+  const evT = leadTower.update(dt, cell, acted, leadPaused(paused, breakOpen) || holdOffer(leadTower));
   acted = false;
   if (evT === 'start') { pal.setLead(towerRoute, () => leadTower.targetIndex()); pendingPip = 'letsVisitWizard'; }
   else if (evT === 'comeOn' || evT === 'thisWay') pendingPip = evT;
@@ -864,8 +867,8 @@ function updateVillage(dt: number): void {
 /** First visits underground (saved at once) and Pip's cave lines, said when he is free to talk. */
 function updateUnderground(dt: number, cell: Cell, paused: boolean): void {
   for (const ev of discovery.update(cell, game.isDeep())) {
-    if (ev === 'cavesSeen') { flags.cavesSeen = true; queueCaveLine('cavesLit', 10); }
-    else { flags.ruinFound = true; queueCaveLine('oldBase', 10); }
+    if (ev === 'cavesSeen') { flags.cavesSeen = true; queueCaveLine('cavesLit', 20); }
+    else { flags.ruinFound = true; queueCaveLine('oldBase', 20); }
     saveNow();
   }
   if (caveLines.length === 0 || hud.breakOpen) return;
@@ -1003,6 +1006,10 @@ if (debugOn) {
     home: () => ({ visible: hud.homeVisible, fading: homeFade.running, lead: leadHome.state, target: leadHome.targetIndex(), route: homeRoute?.length ?? 0 }),
     /** The worst straight-line distance from any cave air cell to a glowing block (the "never dark" rule: at most 6). */
     pipSaid: () => [...pipSaid],
+    /** Test only: ends the line now playing (headless audio clocks may never fire a clip's end). */
+    hushVoice: () => voice.stop(),
+    /** Test only: as if Pip had already walked him to the village (the flag is saved with the next save). */
+    skipVillageWalk: () => { flags.ledToVillage = true; if (lead.state === 'leading') pal.setLead(null); lead.state = 'done'; pendingPip = null; },
     routeHome: (x: number, y: number, z: number) => routeHome(world, [x, y, z], caves),
     lightCheck: () => {
       const d = lightDistances(world, caves.airCells, 12);
