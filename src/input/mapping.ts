@@ -1,4 +1,5 @@
-export type Action = 'collect' | 'place' | 'nextSlot' | 'craft';
+/** 'home' is the Home button's pad twin (fixed buttons, see HOME_BUTTONS in gamepad.ts). */
+export type Action = 'collect' | 'place' | 'nextSlot' | 'craft' | 'home';
 
 export interface ButtonMapping {
   collect: number;

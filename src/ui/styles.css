@@ -854,3 +854,102 @@ html, body {
   .wiz-sym.big { width: 88px; height: 88px; }
   .wiz-sym { width: 52px; height: 52px; }
 }
+
+/* What came out of a treasure chest: big bright cards, a picture, a digit and dots (plan Task 19). */
+.chest-reveal {
+  position: fixed;
+  inset: 0;
+  z-index: 55;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+  gap: 16px;
+  background: rgba(255, 244, 200, 0.82);
+  animation: chest-in 0.25s ease-out;
+}
+.chest-reveal[hidden] { display: none; }
+.chest-lid { font-size: 96px; line-height: 1; animation: chest-bob 1.2s ease-in-out infinite; }
+.chest-row {
+  display: flex;
+  flex-wrap: wrap;
+  justify-content: center;
+  gap: 14px;
+  max-width: min(94vw, 1200px);
+}
+.chest-card {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  min-width: 120px;
+  min-height: 150px;
+  padding: 10px 8px;
+  border: 5px solid #ffcf4a;
+  border-radius: 22px;
+  background: #fffdf2;
+  box-shadow: 0 0 24px 6px rgba(255, 207, 74, 0.6);
+  animation: chest-card-in 0.35s ease-out both;
+}
+.chest-pic {
+  box-sizing: content-box;
+  width: 72px;
+  height: 72px;
+  padding: 4px;
+  border-radius: 14px;
+  image-rendering: pixelated;
+  pointer-events: none;
+}
+.chest-pic.pic-item { display: flex; align-items: center; justify-content: center; font-size: 56px; line-height: 1; }
+.chest-card .pic-badge { font-size: 28px; }
+.chest-digit { font: 900 44px/1 system-ui, sans-serif; color: #223; margin-top: 4px; }
+.chest-dots { display: flex; flex-wrap: wrap; justify-content: center; gap: 3px; max-width: 110px; min-height: 12px; margin-top: 4px; }
+.chest-dots i { width: 10px; height: 10px; border-radius: 50%; background: #2e9e44; }
+@keyframes chest-in { from { opacity: 0; } to { opacity: 1; } }
+@keyframes chest-card-in { from { transform: scale(0.6); opacity: 0; } to { transform: scale(1); opacity: 1; } }
+@keyframes chest-bob { 0%, 100% { transform: translateY(0); } 50% { transform: translateY(-8px); } }
+
+/* The Home button (7h): a big house with an up arrow, bottom left, clear of the bar and the munch button. */
+.home-btn {
+  position: fixed;
+  left: 24px;
+  bottom: 160px;
+  width: 104px;
+  height: 104px;
+  padding: 0;
+  border: 4px solid rgba(60, 120, 40, 0.5);
+  border-radius: 28px;
+  background: #e4ffd2;
+  box-shadow: 0 6px 0 #7cc45a, 0 0 18px 4px rgba(255, 236, 140, 0.8);
+  font-size: 60px;
+  line-height: 1;
+  cursor: pointer;
+}
+.home-btn[hidden] { display: none; }
+.home-btn:active { transform: translateY(4px); box-shadow: 0 2px 0 #7cc45a; }
+.home-btn .home-badge {
+  position: absolute;
+  right: -6px;
+  top: -10px;
+  font-size: 36px;
+  pointer-events: none;
+}
+.home-btn.wobble { animation: home-wobble 0.6s ease-in-out 2; }
+@keyframes home-wobble {
+  0%, 100% { transform: rotate(0deg) scale(1); }
+  25% { transform: rotate(-10deg) scale(1.08); }
+  75% { transform: rotate(10deg) scale(1.08); }
+}
+/* The Home lift's soft white-gold fade: never black. */
+.home-fade {
+  position: fixed;
+  inset: 0;
+  z-index: 70;
+  background: radial-gradient(circle at 50% 45%, #fff 0%, #fff1c4 55%, #ffe7a3 100%);
+  pointer-events: auto;
+}
+.home-fade[hidden] { display: none; }
+
+@media (max-height: 419px) {
+  /* Beside the grown-ups corner, off the bar; after the base Home rule. */
+  .home-btn { top: 12px; bottom: auto; left: 112px; }
+}

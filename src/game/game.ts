@@ -7,6 +7,7 @@ import { FEEDS, GIFT, isItemId, ITEMS, type ItemId, type StackId } from '../core
 import { findPath, GENTLE_DROP, isStandable, pathTowards, smoothPath, type Cell } from '../core/pathfind';
 import { EMPTY_CAVES, type CaveLayout } from '../core/caves';
 import { homeSpot, isDeep } from '../core/home';
+import { canOpen, chestReward, openChest, type RewardEntry } from '../core/treasure';
 import type { Rect, VillageLayout } from '../core/village';
 
 import { canCollect, canPlace, withinPickReach, withinReach } from '../core/placement';
@@ -22,6 +23,10 @@ import { Player } from './player';
 export type GameEvent =
   /** A dig put this in the bag (a block, or a Gem from gem stone). */
   | { type: 'collected'; id: StackId }
+  /** The dig was gem stone: one Gem came in (after its 'collected'). */
+  | { type: 'gem' }
+  /** A closed chest opened: the whole reward is in the bag (all or nothing) and the chest is open for good. */
+  | { type: 'chestOpened'; reward: readonly RewardEntry[]; cell: Cell }
   | { type: 'placed'; id: BlockId }
   | { type: 'crafted'; recipe: string }
   | { type: 'full'; id: StackId }
@@ -41,7 +46,8 @@ export type GameEvent =
   | { type: 'ate'; id: ItemId }
   /** He asked to talk to the wizard (a tap on him, or the pad facing him): main opens his screen. */
   | { type: 'talk' }
-  | { type: 'idle' };
+  /** n: which idle hint this is (1 after 20 s of quiet, 2 after another 60 s). */
+  | { type: 'idle'; n?: number };
 
 /** Seconds of quiet before each idle hint; after the last one Pip waits for the next action. */
 const IDLE_SECONDS = [20, 60];
@@ -69,6 +75,8 @@ export class Game {
   /** While true (overlay open) the player does not move. */
   paused = false;
   onCraftRequest: () => void = () => {};
+  /** The pad asked for the Home lift (main plays the fade, then calls goHome). */
+  onHomeRequest: () => void = () => {};
   /** True when the wizard is right in front of him (set by main): the pad's place button talks instead. */
   wizardInFront: () => boolean = () => false;
 
@@ -147,6 +155,9 @@ export class Game {
       case 'place':
         this.active();
         this.place(intent.cell);
+        return;
+      case 'open':
+        this.openChestAt(intent.cell);
         return;
       case 'plant':
         this.active();
@@ -355,6 +366,27 @@ export class Game {
     }
     this.world.set(...cell, BlockId.Air);
     this.emit({ type: 'collected', id });
+    if (here === BlockId.GemOre) this.emit({ type: 'gem' });
+  }
+
+  /**
+   * Opens a closed chest in reach (plan Task 19): every entry of its reward goes into the bag and
+   * the chest becomes ChestOpen (an ordinary edit, so it is saved and never pays twice), or, if any
+   * entry would not fit under 99, nothing changes and Pip says the bag is full (he can come back).
+   * Refused while the game is paused.
+   */
+  private openChestAt(cell: Cell): void {
+    if (this.paused) return;
+    if (this.world.get(...cell) !== BlockId.Chest || !withinPickReach(this.world, this.player.feetCell(), cell)) return;
+    this.active();
+    const reward = chestReward(this.caves, cell);
+    if (!canOpen(this.inventory, reward)) {
+      const tooMany = reward.find(e => this.inventory.count(e.id) + e.n > MAX_STACK) ?? reward[0];
+      this.emit({ type: 'full', id: tooMany.id });
+      return;
+    }
+    const result = openChest(this.world, this.inventory, this.caves, cell);
+    if (result.ok) this.emit({ type: 'chestOpened', reward: result.reward, cell: [cell[0], cell[1], cell[2]] });
   }
 
   private place(cell: Cell): void {
@@ -396,6 +428,11 @@ export class Game {
         return;
       case 'place': {
         if (this.wizardInFront()) { this.applyIntent({ kind: 'talk' }); return; }
+        // A closed chest right in front (at his feet or one up) opens, whatever is selected.
+        for (const dy of [0, 1]) {
+          const cell = this.frontCell(dy);
+          if (this.world.get(...cell) === BlockId.Chest) { this.applyIntent({ kind: 'open', cell }); return; }
+        }
         // With a food selected: an animal right in front is fed; otherwise an edible is eaten. Blocks place as before.
         const sel = this.effectiveSelected();
         if (sel !== 'hand' && isItemId(sel)) {
@@ -420,6 +457,12 @@ export class Game {
       case 'craft':
         this.active();
         this.onCraftRequest();
+        return;
+      case 'home':
+        // The Home button's pad twin: only while he is deep (when the button shows), never while paused.
+        if (this.paused || !this.deep) return;
+        this.active();
+        this.onHomeRequest();
         return;
     }
   }
@@ -463,7 +506,7 @@ export class Game {
     if (this.idleFor >= IDLE_SECONDS[this.idleHints]) {
       this.idleFor = 0;
       this.idleHints++;
-      this.emit({ type: 'idle' });
+      this.emit({ type: 'idle', n: this.idleHints });
     }
   }
 }

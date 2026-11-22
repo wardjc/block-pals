@@ -1,3 +1,13 @@
+import type { LineKey } from '../content/lines';
+
+/** Pip's lead, idle and cave lines never fall back to tablet speech while audio is locked. */
+export const HELD_KEYS: ReadonlySet<LineKey> = new Set<LineKey>([
+  'letsMeetNeighbours', 'comeOn', 'thisWay', 'weAreHere', 'cosyHome', 'idleHint', 'letsFindWood',
+  'plantSome', 'needWaterSun', 'cropReady', 'holdOutFood', 'tryMunch',
+  'letsVisitWizard', 'meetWizard', 'seeTowerLight',
+  'digDown', 'cavesLit', 'gemFound', 'goUp', 'backUp', 'treasureFound', 'oldBase',
+]);
+
 /**
  * Who may speak when (pure, so it is unit-tested). The break reminder has priority: while its bubble
  * is open nothing else may talk over it or cut it, but it never pauses or locks play.

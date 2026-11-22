@@ -205,6 +205,8 @@ export const farmSfx = {
   cluck: once('cluck', () => { blip(700, 0, 0.06, 'triangle', 0.2, 920); blip(820, 0.1, 0.07, 'triangle', 0.2, 640); }),
   moo: once('moo', () => { blip(230, 0, 0.7, 'sine', 0.3, 180); blip(460, 0.02, 0.6, 'triangle', 0.08, 360); }),
   baa: once('baa', () => { blip(420, 0, 0.4, 'triangle', 0.2, 360); blip(430, 0.05, 0.35, 'sine', 0.14, 380); }),
+  /** A treasure chest opens (7h): a soft two-note chime, 440 then 660 Hz, quieter than the collect pop. */
+  chest: once('chest', () => { blip(440, 0, 0.25, 'sine', 0.26); blip(660, 0.12, 0.25, 'sine', 0.26); }),
   oink: once('oink', () => { blip(300, 0, 0.12, 'triangle', 0.25, 210); blip(270, 0.16, 0.14, 'triangle', 0.22, 190); }),
 };
 

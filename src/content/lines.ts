@@ -39,7 +39,22 @@ export type LineKey =
   | 'letsVisitWizard'
   | 'meetWizard'
   | 'puzzleStuck'
-  | 'gotMagicBlock';
+  | 'gotMagicBlock'
+  // The caves (7h). Bright and calm; each is true wherever it can fire.
+  /** The second idle hint, once, after the village walk and before he has ever been deep. */
+  | 'digDown'
+  /** The first time he stands in a real cave (not merely his own pit). */
+  | 'cavesLit'
+  /** His first gem dug out of a wall. */
+  | 'gemFound'
+  /** Pip offers to lead him up, and does (along the way home). */
+  | 'goUp'
+  /** Back on the surface after the Home lift, or after walking up behind Pip. */
+  | 'backUp'
+  /** A treasure chest has just opened. */
+  | 'treasureFound'
+  /** The first time he stands in the Old Hideout. */
+  | 'oldBase';
 
 /** Lines spoken by Pip. British English, short and warm. */
 export const LINES: Record<LineKey, string[]> = {
@@ -280,6 +295,48 @@ export const LINES: Record<LineKey, string[]> = {
     'What a shiny new block!',
     'Your bag has a new magic block.',
   ],
+  digDown: [
+    "Let's dig down and find caves.",
+    "I wonder what is under the ground. Let's dig!",
+    'Shall we dig down and look for a cave?',
+    'There might be sparkly caves down below.',
+  ],
+  cavesLit: [
+    'What a bright, sparkly cave!',
+    'So many things glow here. How pretty!',
+    'Look at all the glowing things!',
+    'This cave is full of shiny things.',
+  ],
+  gemFound: [
+    'You found a gem! It is so shiny.',
+    'A shiny gem for your bag.',
+    'Look at that gem sparkle!',
+    'A gem! Well spotted.',
+  ],
+  goUp: [
+    'Shall we go back up to the sunshine?',
+    'Follow me. I know the way up.',
+    'The way home is this way.',
+    "Let's walk up to the daylight.",
+  ],
+  backUp: [
+    'Here we are, back in the sunshine.',
+    'Up we come! It is lovely up here.',
+    'Back in the daylight. That was a good trip.',
+    'Back up top again. What a lovely trip!',
+  ],
+  treasureFound: [
+    'You opened a treasure chest!',
+    'A treasure chest, full of nice things!',
+    'Look what was in the chest.',
+    'Treasure for your bag!',
+  ],
+  oldBase: [
+    'What a lovely old hideout!',
+    'Somebody lived here once. We could fix it up.',
+    "An old base! Let's tidy it up.",
+    'Such a cosy old hideout. We can build here.',
+  ],
 };
 
 /** Pick a variant for a key, never the same one twice in a row. */
@@ -332,4 +389,11 @@ export const LINE_ICONS: Record<LineKey, string> = {
   meetWizard: '🧙',
   puzzleStuck: '🧩',
   gotMagicBlock: '✨',
+  digDown: '🕳️',
+  cavesLit: '💎',
+  gemFound: '💎',
+  goUp: '🏠',
+  backUp: '🌞',
+  treasureFound: '🎁',
+  oldBase: '🧱',
 };

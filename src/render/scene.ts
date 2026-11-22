@@ -201,6 +201,14 @@ export class GameScene {
     this.camera.updateProjectionMatrix();
   };
 
+  /**
+   * The next followTarget jumps straight to him (and builds what it can see at once), as on the
+   * first frame: after the Home lift, behind the white fade, so the camera never sweeps through rock.
+   */
+  snapFollow(): void {
+    this.followed = false;
+  }
+
   /** Cave mouths (world cells): within MOUTH_NEAR of one the underground layers are drawn too. */
   setMouths(mouths: ReadonlyArray<readonly [number, number, number]>): void {
     this.mouths = mouths;

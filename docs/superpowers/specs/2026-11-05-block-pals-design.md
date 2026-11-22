@@ -214,7 +214,7 @@ Plan: [`docs/superpowers/plans/2026-11-08-wizards-tower.md`](../plans/2026-11-08
 
 ### 7h. A bigger, deeper world with caves (agreed 2026-11-08)
 
-**Status: plan approved by the parent; built after Village step 2 (merged) and before the wandering villagers (§7i), grumps and friendly weapons (§7f) and the Wizard's tower (§7g).** This answers the wish to "find and build underground bases" (§7b item 4). It follows the §4 anti-goals above all: **a dark cave is a failure, a scary one is a failure**, nothing is hurt or lost, nothing needs reading, British English, 30 fps on the Tab A8.
+**Status: built 2026-11-22 in four reviewed chunks (the world, the engine, the caves, and playing it: chests, gems, the Home button, Pip leading home, the cave lines), waiting for the parent's tablet playtest. Built after Village step 2 and the Wizard's tower (§7g, which merged first and is part of the shifted old world), before the wandering villagers (§7i) and grumps and friendly weapons (§7f).** This answers the wish to "find and build underground bases" (§7b item 4). It follows the §4 anti-goals above all: **a dark cave is a failure, a scary one is a failure**, nothing is hurt or lost, nothing needs reading, British English, 30 fps on the Tab A8.
 
 **Agreed with the parent.**
 - **A bigger map: 192 × 192 blocks** (was 96 × 96), and **about 48 blocks of depth** below the old bottom (the world is 68 blocks high; the meadow ground is still where he knows it, now at height 53 to 59, with a bedrock floor).

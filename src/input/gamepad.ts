@@ -21,6 +21,11 @@ const LOOK_Y = 3;
 const REST_THRESHOLD = 0.9;
 const REST_TOLERANCE = 0.02;
 const REST_DISABLE_MS = 1000;
+/**
+ * The Home lift on a pad (7h): the top face button (Y / triangle, standard index 3) or Back /
+ * Select (8), unless the grown-ups mapped one of them to another action.
+ */
+export const HOME_BUTTONS: readonly number[] = [3, 8];
 
 export interface PadState {
   stick: [number, number];
@@ -89,6 +94,8 @@ export class GamepadInput {
     for (const action of ['collect', 'place', 'nextSlot'] as const) {
       if (rising(this.mapping[action])) emit(action);
     }
+    const mapped = [this.mapping.collect, this.mapping.place, this.mapping.nextSlot];
+    if (HOME_BUTTONS.some(b => !mapped.includes(b) && rising(b))) emit('home');
     if (!down[this.mapping.place]) this.placeSince = null;
     else if (rising(this.mapping.place)) this.placeSince = now;
     if (this.placeSince !== null && now - this.placeSince >= 1000) {

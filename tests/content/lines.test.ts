@@ -5,7 +5,7 @@ const keys = Object.keys(LINES) as LineKey[];
 
 describe('lines', () => {
   it('every LineKey has at least one line', () => {
-    expect(keys).toHaveLength(39); // step 2's 34 plus the wizard step's 5 (the grumps step is not built yet)
+    expect(keys).toHaveLength(46); // step 2's 34, the wizard step's 5 and the caves' 7 (the grumps step is not built yet)
     for (const k of keys) {
       expect(LINES[k].length).toBe(4);
       expect(new Set(LINES[k]).size).toBe(4);
@@ -32,6 +32,34 @@ describe('lines', () => {
       expect(LINE_ICONS[k]).toBeTruthy();
       for (const l of LINES[k]) expect(l).not.toMatch(/\b(scary|scared|dark|afraid|hurt|lost|wrong|fail|failed|read)\b/i);
     }
+  });
+  it('the caves\' seven Pip lines exist, each with a picture, calm and true (7h, plan Task 22)', () => {
+    const CAVE_KEYS = ['digDown', 'cavesLit', 'gemFound', 'goUp', 'backUp', 'treasureFound', 'oldBase'] as const;
+    for (const k of CAVE_KEYS) {
+      expect(LINES[k]).toHaveLength(4);
+      expect(new Set(LINES[k]).size).toBe(4);
+      expect(LINE_ICONS[k]).toBeTruthy();
+      for (const l of LINES[k]) {
+        expect(l.split(/\s+/).length).toBeLessThanOrEqual(12);
+        // Nothing dark, scary, afraid, hurt or lost; no reading; no screen words; no cheer or sound words.
+        expect(l).not.toMatch(/\b(scary|scared|dark|darkness|afraid|fright|hurt|lost|wrong|fail|failed|danger|monster|read)\b/i);
+        expect(l).not.toMatch(/\b(tap|taps|tapped|click|touch|button|press)\b/i);
+        expect(l).not.toMatch(/\b(ooh+|hmm+|mmm+|aww+|ta-?da|hup|whee+|yay|yippee|woo-?hoo|hooray|yum+)\b/i);
+        // Digits only up to 20 (none are needed here).
+        expect(l).not.toMatch(/\d/);
+      }
+    }
+    expect(LINE_ICONS.digDown).toBe('🕳️');
+    expect(LINE_ICONS.goUp).toBe('🏠');
+    expect(LINE_ICONS.backUp).toBe('🌞');
+    expect(LINE_ICONS.treasureFound).toBe('🎁');
+    expect(LINE_ICONS.oldBase).toBe('🧱');
+    expect(LINE_ICONS.gemFound).toBe('💎');
+    expect(LINE_ICONS.cavesLit).toBe('💎');
+    // goUp is said only while Pip leads him: every variant is about going up or following.
+    for (const l of LINES.goUp) expect(l).toMatch(/\b(up|way|follow|home|daylight|sunshine)\b/i);
+    // backUp is said only on the surface, after the Home lift or the walk up.
+    for (const l of LINES.backUp) expect(l).not.toMatch(/\b(cave|down|meadow|house)\b/i);
   });
   it('puzzleStuck is true for every puzzle kind (it never mentions counting or dots)', () => {
     for (const l of LINES.puzzleStuck) expect(l).not.toMatch(/\b(count|dots?|basket)\b/i);

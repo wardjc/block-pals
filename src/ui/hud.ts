@@ -13,6 +13,8 @@ export interface HudHandlers {
   onGrownUps(): void;
   /** Hotspot press and release, for the 3 second hold. */
   onGrownUpsHold?(down: boolean, pointerId: number): void;
+  /** The Home button (shown only while he is deep underground). */
+  onHome?(): void;
 }
 
 export interface HudState {
@@ -53,6 +55,7 @@ export class Hud {
 
   private readonly bar = document.createElement('div');
   private munch!: HTMLButtonElement;
+  private home!: HTMLButtonElement;
   private munchCb: (() => void) | undefined;
   private readonly bubble = document.createElement('div');
   private readonly bubblePicture = document.createElement('span');
@@ -87,6 +90,17 @@ export class Hud {
     this.munch.setAttribute('aria-label', 'Eat');
     this.munch.hidden = true;
     root.appendChild(this.munch);
+
+    // The big Home button (7h): a house with an up arrow, shown only while he is deep underground.
+    this.home = this.button('home-btn', '🏠', () => handlers.onHome?.());
+    this.home.setAttribute('aria-label', 'Home');
+    const badge = document.createElement('span');
+    badge.className = 'home-badge';
+    badge.textContent = '⬆️';
+    this.home.appendChild(badge);
+    this.home.hidden = true;
+    this.home.addEventListener('animationend', () => this.home.classList.remove('wobble'));
+    root.appendChild(this.home);
 
     const grownUps = this.button('grownups-hotspot', '', () => handlers.onGrownUps());
     grownUps.setAttribute('aria-label', 'Grown-ups');
@@ -123,6 +137,23 @@ export class Hud {
 
   setMunchVisible(v: boolean): void {
     this.munch.hidden = !v;
+  }
+
+  setHomeVisible(v: boolean): void {
+    if (this.home.hidden === !v) return;
+    this.home.hidden = !v;
+    if (!v) this.home.classList.remove('wobble');
+  }
+
+  get homeVisible(): boolean {
+    return !this.home.hidden;
+  }
+
+  /** A short friendly shake: "this way up" after a tap he could not walk to while deep. */
+  wobbleHome(): void {
+    this.home.classList.remove('wobble');
+    void this.home.offsetWidth; // restart the animation
+    this.home.classList.add('wobble');
   }
 
   /** Shows the dig ring centred on the finger, filled to `progress` (0..1). */

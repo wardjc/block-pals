@@ -42,8 +42,8 @@ export const ALL_SAVE_KEYS: readonly string[] = [
 /** Where meadow cell (0, 0, 0) sits in a v3 world. Written always; a v3 save is never shifted again. */
 const SAVE_ORIGIN: [number, number, number] = [ORIGIN.x, ORIGIN.y, ORIGIN.z];
 
-/** Hint names the farm may save; anything else in a save is ignored. */
-export const HINT_NAMES: readonly string[] = ['plantSome', 'needWaterSun', 'cropReady', 'holdOutFood', 'tryMunch'];
+/** Hint names the farm and the caves (digDown, gemFound) may save; anything else in a save is ignored. */
+export const HINT_NAMES: readonly string[] = ['plantSome', 'needWaterSun', 'cropReady', 'holdOutFood', 'tryMunch', 'digDown', 'gemFound'];
 /** More crop or tree records than this in a save are ignored (the plants still exist as blocks). */
 export const MAX_FARM_RECORDS = 2000;
 
@@ -370,6 +370,21 @@ function toSaved(w: WizardState): SavedWizard {
  * What a write keeps when a save is already stored: a true flag stays true, a counter never goes
  * down (so the puzzle level never drops, even from a stale tab) and stored hints are kept.
  */
+/**
+ * The flags never go down: a true flag stays true and a hint once told stays told, whatever an
+ * older page or a later write holds (the same rule as the wizard's fields). Optional fields only
+ * appear when true or non-empty.
+ */
+function mergeFlags(next: SaveFlags, prev: SaveFlags): SaveFlags {
+  const out: SaveFlags = { ledToVillage: next.ledToVillage || prev.ledToVillage };
+  if (next.fernSeeds || prev.fernSeeds) out.fernSeeds = true;
+  const hints = [...(next.hints ?? []), ...(prev.hints ?? []).filter(h => !(next.hints ?? []).includes(h))];
+  if (hints.length > 0) out.hints = hints;
+  if (next.cavesSeen || prev.cavesSeen) out.cavesSeen = true;
+  if (next.ruinFound || prev.ruinFound) out.ruinFound = true;
+  return out;
+}
+
 function mergeWizard(next: WizardState, prev: WizardState): WizardState {
   return {
     gift: next.gift || prev.gift,
@@ -618,18 +633,20 @@ export function storeSave(storage: Storage | null, data: SaveData): boolean {
     }
     let gen: number = data.gen;
     let wizard = data.wizard;
+    let flags = data.flags;
     if (existing.raw !== null) {
       const stored = parseExisting(existing.raw);
       if (stored && typeof stored.version === 'number' && stored.version > 3) return false;
       const checked = inspectSave(existing.raw, [3]);
       if ((!checked || checked.skipped > 0) && !preserveBad(storage, existing.raw)) return false;
       if (stored && stored.version === 3 && Number.isSafeInteger(stored.gen)) gen = Math.max(gen, stored.gen as number);
+      if (checked) flags = mergeFlags(cleanFlags(data.flags as unknown as Record<string, unknown>), checked.data.flags);
       if (checked?.data.wizard) {
         const merged = mergeWizard(wizardState(cleanWizard(data.wizard)), wizardState(checked.data.wizard));
         if (!sameWizard(merged, defaultWizard())) wizard = toSaved(merged);
       }
     }
-    const out: SaveData = { ...data, gen };
+    const out: SaveData = { ...data, gen, flags };
     if (wizard) out.wizard = wizard; else delete out.wizard;
     storage.setItem(SAVE_KEY, JSON.stringify(out));
     session.pendingMigration = false;
