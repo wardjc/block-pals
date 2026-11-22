@@ -40,7 +40,7 @@ import { LINES, LINE_ICONS, pickLine, type LineKey } from './content/lines';
 import { Pal } from './game/pal';
 import { LeadToVillage } from './game/lead';
 import { GreetTracker } from './game/villagers';
-import { DeferredOnce, LockedHold, allowLine, craftSpeech, helperDt, leadPaused, mayGreet, mayPipSpeakQueued, type SpeechContext } from './game/speechPolicy';
+import { DeferredOnce, HELD_KEYS, LockedHold, allowLine, craftSpeech, helperDt, leadPaused, mayGreet, mayPipSpeakQueued, type SpeechContext } from './game/speechPolicy';
 import { DOOR_EMBLEMS, FERN_LINES, VILLAGERS, VILLAGER_LINES, pickVillagerLine, type VillagerId } from './content/villagers';
 import { isStandable, settleCell } from './core/pathfind';
 import { UsageTracker } from './core/usage';
@@ -153,13 +153,6 @@ const lastSpoken: Partial<Record<LineKey, string>> = {};
 /** ?debug only: the keys of Pip's lines in the order they were spoken. */
 const pipSaid: LineKey[] = [];
 const recordPip = import.meta.env.DEV || location.search.includes('debug');
-/** Pip's lead and idle lines: held until the audio context runs, never spoken by the tablet voice while it is locked. */
-const HELD_KEYS: ReadonlySet<LineKey> = new Set<LineKey>([
-  'letsMeetNeighbours', 'comeOn', 'thisWay', 'weAreHere', 'cosyHome', 'idleHint', 'letsFindWood',
-  'plantSome', 'needWaterSun', 'cropReady', 'holdOutFood', 'tryMunch',
-  'letsVisitWizard', 'meetWizard', 'seeTowerLight',
-  'digDown', 'goUp',
-]);
 const speakVariant = (key: LineKey): void => {
   if (!allowLine(hud.breakOpen, key)) return; // the break reminder is never cut by another line
   const text = pickLine(key, lastSpoken[key]);
@@ -305,15 +298,18 @@ const hud = new Hud(document.getElementById('ui')!, stackIcon, {
 const homeFade = new HomeFade(document.getElementById('ui')!);
 function startHomeLift(): void {
   if (!game.isDeep() || homeFade.running || game.paused || hud.blockingOverlayOpen) return;
+  cancelPress(); // A captured canvas pointer can still release through the fade.
+  if (pendingPip === 'goUp') pendingPip = null;
+  caveLines.length = 0;
+  if (leadHome.state === 'leading') pal.setLead(null);
+  leadHome.reset();
+  homeRoute = null;
   sfx.tap();
   game.player.setPath(null);
   game.player.setStick(0, 0);
   homeFade.start(() => {
     if (!game.goHome()) return;
     // Pip joins him (the homeLift event) and the camera jumps with him behind the fade.
-    if (leadHome.state === 'leading') pal.setLead(null);
-    leadHome.reset();
-    homeRoute = null;
     scene.snapFollow();
     viewDistance.pause(2); // the frames round the lift are not the tablet's real speed
   });
@@ -567,7 +563,7 @@ const cancelPress = (id?: number): void => handleGesture(gesture.cancel(id));
 canvas.addEventListener('pointerdown', e => {
   sfx.unlock();
   greetOnce();
-  if (hud.blockingOverlayOpen) return;
+  if (hud.blockingOverlayOpen || homeFade.running) return;
   handleGesture(gesture.down(e.pointerId, e.clientX, e.clientY, performance.now()));
   if (gesture.activeId !== e.pointerId) return; // a second finger: ignored
   try { canvas.setPointerCapture(e.pointerId); } catch { /* not every pointer can be captured */ }
@@ -575,11 +571,11 @@ canvas.addEventListener('pointerdown', e => {
   pressEntity = entityAt(e.clientX, e.clientY);
 });
 canvas.addEventListener('pointermove', e => {
-  if (hud.blockingOverlayOpen) { cancelPress(); return; }
+  if (hud.blockingOverlayOpen || homeFade.running) { cancelPress(); return; }
   handleGesture(gesture.move(e.pointerId, e.clientX, e.clientY, performance.now()));
 });
 canvas.addEventListener('pointerup', e => {
-  if (hud.blockingOverlayOpen) { cancelPress(e.pointerId); return; }
+  if (hud.blockingOverlayOpen || homeFade.running) { cancelPress(e.pointerId); return; }
   handleGesture(gesture.up(e.pointerId, e.clientX, e.clientY, performance.now()));
 });
 // A lost release must never leave a press stuck (the classifier also drops presses over 2 s old).
@@ -709,6 +705,7 @@ function hintContext(cell: Cell): HintContext {
 }
 
 function updateVillage(dt: number): void {
+  if (homeFade.running) return; // No new cave discoveries or lead offers during the lift.
   const breakOpen = hud.breakOpen;
   tryWelcome(); // replays a welcome the break bubble held back, once the bubble has closed
   const paused = game.paused || hud.blockingOverlayOpen;
@@ -1003,7 +1000,7 @@ if (debugOn) {
     goHome: () => game.goHome(),
     /** The real Home button's path: the fade, then the lift (false when it would do nothing). */
     homeButton: () => { const before = homeFade.running; startHomeLift(); return !before && homeFade.running; },
-    home: () => ({ visible: hud.homeVisible, fading: homeFade.running, lead: leadHome.state, target: leadHome.targetIndex(), route: homeRoute?.length ?? 0 }),
+    home: () => ({ visible: hud.homeVisible, fading: homeFade.running, lead: leadHome.state, target: leadHome.targetIndex(), route: homeRoute?.length ?? 0, cavePending: caveLines.map(l => l.key) }),
     /** The worst straight-line distance from any cave air cell to a glowing block (the "never dark" rule: at most 6). */
     pipSaid: () => [...pipSaid],
     /** Test only: ends the line now playing (headless audio clocks may never fire a clip's end). */
@@ -1181,7 +1178,7 @@ function frame(now: number): void {
     }
   }
 
-  if (hud.blockingOverlayOpen) cancelPress();
+  if (hud.blockingOverlayOpen || homeFade.running) cancelPress();
   else if (gesture.busy && !gesture.dragging) handleGesture(gesture.tick(now, holdNow(pressHit).kind === 'dig'));
   game.update(dt);
   if (!game.paused) {

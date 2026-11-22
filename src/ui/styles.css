@@ -550,8 +550,6 @@ html, body {
   .hotbar { bottom: 4px; padding: 12px 8px 4px; }
   /* Beside the craft button, off the bar, instead of above it. */
   .munch-btn { top: 12px; bottom: auto; right: 120px; }
-  /* Beside the grown-ups corner, off the bar. */
-  .home-btn { top: 12px; bottom: auto; left: 112px; }
   .bubble, .break-bubble { top: 8px; padding: 8px 16px; }
   .bag-grid { max-height: calc(100dvh - 16px); }
   .craft-list.dense { margin: 0 120px 0 8px; width: calc(100vw - 128px); max-height: calc(100dvh - 16px); }
@@ -950,3 +948,8 @@ html, body {
   pointer-events: auto;
 }
 .home-fade[hidden] { display: none; }
+
+@media (max-height: 419px) {
+  /* Beside the grown-ups corner, off the bar; after the base Home rule. */
+  .home-btn { top: 12px; bottom: auto; left: 112px; }
+}

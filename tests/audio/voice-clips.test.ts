@@ -1,5 +1,7 @@
 import { describe, it, expect, vi, afterEach } from 'vitest';
 import { Voice, type ClipDeps } from '../../src/audio/voice';
+import { LINES, type LineKey } from '../../src/content/lines';
+import { HELD_KEYS } from '../../src/game/speechPolicy';
 import { clipKey } from '../../src/audio/voiceKey';
 
 const TEXT = 'Hiya! Ready for an adventure?';
@@ -460,6 +462,20 @@ describe('suspend and resume mid-clip, and held lines', () => {
     await settle();
     expect(r2.synth.speak).toHaveBeenCalledTimes(1);
   });
+
+  it.each<LineKey>(['digDown', 'cavesLit', 'gemFound', 'goUp', 'backUp', 'treasureFound', 'oldBase'])(
+    '%s cannot fall back to tablet speech if audio suspends before playback', async key => {
+      const text = LINES[key][0];
+      const clip = clipKey('pip', text);
+      const r = rig({ manifest: { [clip]: { file: `${clip}.ogg`, text, duration: 2 } } });
+      r.voice.say(text, 'pip', { holdForAudio: HELD_KEYS.has(key) });
+      r.ctx.state = 'suspended';
+      await settle();
+      expect(r.synth.speak).not.toHaveBeenCalled();
+      expect(r.sources).toHaveLength(0);
+      expect(r.voice.speaking()).toBe(false);
+    },
+  );
 
   it('a held line plays as a clip once the context is running', async () => {
     const r = rig();

@@ -94,9 +94,12 @@ describe('the Home button', () => {
   });
 
   test('on very short screens it moves beside the grown-ups corner, still 96 px and clear of the munch button', () => {
-    const i = css.indexOf('@media (max-height: 419px)');
+    const i = css.lastIndexOf('@media (max-height: 419px)');
+    expect(i).toBeGreaterThan(css.indexOf('\n.home-btn {'));
     const block = css.slice(i, css.indexOf('\n}\n', i));
     expect(block).toMatch(/\.home-btn \{[^}]*top: 12px/);
+    expect(block).toMatch(/\.home-btn \{[^}]*bottom: auto/);
+    expect(block).toMatch(/\.home-btn \{[^}]*left: 112px/);
   });
 });
 
