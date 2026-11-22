@@ -1,5 +1,6 @@
 import { BlockId } from './blocks';
 import { ORIGIN, V2_WORLD } from './bounds';
+import { coneFloor, sq2 } from './exactMath';
 import { mulberry32 } from './rng';
 import type { World } from './world';
 import { makeHeightAt } from './worldgen';
@@ -45,7 +46,7 @@ function layoutOf(seed: number, sizeX: number, sizeZ: number): Layout {
   const fits = (x: number, z: number, r: number): boolean =>
     toOld(x, z) - r >= OUTER_MARGIN
     && x - r >= EDGE_BAND + 2 && z - r >= EDGE_BAND + 2 && x + r <= sizeX - EDGE_BAND - 3 && z + r <= sizeZ - EDGE_BAND - 3
-    && placed.every(p => Math.hypot(p.x - x, p.z - z) >= p.r + r + OUTER_MARGIN);
+    && placed.every(p => sq2(p.x - x, p.z - z) >= (p.r + r + OUTER_MARGIN) * (p.r + r + OUTER_MARGIN));
   const place = (count: number, rMin: number, rSpan: number): Array<{ x: number; z: number; r: number }> => {
     const out: Array<{ x: number; z: number; r: number }> = [];
     for (let tries = 0; tries < 200 && out.length < count; tries++) {
@@ -73,7 +74,7 @@ function layoutOf(seed: number, sizeX: number, sizeZ: number): Layout {
  */
 function naturalHeight(height: (x: number, z: number) => number, hills: Layout['hills'], sizeX: number, sizeZ: number, x: number, z: number): number {
   let h = height(x - ORIGIN.x, z - ORIGIN.z) + ORIGIN.y;
-  for (const hill of hills) h = Math.max(h, Math.floor(hill.peak - Math.hypot(x - hill.x, z - hill.z) * 0.75));
+  for (const hill of hills) h = Math.max(h, coneFloor(hill.peak, 3, 4, sq2(x - hill.x, z - hill.z)));
   const d = Math.min(x, z, sizeX - 1 - x, sizeZ - 1 - z);
   if (d < EDGE_BAND) h += Math.round(EDGE_RISE * (1 - d / EDGE_BAND));
   return Math.min(h, MAX_GROUND);
@@ -161,14 +162,14 @@ export function generateOuter(world: World, seed: number): OuterInfo {
   for (const p of ponds) {
     let top = 32767;
     for (let z = p.z - p.r - 1; z <= p.z + p.r + 1; z++) for (let x = p.x - p.r - 1; x <= p.x + p.r + 1; x++) {
-      const d = Math.hypot(x - p.x, z - p.z);
-      if (d > p.r && d <= p.r + 1) top = Math.min(top, h[x + sizeX * z]);
+      const d2 = sq2(x - p.x, z - p.z);
+      if (d2 > p.r * p.r && d2 <= (p.r + 1) * (p.r + 1)) top = Math.min(top, h[x + sizeX * z]);
     }
     pondTop.push(top);
     for (let z = p.z - p.r - 1; z <= p.z + p.r + 1; z++) for (let x = p.x - p.r - 1; x <= p.x + p.r + 1; x++) {
       const k = x + sizeX * z;
-      const d = Math.hypot(x - p.x, z - p.z);
-      if (d <= p.r) { pondCell[k] = 1; h[k] = top - 2; } else if (d <= p.r + 1) { pondCell[k] = 2; h[k] = top; }
+      const d2 = sq2(x - p.x, z - p.z);
+      if (d2 <= p.r * p.r) { pondCell[k] = 1; h[k] = top - 2; } else if (d2 <= (p.r + 1) * (p.r + 1)) { pondCell[k] = 2; h[k] = top; }
     }
   }
 

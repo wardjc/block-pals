@@ -121,7 +121,7 @@ test('deterministic and pinned: the seed 2026 world hashes to the golden number'
 });
 
 /** The seed 2026 world's hash (first 16 hex digits). Change only with GEN_VERSION. */
-const GOLDEN_2026 = '218015242516a36f';
+const GOLDEN_2026 = 'db9bfedaf4b4b3b7';
 
 test('cellIndex and cellOf are inverse', () => {
   const w = { sizeX: 192, sizeZ: 192 };
