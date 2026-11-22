@@ -1,4 +1,5 @@
 import { BlockId } from './blocks';
+import { sq2 } from './exactMath';
 import { caveStream, clash, EDGE_KEEP, TUNNEL, type CaveField, type CaveLayout, type Reserved, type Room } from './caves';
 import { MAX_STACK, type Inventory } from './inventory';
 import { ItemId, type StackId } from './items';
@@ -110,12 +111,12 @@ export function placeTreasureRooms(
           const far = wall + S; // the back row inside
           const cA = wall + 4; // the room's middle row
           const [mx, mz] = at(h, dir, cA, 0);
-          if (mouths.some(m => Math.hypot(m.cell[0] - mx, m.cell[2] - mz) < 20)) continue;
-          if (out.some(t => Math.hypot((t.rect.x0 + t.rect.x1) / 2 - mx, (t.rect.z0 + t.rect.z1) / 2 - mz) < 20)) continue;
+          if (mouths.some(m => sq2(m.cell[0] - mx, m.cell[2] - mz) < 400)) continue;
+          if (out.some(t => sq2((t.rect.x0 + t.rect.x1) / 2 - mx, (t.rect.z0 + t.rect.z1) / 2 - mz) < 400)) continue;
           // Everything from 2 past the host's edge to 2 past the back wall, 2 cells either side, is untouched rock.
           let ok = true;
           for (let a = e + 2; a <= far + 3 && ok; a++) {
-            const half = a <= wall ? 4 : 6;
+            const half = a < wall - 2 ? 4 : 6; // the room and the 2 cells round it, the side tunnel and its walls
             for (let l = -half; l <= half && ok; l++) {
               const [x, z] = at(h, dir, a, l);
               if (x < EDGE_KEEP || z < EDGE_KEEP || x >= field.sizeX - EDGE_KEEP || z >= field.sizeZ - EDGE_KEEP) { ok = false; break; }

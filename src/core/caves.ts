@@ -1,6 +1,7 @@
 import { BLOCKS, BlockId } from './blocks';
 import { CARVE_MAX_Y, ORIGIN, V2_WORLD } from './bounds';
 import { canStep, isStandable, type Cell } from './pathfind';
+import { bump, DIRS5, isqrtCeil, isqrtFloor, sq2 } from './exactMath';
 import { mulberry32 } from './rng';
 import type { RuinInfo } from './ruin';
 import type { TreasureRoom } from './treasure';
@@ -143,9 +144,15 @@ export class CaveField {
 export function rasterRoom(field: CaveField, r: Room): void {
   for (let z = Math.floor(r.cz - r.rz); z <= Math.ceil(r.cz + r.rz); z++) {
     for (let x = Math.floor(r.cx - r.rx); x <= Math.ceil(r.cx + r.rx); x++) {
-      const d2 = ((x - r.cx) / r.rx) ** 2 + ((z - r.cz) / r.rz) ** 2;
-      if (d2 > 1) continue;
-      const rise = Math.max(3, Math.round((r.h - 1) * Math.sqrt(1 - 0.75 * d2)));
+      // Inside the ellipse: dx² rz² + dz² rx² <= rx² rz² (whole numbers, exact).
+      const den = r.rx * r.rx * r.rz * r.rz;
+      const num = (x - r.cx) * (x - r.cx) * r.rz * r.rz + (z - r.cz) * (z - r.cz) * r.rx * r.rx;
+      if (num > den) continue;
+      // The dome: round((h - 1) * sqrt(1 - 0.75 d²)), as the largest m with (2m - 1)² den <= (h - 1)² (4 den - 3 num).
+      const room = (r.h - 1) * (r.h - 1) * (4 * den - 3 * num);
+      let m = r.h - 1;
+      while (m > 0 && (2 * m - 1) * (2 * m - 1) * den > room) m--;
+      const rise = Math.max(3, m);
       field.add(x, z, r.floorY, r.floorY + rise);
     }
   }
@@ -160,39 +167,43 @@ export function rasterPath(field: CaveField, points: readonly PathPoint[], radiu
   for (const p of points) {
     for (let z = Math.floor(p.z - radius - 1); z <= Math.ceil(p.z + radius); z++) {
       for (let x = Math.floor(p.x - radius - 1); x <= Math.ceil(p.x + radius); x++) {
-        if ((x + 0.5 - p.x) ** 2 + (z + 0.5 - p.z) ** 2 <= r2) field.add(x, z, p.f, p.f + height - 1);
+        if ((x + 0.5 - p.x) * (x + 0.5 - p.x) + (z + 0.5 - p.z) * (z + 0.5 - p.z) <= r2) field.add(x, z, p.f, p.f + height - 1);
       }
     }
   }
 }
 
-/** Where the straight line from a's centre to b's centre leaves a's ellipse (0..1 along it). */
-function exitAt(a: Room, dx: number, dz: number): number {
-  const q = Math.sqrt((dx / a.rx) ** 2 + (dz / a.rz) ** 2);
-  return q > 0 ? 1 / q : 0;
-}
+/** A point (cell units, centres at +0.5) is inside a room's ellipse (exact arithmetic). */
+const inEllipse = (r: Room, px: number, pz: number): boolean => {
+  const dx = px - r.cx - 0.5, dz = pz - r.cz - 0.5;
+  return dx * dx * r.rz * r.rz + dz * dz * r.rx * r.rx <= r.rx * r.rx * r.rz * r.rz;
+};
 
 /**
  * The centre line of a tunnel from room a to room b: samples every half cell, a gentle sideways
  * wobble (at most 2, none at the ends) from its own stream, and a floor that is flat inside each
  * room and changes linearly between the room edges (never more than 1 block per 2 cells).
+ * Exact arithmetic only (the same world on every device): the length is ceil(2 x the distance) half
+ * cells by an integer square root, and the wobble is a parabola bump, not a sine.
  */
 export function tunnelLine(a: Room, b: Room, rng: () => number): PathPoint[] {
-  const ax = a.cx + 0.5, az = a.cz + 0.5, bx = b.cx + 0.5, bz = b.cz + 0.5;
-  const dx = bx - ax, dz = bz - az;
-  const len = Math.hypot(dx, dz);
+  const ax = a.cx + 0.5, az = a.cz + 0.5;
+  const dx = b.cx - a.cx, dz = b.cz - a.cz;
+  const n = Math.max(2, isqrtCeil(4 * sq2(dx, dz)));
+  const len = n / 2; // in cells, rounded up to the half cell
   const amp = (rng() * 2 - 1) * 2;
   const waves = 1 + Math.floor(rng() * 2);
-  let t0 = exitAt(a, dx, dz);
-  let t1 = 1 - exitAt(b, -dx, -dz);
+  // The last sample still inside a, the first already inside b.
+  let i0 = 0, i1 = n;
+  for (let i = 0; i <= n; i++) if (inEllipse(a, ax + (dx * i) / n, az + (dz * i) / n)) i0 = i;
+  for (let i = n; i >= 0; i--) if (inEllipse(b, ax + (dx * i) / n, az + (dz * i) / n)) i1 = i;
   // Rooms too close for a gentle floor between their edges: slope over the whole line instead.
-  if (t1 - t0 <= 0 || (t1 - t0) * len < 2 * Math.abs(b.floorY - a.floorY) + 1) { t0 = 0; t1 = 1; }
-  const n = Math.max(2, Math.ceil(len * 2));
+  if (i1 - i0 <= 0 || (i1 - i0) / 2 < 2 * Math.abs(b.floorY - a.floorY) + 1) { i0 = 0; i1 = n; }
   const out: PathPoint[] = [];
   for (let i = 0; i <= n; i++) {
     const t = i / n;
-    const u = t <= t0 ? 0 : t >= t1 ? 1 : (t - t0) / (t1 - t0);
-    const w = amp * Math.sin(Math.PI * t * waves) * Math.sin(Math.PI * t);
+    const u = i <= i0 ? 0 : i >= i1 ? 1 : (i - i0) / (i1 - i0);
+    const w = amp * bump(t * waves) * bump(t);
     out.push({
       x: ax + dx * t - (dz / len) * w,
       z: az + dz * t + (dx / len) * w,
@@ -281,7 +292,7 @@ export class Reserved {
     const out = new Set<Spot>();
     for (let gz = Math.floor((z - reach) / B); gz <= Math.floor((z + reach) / B); gz++) {
       for (let gx = Math.floor((x - reach) / B); gx <= Math.floor((x + reach) / B); gx++) {
-        for (const s of this.cells.get(gx + 1000 * gz) ?? []) if (Math.hypot(s.x - x, s.z - z) < s.r + r) out.add(s);
+        for (const s of this.cells.get(gx + 1000 * gz) ?? []) if (sq2(s.x - x, s.z - z) < (s.r + r) * (s.r + r)) out.add(s);
       }
     }
     return [...out];
@@ -454,22 +465,29 @@ function tryMouth(
     for (let y = Math.min(c.f - 1, g); y <= upTo; y++) {
       const id = world.get(c.x, y, c.z);
       if (id === BlockId.Air || NATURAL.has(id)) continue;
-      if ((id === BlockId.Wood || id === BlockId.Leaves) && !inOld(c.x, c.z)) continue;
+      if ((id === BlockId.Wood || id === BlockId.Leaves) && (!inOld(c.x, c.z) || opts.allowQuarry)) continue;
       return null;
     }
   }
-  // Trees within 2 of the open part: none in the old region; in the new land they are cleared.
+  // Trees within 2 of the open part: none in the old region (except by the quarry mouth, whose
+  // footprint is a documented difference anyway); in the new land they are cleared.
   if (box.x0 === Infinity) { box.x0 = box.x1 = o[0]; box.z0 = box.z1 = o[2]; }
-  for (let z = box.z0 - 2; z <= box.z1 + 2; z++) {
-    for (let x = box.x0 - 2; x <= box.x1 + 2; x++) {
+  const oldTrees: Array<{ x: number; z: number }> = [];
+  for (let z = box.z0 - 3; z <= box.z1 + 3; z++) {
+    for (let x = box.x0 - 3; x <= box.x1 + 3; x++) {
       if (!inOld(x, z)) continue;
+      const near = x >= box.x0 - 2 && x <= box.x1 + 2 && z >= box.z0 - 2 && z <= box.z1 + 2;
       for (let y = ground[x + sizeX * z] + 1; y < world.sizeY; y++) {
         const id = world.get(x, y, z);
-        if (id === BlockId.Wood || id === BlockId.Leaves) return null;
+        if (!opts.allowQuarry && near && (id === BlockId.Wood || id === BlockId.Leaves)) return null;
+        if (opts.allowQuarry && id === BlockId.Wood && y === ground[x + sizeX * z] + 1) oldTrees.push({ x, z });
       }
     }
   }
-  const clearTrees = ctx.outerTrees.filter(t => t.x >= box.x0 - 3 && t.x <= box.x1 + 3 && t.z >= box.z0 - 3 && t.z <= box.z1 + 3);
+  const clearTrees = [
+    ...ctx.outerTrees.filter(t => t.x >= box.x0 - 3 && t.x <= box.x1 + 3 && t.z >= box.z0 - 3 && t.z <= box.z1 + 3),
+    ...oldTrees,
+  ];
   return { kind, o, dir, steps, columns, room, clearTrees };
 }
 
@@ -481,6 +499,11 @@ const DIRS: Dir[] = [[1, 0], [-1, 0], [0, 1], [0, -1]];
 /** Straight on, or a quarter turn (either way) after this many cells. */
 const TURNS: ReadonlyArray<{ first: number; side: 1 | -1 } | null> = [null, { first: 6, side: 1 }, { first: 6, side: -1 }, { first: 9, side: 1 }, { first: 9, side: -1 }, { first: 4, side: 1 }, { first: 4, side: -1 }];
 
+/** The quarry has few doorways, so its ramp may turn early or late too (round a pond, say). */
+const QUARRY_TURNS: ReadonlyArray<{ first: number; side: 1 | -1 } | null> = [
+  ...TURNS, ...[2, 3, 12, 15, 18].flatMap(first => [{ first, side: 1 as const }, { first, side: -1 as const }]),
+];
+
 /** Ground rises by at least 2 within 4 cells going `dir` from (x, z): a hillside to walk into. */
 function risesAhead(ground: Int16Array, sizeX: number, x: number, z: number, dir: Dir): boolean {
   const g = ground[x + sizeX * z];
@@ -489,7 +512,9 @@ function risesAhead(ground: Int16Array, sizeX: number, x: number, z: number, dir
 }
 
 /** At most this many ranked, valid candidates per mouth (the planner tries the next if one cannot be joined up). */
-const MOUTH_CHOICES = 6;
+const MOUTH_CHOICES = 8;
+/** At most this many candidate checks per mouth kind (bounded work on the tablet). */
+const MOUTH_TRIES = 6000;
 
 /**
  * The candidates for the six mouths, best first: the hill one near spawn (14 to 26 blocks away,
@@ -513,14 +538,18 @@ export function mouthCandidates(world: World, seed: number, ground: Int16Array, 
   const collect = (kind: Mouth['kind'], cands: Array<{ x: number; z: number; dir: Dir; score: number }>, opts: { allowQuarry?: boolean } = {}): void => {
     cands.sort((a, b) => a.score - b.score || a.x - b.x || a.z - b.z || a.dir[0] - b.dir[0] || a.dir[1] - b.dir[1]);
     const list: MouthPlan[] = [];
+    let tries = 0;
     for (const c of cands) {
-      if (list.length >= MOUTH_CHOICES) break;
-      for (const t of TURNS) {
+      if (list.length >= MOUTH_CHOICES || (kind !== 'hill' && tries > MOUTH_TRIES)) break;
+      // Alternatives must be real ones: at least 12 from every candidate already taken.
+      if (!opts.allowQuarry && list.some(q => sq2(q.o[0] - c.x, q.o[2] - c.z) < 144)) continue;
+      for (const t of opts.allowQuarry ? QUARRY_TURNS : TURNS) {
         const turn: Dir | undefined = t ? [-c.dir[1] * t.side, c.dir[0] * t.side] : undefined;
+        tries++;
         const p = tryMouth(world, ground, thin, kind, [c.x, ground[c.x + sizeX * c.z] + 1, c.z], c.dir, ctx, keepOff,
           { ...opts, first: t?.first, turn });
         // Candidates far enough apart that a later one is a real alternative (the quarry has only a few spots).
-        if (p && (opts.allowQuarry || list.every(q => Math.hypot(q.o[0] - p.o[0], q.o[2] - p.o[2]) >= 3 || q.dir[0] !== p.dir[0] || q.dir[1] !== p.dir[1]))) { list.push(p); break; }
+        if (p && (opts.allowQuarry || list.every(q => sq2(q.o[0] - p.o[0], q.o[2] - p.o[2]) >= 144))) { list.push(p); break; }
       }
     }
     out.push(list);
@@ -529,14 +558,14 @@ export function mouthCandidates(world: World, seed: number, ground: Int16Array, 
   // The hill mouth: candidates in the old region 14..26 from spawn; hillsides, the lowest first.
   {
     const cands: Array<{ x: number; z: number; dir: Dir; score: number }> = [];
-    for (let z = sz - 26; z <= sz + 26; z++) {
-      for (let x = sx - 26 + ((z - sz) & 1); x <= sx + 26; x += 2) {
-        const d = Math.hypot(x - sx, z - sz);
-        if (d < 14 || d > 26 || !inOld(x, z)) continue;
+    for (let z = sz - 26; z <= sz + 26; z += 2) {
+      for (let x = sx - 26 + ((z - sz) & 2 ? 1 : 0); x <= sx + 26; x += 2) {
+        const d2 = sq2(x - sx, z - sz);
+        if (d2 < 14 * 14 || d2 > 26 * 26 || !inOld(x, z)) continue;
         for (const dir of DIRS) {
           // A hillside first (the lowest), then, if the village leaves no hillside free, flat meadow.
           const slope = risesAhead(ground, sizeX, x, z, dir);
-          cands.push({ x, z, dir, score: (slope ? 0 : 100_000) + ground[x + sizeX * z] * 100 + d });
+          cands.push({ x, z, dir, score: (slope ? 0 : 1_000_000) + ground[x + sizeX * z] * 1000 + d2 });
         }
       }
     }
@@ -569,7 +598,7 @@ export function mouthCandidates(world: World, seed: number, ground: Int16Array, 
           const slope = risesAhead(ground, sizeX, x, z, dir);
           // Flat ground: only heading inwards (towards the middle of the world).
           if (!slope && (dir[0] * (96 - x) + dir[1] * (96 - z)) <= 0) continue;
-          cands.push({ x, z, dir, score: (slope ? 0 : 1000) + Math.hypot(x - side.mid[0], z - side.mid[1]) + rng() * 6 });
+          cands.push({ x, z, dir, score: (slope ? 0 : 1000) + isqrtFloor(sq2(x - side.mid[0], z - side.mid[1])) + rng() * 6 });
         }
       }
     }
@@ -580,9 +609,10 @@ export function mouthCandidates(world: World, seed: number, ground: Int16Array, 
 
 /** Two mouths keep 30 apart (outer cells), their ramps 10 apart and their rooms well apart. */
 export function mouthsFit(a: MouthPlan, b: MouthPlan): boolean {
-  if (Math.hypot(a.o[0] - b.o[0], a.o[2] - b.o[2]) < 30) return false;
-  if (Math.hypot(a.room.cx - b.room.cx, a.room.cz - b.room.cz) < a.room.rx + b.room.rx + 10) return false;
-  for (const s of a.steps) for (const t of b.steps) if (Math.hypot(s.x - t.x, s.z - t.z) < 10) return false;
+  if (sq2(a.o[0] - b.o[0], a.o[2] - b.o[2]) < 30 * 30) return false;
+  const rr = a.room.rx + b.room.rx + 10;
+  if (sq2(a.room.cx - b.room.cx, a.room.cz - b.room.cz) < rr * rr) return false;
+  for (const s of a.steps) for (const t of b.steps) if (sq2(s.x - t.x, s.z - t.z) < 100) return false;
   return true;
 }
 
@@ -595,17 +625,21 @@ export interface StairPlan { s: Room; d: Room; points: PathPoint[] }
 const STAIR_S_R = 6;
 const STAIR_D_R = 7;
 
-/** The centre line of a stair from its shallow room's edge to its deep room's edge: 1 down per 2 cells. */
+/** Stair rooms' centres are this far apart along one of the exact directions (a multiple of 5). */
+const STAIR_DIST = 60;
+
+/**
+ * The centre line of a stair from its shallow room's edge on into its deep room: 1 down per 2 cells.
+ * The rooms are STAIR_DIST apart along an exact direction, so the steps are exact everywhere.
+ */
 function stairLine(s: Room, d: Room): PathPoint[] {
   const ax = s.cx + 0.5, az = s.cz + 0.5;
-  const dx = d.cx - s.cx, dz = d.cz - s.cz;
-  const len = Math.hypot(dx, dz);
-  const ux = dx / len, uz = dz / len;
+  const ux = (d.cx - s.cx) / STAIR_DIST, uz = (d.cz - s.cz) / STAIR_DIST;
   const start = s.rx - 1;
+  const end = STAIR_DIST - d.rx + 2;
   const drop = s.floorY - d.floorY;
   const out: PathPoint[] = [];
-  const run = 2 * drop + 2;
-  for (let i = 0; i <= run * 2 + 4; i++) {
+  for (let i = 0; i <= (end - start) * 2; i++) {
     const along = start + i / 2;
     const f = s.floorY - Math.max(0, Math.min(drop, Math.floor((i / 2 - 1) / 2)));
     out.push({ x: ax + ux * along, z: az + uz * along, f });
@@ -659,32 +693,74 @@ export function planCaves(world: World, seed: number, ground: Int16Array, ctx: M
     rx: (hall.x1 - hall.x0) / 2, rz: (hall.z1 - hall.z0) / 2, h: hall.height,
   };
 
-  // Mouths first (they only need the land): the best candidate of each kind that keeps clear of
-  // the others. A mouth whose entrance room cannot be joined to the network is swapped for its
-  // next candidate and the plan made again (at most 8 times).
+  // Mouths first (they only need the land): one candidate of each kind, all keeping clear of each
+  // other, found by a deterministic backtracking search. A plan is accepted only with every mouth
+  // and all three stairs. A mouth whose entrance room could not be joined up is banned and the
+  // search runs again; a plan short of stairs is made again with the rooms laid out afresh (a new
+  // variant of their streams). Bounded: at most PLAN_ATTEMPTS plans; the fullest one is kept.
   const candidates = mouthCandidates(world, seed, ground, thin, ctx);
-  const start = candidates.map(() => 0);
+  const wanted = candidates.filter(l => l.length > 0).length;
+  const banned = new Set<string>();
   let best: CavePlan | null = null;
-  for (let attempt = 0; attempt < 8; attempt++) {
-    const picked: Array<{ kind: number; index: number; plan: MouthPlan }> = [];
-    candidates.forEach((list, k) => {
-      for (let i = start[k]; i < list.length; i++) {
-        if (picked.every(p => mouthsFit(p.plan, list[i]))) { picked.push({ kind: k, index: i, plan: list[i] }); break; }
-      }
-    });
-    const result = planWith(world, seed, thin, hall, ruinRoom, picked.map(p => ({ ...p.plan, room: { ...p.plan.room } })));
-    if (!best || result.mouths.length + result.stairs.length > best.mouths.length + best.stairs.length) best = result;
-    const lost = picked.filter(p => !result.mouths.some(m => m.kind === p.plan.kind));
-    if (lost.length === 0 && result.mouths.length === candidates.filter(l => l.length > 0).length) break;
-    if (lost.length === 0) break;
-    for (const p of lost) start[p.kind] = p.index + 1;
+  const fullness = (p: CavePlan): number => p.mouths.length * 10 + p.stairs.length;
+  for (let attempt = 0; attempt < PLAN_ATTEMPTS; attempt++) {
+    const picked = pickMouths(candidates, banned);
+    const result = planWith(world, seed, thin, hall, ruinRoom, picked.map(p => ({ ...p.plan, room: { ...p.plan.room } })), attempt);
+    if (!best || fullness(result) > fullness(best)) best = result;
+    if (result.mouths.length === wanted && result.stairs.length === 3) return result;
+    for (const p of picked) if (!result.mouths.some(m => m.kind === p.plan.kind)) banned.add(`${p.kind}:${p.index}`);
   }
   return best!;
 }
 
+/** How many whole plans the planner may make before keeping the fullest. */
+const PLAN_ATTEMPTS = 24;
+
+/**
+ * One candidate per mouth kind (skipping banned ones), every pair fitting (mouthsFit): a depth-first
+ * search in candidate order, so the result is deterministic. Returns the first full set it finds,
+ * else the largest partial one seen (bounded work).
+ */
+function pickMouths(candidates: MouthPlan[][], banned: ReadonlySet<string>): Array<{ kind: number; index: number; plan: MouthPlan }> {
+  type Pick = { kind: number; index: number; plan: MouthPlan };
+  // Every pair's fit, worked out once (the search then only looks things up).
+  const ids: Array<{ kind: number; index: number }> = [];
+  candidates.forEach((l, kind) => l.forEach((_, index) => ids.push({ kind, index })));
+  const key = (k: number, i: number): number => ids.findIndex(d => d.kind === k && d.index === i);
+  const fit = ids.map(a => ids.map(b => a.kind === b.kind || mouthsFit(candidates[a.kind][a.index], candidates[b.kind][b.index])));
+  let best: Pick[] = [];
+  let nodes = 0;
+  const chosen: Array<Pick & { id: number }> = [];
+  const dfs = (k: number): boolean => {
+    if (++nodes > 200_000) return false;
+    if (k === candidates.length) { best = chosen.map(({ kind, index, plan }) => ({ kind, index, plan })); return true; }
+    for (let i = 0; i < candidates[k].length; i++) {
+      if (banned.has(`${k}:${i}`)) continue;
+      const id = key(k, i);
+      if (!chosen.every(c => fit[c.id][id])) continue;
+      chosen.push({ kind: k, index: i, plan: candidates[k][i], id });
+      if (dfs(k + 1)) return true;
+      chosen.pop();
+    }
+    if (chosen.length > best.length) best = chosen.map(({ kind, index, plan }) => ({ kind, index, plan }));
+    return false;
+  };
+  if (dfs(0)) return best;
+  // No full set: the largest set found by going on without the kinds that cannot fit (greedy, in order).
+  const partial: Array<Pick & { id: number }> = [];
+  candidates.forEach((l, k) => {
+    for (let i = 0; i < l.length; i++) {
+      if (banned.has(`${k}:${i}`)) continue;
+      const id = key(k, i);
+      if (partial.every(c => fit[c.id][id])) { partial.push({ kind: k, index: i, plan: l[i], id }); break; }
+    }
+  });
+  return partial.length > best.length ? partial.map(({ kind, index, plan }) => ({ kind, index, plan })) : best;
+}
+
 /** One go at the plan with these mouths. */
 function planWith(
-  world: World, seed: number, thin: Uint8Array, hall: typeof RUIN_HALL, ruinRoom: Room, mouths: MouthPlan[],
+  world: World, seed: number, thin: Uint8Array, hall: typeof RUIN_HALL, ruinRoom: Room, mouths: MouthPlan[], variant = 0,
 ): CavePlan {
   const { sizeX, sizeZ } = world;
   const reserved = new Reserved();
@@ -699,14 +775,14 @@ function planWith(
 
   // Stairs: anchor rooms joined by a straight stair, spread over the map, the first near the centre.
   const stairs: StairPlan[] = [];
-  const stairRng = caveStream(seed, 2);
+  const stairRng = caveStream(seed, 2 + 100 * variant);
   const clearOfAll = (pts: PathPoint[], skipOwner: string): boolean => pts.every(p => reserved.near(p.x, p.z, 2.5 + 3)
     .every(s => s.owner === skipOwner || !clash(p.f, p.f + TUNNEL.height - 1, s.y0, s.y1)));
   const roomClear = (r: Room, extra = 3): boolean => {
     const R = Math.max(r.rx, r.rz);
     const top = r.floorY + r.h - 1;
     if (reserved.near(r.cx + 0.5, r.cz + 0.5, R + extra).some(s => clash(r.floorY, top, s.y0, s.y1))) return false;
-    if (rooms.some(o => o.layer === r.layer && Math.hypot(o.cx - r.cx, o.cz - r.cz) < Math.max(ROOM_SPACING, Math.max(o.rx, o.rz) + R + 4))) return false;
+    if (rooms.some(o => { const g = Math.max(ROOM_SPACING, Math.max(o.rx, o.rz) + R + 4); return o.layer === r.layer && sq2(o.cx - r.cx, o.cz - r.cz) < g * g; })) return false;
     if (r.layer === 'deep' && rectDist(grow(hall, R + 4), r.cx, r.cz) <= 0) return false;
     if (r.layer === 'shallow') {
       for (let z = Math.floor(r.cz - r.rz) - 1; z <= Math.ceil(r.cz + r.rz) + 1; z++) {
@@ -715,18 +791,19 @@ function planWith(
     }
     return true;
   };
-  for (let tries = 0; tries < 600 && stairs.length < 3; tries++) {
+  for (let tries = 0; tries < 2000 && stairs.length < 3; tries++) {
     const first = stairs.length === 0;
-    const ang = stairRng() * Math.PI * 2;
-    const dist = (STAIR_S_R - 1) + 2 * (STAIR_TOP - STAIR_BOTTOM) + 3 + (STAIR_D_R - 1);
-    const dcx = first ? Math.round(96 + Math.cos(stairRng() * Math.PI * 2) * (22 + stairRng() * 10)) : Math.round(EDGE_KEEP + STAIR_D_R + stairRng() * (sizeX - 2 * (EDGE_KEEP + STAIR_D_R)));
-    const dcz = first ? Math.round(96 + Math.sin(stairRng() * Math.PI * 2) * (22 + stairRng() * 10)) : Math.round(EDGE_KEEP + STAIR_D_R + stairRng() * (sizeZ - 2 * (EDGE_KEEP + STAIR_D_R)));
-    const scx = Math.round(dcx + Math.cos(ang) * dist), scz = Math.round(dcz + Math.sin(ang) * dist);
+    // An exact direction (length 5), the shallow room STAIR_DIST along it from the deep one.
+    const dir = DIRS5[Math.floor(stairRng() * DIRS5.length)];
+    const k = STAIR_DIST / 5;
+    const dcx = first ? 96 - 32 + Math.floor(stairRng() * 65) : Math.round(EDGE_KEEP + STAIR_D_R + stairRng() * (sizeX - 2 * (EDGE_KEEP + STAIR_D_R)));
+    const dcz = first ? 96 - 32 + Math.floor(stairRng() * 65) : Math.round(EDGE_KEEP + STAIR_D_R + stairRng() * (sizeZ - 2 * (EDGE_KEEP + STAIR_D_R)));
+    const scx = dcx + dir[0] * k, scz = dcz + dir[1] * k;
     const mS = EDGE_KEEP + STAIR_S_R, mD = EDGE_KEEP + STAIR_D_R;
     if (scx < mS || scz < mS || scx >= sizeX - mS || scz >= sizeZ - mS) continue;
     if (dcx < mD || dcz < mD || dcx >= sizeX - mD || dcz >= sizeZ - mD) continue;
-    if (first && Math.hypot(dcx - 96, dcz - 96) > 32) continue;
-    if (!first && stairs.some(s => Math.hypot(s.s.cx - scx, s.s.cz - scz) < 50)) continue;
+    if (first && sq2(dcx - 96, dcz - 96) > 32 * 32) continue;
+    if (!first && stairs.some(s => sq2(s.s.cx - scx, s.s.cz - scz) < 50 * 50)) continue;
     const s: Room = { id: -1, layer: 'shallow', cx: scx, cz: scz, floorY: STAIR_TOP, rx: STAIR_S_R, rz: STAIR_S_R, h: 6 };
     const d: Room = { id: -1, layer: 'deep', cx: dcx, cz: dcz, floorY: STAIR_BOTTOM, rx: STAIR_D_R, rz: STAIR_D_R, h: 8 };
     if (!roomClear(s, 4) || !roomClear(d, 4)) continue;
@@ -735,7 +812,7 @@ function planWith(
     if (points.some(p => rectDist(grow(hall, 6), Math.floor(p.x), Math.floor(p.z)) <= 0)) continue;
     if (points.some(p => p.f >= 33 && thin[Math.floor(p.x) + sizeX * Math.floor(p.z)])) continue;
     // Not across another room either.
-    if (points.some(p => rooms.some(o => Math.hypot(o.cx - p.x, o.cz - p.z) < Math.max(o.rx, o.rz) + 5 && clash(p.f, p.f + 4, o.floorY, o.floorY + o.h)))) continue;
+    if (points.some(p => rooms.some(o => sq2(o.cx - p.x, o.cz - p.z) < (Math.max(o.rx, o.rz) + 5) * (Math.max(o.rx, o.rz) + 5) && clash(p.f, p.f + 4, o.floorY, o.floorY + o.h)))) continue;
     s.id = rooms.length; rooms.push(s);
     d.id = rooms.length; rooms.push(d);
     stairs.push({ s, d, points });
@@ -744,7 +821,7 @@ function planWith(
 
   // The rest of the rooms, by rejection (at most 300 tries each).
   for (const L of LAYERS) {
-    const rng = caveStream(seed, L.id === 'shallow' ? 3 : 4);
+    const rng = caveStream(seed, (L.id === 'shallow' ? 3 : 4) + 100 * variant);
     const want = L.rooms;
     let have = rooms.filter(r => r.layer === L.id).length;
     for (let n = have; n < want; n++) {
@@ -768,7 +845,7 @@ function planWith(
   // Tunnels: a minimum spanning tree per layer plus 3 loops, over the pairs whose tunnel stays clear.
   const lines: CavePlan['lines'] = [];
   const edges: Array<[number, number]> = [];
-  const tunnelRng = caveStream(seed, 5);
+  const tunnelRng = caveStream(seed, 5 + 100 * variant);
   const lineClear = (a: Room, b: Room, pts: PathPoint[]): boolean => {
     for (let n = 0; n < pts.length; n += 2) {
       const p = pts[n];
@@ -777,8 +854,13 @@ function planWith(
       if (a.layer === 'shallow' && thin[px + sizeX * pz]) return false;
       if (a.layer === 'deep' && (a.id !== -1 && b.id !== -1) && rectDist(grow(hall, 4), px, pz) <= 0) return false;
       for (const s of reserved.near(p.x, p.z, 2.5 + 2)) {
-        if (s.attach.some(id => (id === a.id && Math.hypot(p.x - a.cx - 0.5, p.z - a.cz - 0.5) <= a.rx + 6)
-          || (id === b.id && Math.hypot(p.x - b.cx - 0.5, p.z - b.cz - 0.5) <= b.rx + 6))) continue;
+        // Near its own room a tunnel may run beside a mouth's ramp (the ramp's level end is drawn
+        // into the layer's field, so the floor repair sees across it). A stair it may meet only
+        // inside the stair's own room: elsewhere the two are carved apart at different heights.
+        const near = (r: Room): boolean => s.owner.startsWith('mouth')
+          ? sq2(p.x - r.cx - 0.5, p.z - r.cz - 0.5) <= (r.rx + 6) * (r.rx + 6)
+          : inEllipse(r, p.x, p.z) || inEllipse(r, s.x, s.z);
+        if (s.attach.some(id => (id === a.id && near(a)) || (id === b.id && near(b)))) continue;
         if (clash(p.f, p.f + TUNNEL.height - 1, s.y0, s.y1)) return false;
       }
     }
@@ -790,15 +872,15 @@ function planWith(
     // Each room's eight nearest neighbours in its layer (a spanning tree never needs a far one).
     const pairs = new Set<string>();
     for (const a of layerRooms) {
-      const near = layerRooms.filter(b => b !== a).sort((p, q) => Math.hypot(p.cx - a.cx, p.cz - a.cz) - Math.hypot(q.cx - a.cx, q.cz - a.cz)).slice(0, 8);
+      const near = layerRooms.filter(b => b !== a).sort((p, q) => sq2(p.cx - a.cx, p.cz - a.cz) - sq2(q.cx - a.cx, q.cz - a.cz) || p.id - q.id).slice(0, 8);
       for (const b of near) pairs.add(a.id < b.id ? `${a.id},${b.id}` : `${b.id},${a.id}`);
     }
     const byId = new Map(layerRooms.map(r => [r.id, r]));
     for (const key of [...pairs].sort((p, q) => { const [a1, b1] = p.split(',').map(Number); const [a2, b2] = q.split(',').map(Number); return a1 - a2 || b1 - b2; })) {
       const [ia, ib] = key.split(',').map(Number);
       const a = byId.get(ia)!, b = byId.get(ib)!;
-      const len = Math.hypot(a.cx - b.cx, a.cz - b.cz);
-      if (len > 90) continue;
+      const len = sq2(a.cx - b.cx, a.cz - b.cz); // squared: only compared and sorted
+      if (len > 90 * 90) continue;
       const pts = tunnelLine(a, b, tunnelRng);
       if (lineClear(a, b, pts)) cand.push({ a, b, len, pts });
     }
@@ -835,7 +917,7 @@ function planWith(
   // The Old Hideout joins the deep network by two tunnels to its two nearest clear rooms.
   const ruinLinks: CavePlan['ruinLinks'] = [];
   const deepRooms = keep.filter(r => r.layer === 'deep').sort((a, b) =>
-    Math.hypot(a.cx - ruinRoom.cx, a.cz - ruinRoom.cz) - Math.hypot(b.cx - ruinRoom.cx, b.cz - ruinRoom.cz));
+    sq2(a.cx - ruinRoom.cx, a.cz - ruinRoom.cz) - sq2(b.cx - ruinRoom.cx, b.cz - ruinRoom.cz) || a.id - b.id);
   for (const r of deepRooms) {
     if (ruinLinks.length >= 2) break;
     const pts = tunnelLine(ruinRoom, r, tunnelRng);
@@ -853,6 +935,10 @@ function planWith(
 
   const liveMouths = mouths.filter(m => m.room.h > 0);
   const liveStairs = stairs.filter(st => st.s.h > 0 && st.d.h > 0);
+  // The ramps' level ends join the shallow field, so the floor repair sees a tunnel beside them
+  // (they are still carved on their own, from the repaired floor).
+  for (const m of liveMouths) for (const c of m.columns) if (c.f <= RAMP_END_FLOOR + 2) shallow.add(c.x, c.z, c.f, Math.min(c.t, CARVE_MAX_Y));
+
   return { rooms: keep, edges: liveEdges, mouths: liveMouths, stairs: liveStairs, lines: liveLines, ruinLinks, shallow, deep, thin, reserved };
 }
 
@@ -873,17 +959,20 @@ function clearTree(world: World, ground: Int16Array, t: { x: number; z: number }
  * flat ground. Two DoorFrame posts with a Lamp on top stand either side of the way in.
  * Returns the mouth's changed-columns rectangle.
  */
-export function carveMouth(world: World, ground: Int16Array, m: MouthPlan, carved: Uint8Array, walk: Uint8Array): Rect {
+export function carveMouth(world: World, ground: Int16Array, m: MouthPlan, carved: Uint8Array, walk: Uint8Array, floorOf: FloorOf = (_x, _z, f) => f): Rect {
   for (const t of m.clearTrees) clearTree(world, ground, t);
   const box = { x0: m.o[0], z0: m.o[2], x1: m.o[0], z1: m.o[2] };
   const take = (x: number, z: number): void => {
     box.x0 = Math.min(box.x0, x); box.z0 = Math.min(box.z0, z); box.x1 = Math.max(box.x1, x); box.z1 = Math.max(box.z1, z);
   };
+  // A cleared tree's whole canopy belongs to the mouth's changed columns.
+  for (const t of m.clearTrees) { take(t.x - 1, t.z - 1); take(t.x + 1, t.z + 1); }
   const cells = world.buffer;
   for (const c of m.columns) {
+    const f = floorOf(c.x, c.z, c.f);
     // A floor under every step (on flat ground the first steps may need one block of fill).
-    if (!BLOCKS[world.get(c.x, c.f - 1, c.z)].solid) world.set(c.x, c.f - 1, c.z, BlockId.Dirt);
-    for (let y = c.f; y <= c.t; y++) {
+    if (!BLOCKS[world.get(c.x, f - 1, c.z)].solid) world.set(c.x, f - 1, c.z, BlockId.Dirt);
+    for (let y = f; y <= Math.max(c.t, f + 2); y++) {
       const i = cellIndex(world, c.x, y, c.z);
       walk[i] = 1;
       if (cells[i] !== BlockId.Air) { cells[i] = BlockId.Air; carved[i] = 1; }
@@ -902,12 +991,38 @@ export function carveMouth(world: World, ground: Int16Array, m: MouthPlan, carve
   return grow(box, 3);
 }
 
-/** Carves a stair (its own small field, repaired so every step is at most 1). */
-export function carveStairs(world: World, plan: StairPlan, carved: Uint8Array, walk?: Uint8Array): Stairs {
-  const field = new CaveField(world.sizeX, world.sizeZ, CARVE_MAX_Y);
+/** A stair's own small field, repaired so every step is at most 1. */
+function stairField(sizeX: number, sizeZ: number, plan: StairPlan): CaveField {
+  const field = new CaveField(sizeX, sizeZ, CARVE_MAX_Y);
   rasterPath(field, plan.points);
-  // Keep the stair's own columns only where they are not already its rooms (those are flat).
   repairFloors(field);
+  return field;
+}
+
+/**
+ * Where a ramp's floor really is at a column: the layer's repaired field where the ramp was drawn
+ * into it (the field is the truth there: a tunnel may have lowered it, the repair may have raised
+ * it), else its own.
+ */
+export type FloorOf = (x: number, z: number, f: number) => number;
+export const floorFromFields = (fields: CaveField[]): FloorOf => (x, z, f) => {
+  for (const fl of fields) {
+    if (!fl.has(x, z)) continue;
+    const F = fl.F[x + fl.sizeX * z];
+    if (Math.abs(F - f) <= 4) return F;
+  }
+  return f;
+};
+
+/** Carves a stair (its own small field, repaired so every step is at most 1), from the repaired floors. */
+export function carveStairs(world: World, plan: StairPlan, carved: Uint8Array, walk?: Uint8Array, floorOf: FloorOf = (_x, _z, f) => f): Stairs {
+  const field = stairField(world.sizeX, world.sizeZ, plan);
+  for (let k = 0; k < field.F.length; k++) {
+    if (field.F[k] < 0) continue;
+    const x = k % world.sizeX, z = (k - x) / world.sizeX;
+    field.F[k] = floorOf(x, z, field.F[k]);
+    if (field.T[k] < field.F[k] + 2) field.T[k] = field.F[k] + 2;
+  }
   carveField(world, field, carved, walk);
   const cells: Cell[] = [];
   const seen = new Set<number>();

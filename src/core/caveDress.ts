@@ -86,7 +86,7 @@ function sortedOffsets(r: number): Array<[number, number, number]> {
     for (let dy = -r; dy <= r; dy++) for (let dz = -r; dz <= r; dz++) for (let dx = -r; dx <= r; dx++) {
       if (dx * dx + dy * dy + dz * dz <= r * r) list.push([dx, dy, dz]);
     }
-    list.sort((a, b) => (a[0] ** 2 + a[1] ** 2 + a[2] ** 2) - (b[0] ** 2 + b[1] ** 2 + b[2] ** 2) || a[1] - b[1] || a[2] - b[2] || a[0] - b[0]);
+    list.sort((a, b) => (a[0] * a[0] + a[1] * a[1] + a[2] * a[2]) - (b[0] * b[0] + b[1] * b[1] + b[2] * b[2]) || a[1] - b[1] || a[2] - b[2] || a[0] - b[0]);
     offsetCache.set(r, list);
   }
   return list;
@@ -143,6 +143,29 @@ export function dressCaves(world: World, seed: number, carved: Uint8Array, stamp
     return null;
   };
 
+  const isAir = (x: number, y: number, z: number): boolean => world.inBounds(x, y, z) && world.get(x, y, z) === BlockId.Air;
+  /**
+   * The fallback when no rock that may hold a light is near (the cave's ceiling is the meadow's
+   * floor, which never changes): a light hanging from the ceiling into the carved air, where nobody
+   * can stand or walk (three cells of open air under it, so no head is ever in it). The nearest such
+   * spot within 5; failing that, the highest open cell in this column; failing that, the cell itself.
+   */
+  const hanging = (x: number, y: number, z: number): Cell => {
+    const free = (hx: number, hy: number, hz: number, below: number): boolean => {
+      if (!isAir(hx, hy, hz) || !carved[cellIndex(world, hx, hy, hz)] || !allowed(hx, hy, hz)) return false;
+      if (!BLOCKS[world.get(hx, hy + 1, hz)].solid) return false;
+      for (let k = 1; k <= below; k++) if (!isAir(hx, hy - k, hz)) return false;
+      return true;
+    };
+    for (const [dx, dy, dz] of sortedOffsets(REPAIR_RADIUS)) {
+      if (free(x + dx, y + dy, z + dz, 3)) return [x + dx, y + dy, z + dz];
+    }
+    let top = y;
+    while (isAir(x, top + 1, z) && allowed(x, top + 1, z)) top++;
+    if (free(x, top, z, 2)) return [x, top, z];
+    return [x, y, z];
+  };
+
   // Pass 1: a coarse grid over the cave floors, each lighting the nearest wall or ceiling, in clusters.
   for (const i of air) {
     const [x, y, z] = cellOf(world, i);
@@ -168,8 +191,9 @@ export function dressCaves(world: World, seed: number, carved: Uint8Array, stamp
   for (const i of air) {
     if (cover.lit[i] || cells[i] !== BlockId.Air) continue;
     const [x, y, z] = cellOf(world, i);
-    const at = nearest(x, y, z, REPAIR_RADIUS, false) ?? nearest(x, y, z, REPAIR_RADIUS, true);
-    if (at) place(at[0], at[1], at[2], kindAt(at[1]));
+    const at = nearest(x, y, z, REPAIR_RADIUS, false) ?? nearest(x, y, z, REPAIR_RADIUS, true) ?? hanging(x, y, z);
+    // hanging() never gives up (it ends with the cell itself), so the rule holds on every seed.
+    place(at[0], at[1], at[2], kindAt(at[1]));
   }
 
   // Gems: of the rock cells on walls and ceilings (never floors, never above the old meadow),
@@ -260,11 +284,11 @@ export function lightDistances(world: World, airCells: Int32Array, cap = 12): Fl
       const list = grid.get((gx + a) + 64 * ((gz + b) + 64 * (gy + d)));
       if (!list) continue;
       for (const [lx, ly, lz] of list) {
-        const d2 = (lx - x) ** 2 + (ly - y) ** 2 + (lz - z) ** 2;
+        const d2 = (lx - x) * (lx - x) + (ly - y) * (ly - y) + (lz - z) * (lz - z);
         if (d2 < best) best = d2;
       }
     }
-    out[n] = Math.sqrt(best);
+    out[n] = Math.sqrt(best); // exact-math: a reported distance for tests and debug, never a decision
   }
   return out;
 }

@@ -1,6 +1,7 @@
 import { BlockId } from './blocks';
+import { coneFloor, sq2 } from './exactMath';
 import {
-  carveField, carveMouth, carveStairs, groundTops, inOld, layTrail, planCaves, repairFloors,
+  carveField, carveMouth, carveStairs, floorFromFields, groundTops, inOld, layTrail, planCaves, repairFloors,
   EMPTY_CAVES, type CaveLayout, type Mouth, type MouthContext,
 } from './caves';
 import { dressCaves } from './caveDress';
@@ -30,20 +31,35 @@ type Tree = { x: number; z: number };
 
 interface Column { height: number; inPond: boolean; onShore: boolean }
 
+/**
+ * round(5 + (h - 5) * max(0, (d - 6) / 4)) with d = sqrt(d2), exactly: the largest m with
+ * (h - 5) d >= 4m - 22 + 6(h - 5) (Math.round rounds halves up, as floor(x + 0.5)). The v1 meadow is
+ * never below 5 (5 + noise * 4, a plateau of at least 5), so h - 5 >= 0.
+ */
+function pondEase(h: number, d2: number): number {
+  const k = h - 5;
+  if (k <= 0 || d2 <= 36) return 5;
+  for (let m = h; m > 5; m--) {
+    const rhs = 4 * m - 22 + 6 * k;
+    if (rhs <= 0 || d2 * k * k >= rhs * rhs) return m;
+  }
+  return 5;
+}
+
 function column(noise: (x: number, z: number) => number, plateau: number, x: number, z: number): Column {
   const spawnDistance = Math.max(Math.abs(x - 24), Math.abs(z - 24));
   const blend = Math.min(1, Math.max(0, (spawnDistance - 3) / 5));
   const meadow = 5 + noise(x / 12, z / 12) * 4;
-  const hill = Math.floor(11 - Math.hypot(x - 34, z - 12) * 0.75);
+  // Exact integer forms of the v1 formulas (same results, the same on every engine): the hill is
+  // floor(11 - 0.75 d), the pond eases the meadow down by round(5 + (h - 5)(d - 6) / 4).
+  const hill = coneFloor(11, 3, 4, sq2(x - 34, z - 12));
   let height = Math.max(Math.round(plateau + (meadow - plateau) * blend), hill);
 
-  const pondDistance = Math.hypot(x - 14, z - 32);
-  const inPond = pondDistance <= 5;
-  const onShore = pondDistance > 5 && pondDistance <= 6;
+  const pd2 = sq2(x - 14, z - 32);
+  const inPond = pd2 <= 25;
+  const onShore = pd2 > 25 && pd2 <= 36;
   // Ease the meadow down to the sandy bank; the pond has a solid sandy bed.
-  if (pondDistance < 10) {
-    height = Math.round(5 + (height - 5) * Math.max(0, (pondDistance - 6) / 4));
-  }
+  if (pd2 < 100) height = pondEase(height, pd2);
   if (inPond) height = 3;
   if (onShore) height = 5;
   return { height, inPond, onShore };
@@ -304,12 +320,13 @@ export function generateCaves(world: World, seed: number, ctx: MouthContext): Ca
   const walk = new Uint8Array(n);
   carveField(world, plan.shallow, carved, walk);
   carveField(world, plan.deep, carved, walk);
+  const floorOf = floorFromFields([plan.shallow, plan.deep]);
   const mouths: Mouth[] = plan.mouths.map((m, id) => {
-    const rect = carveMouth(world, ground, m, carved, walk);
+    const rect = carveMouth(world, ground, m, carved, walk, floorOf);
     const ramp = m.steps.map(s => [s.x, s.f, s.z] as Cell);
     return { id, cell: [...m.o] as Cell, rect, stamped: inOld(m.o[0], m.o[2]), room: m.room.id, kind: m.kind, dir: m.dir, ramp };
   });
-  const stairs = plan.stairs.map(st => carveStairs(world, st, carved, walk));
+  const stairs = plan.stairs.map(st => carveStairs(world, st, carved, walk, floorOf));
   const carveMs = lap();
   for (const tr of treasure) stampTreasure(world, plan.rooms, tr);
   const ruin = stampRuin(world, seed);
