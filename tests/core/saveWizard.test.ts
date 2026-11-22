@@ -3,15 +3,16 @@ import { afterEach, beforeEach, describe, expect, test, vi } from 'vitest';
 import { BlockId } from '../../src/core/blocks';
 import { MYTHICAL } from '../../src/core/mythical';
 import {
-  BAD_V2_KEY, LEGACY_SAVE_KEY, SAVE_KEY, WIZARD_COUNT_MAX, WIZARD_HINT_NAMES, applySave, parseSave, readSave, serialise,
-  startAutosave, storeSave, type SaveData,
+  BACKUP_V2_KEY, BAD_V3_KEY, LEGACY_SAVE_KEY, SAVE_KEY, V2_SAVE_KEY, WIZARD_COUNT_MAX, WIZARD_HINT_NAMES, applySave, parseSave,
+  readSave, serialise, startAutosave, storeSave, type SaveData,
 } from '../../src/core/save';
 import { GEN_VERSION, generateWorld } from '../../src/core/worldgen';
 import { Game } from '../../src/game/game';
 import { newWizardState, type WizardState } from '../../src/game/wizardTrade';
 
+// A v3 save (world coordinates). The v2 shape the live game writes today is tested at the end.
 const base = (): SaveData => ({
-  version: 2, gen: 1, seed: 1234, edits: [], inventory: { [BlockId.Wood]: 4 }, player: { x: 24, y: 9, z: 24 },
+  version: 3, gen: 1, origin: [48, 48, 48], seed: 1234, edits: [], inventory: { [BlockId.Wood]: 4 }, player: { x: 24, y: 9, z: 24 },
   flags: { ledToVillage: false },
 });
 const raw = (extra: Record<string, unknown>): string => JSON.stringify({ ...base(), ...extra });
@@ -35,10 +36,11 @@ describe('wizard save fields', () => {
     expect(applySave(data).wizard).toEqual(newWizardState());
   });
 
-  test('the key and version are unchanged', () => {
-    expect(SAVE_KEY).toBe('blockpals.save.v2');
+  test('the wizard rides in the v3 save under the v3 key', () => {
+    expect(SAVE_KEY).toBe('blockpals.save.v3');
     const data = serialise(makeGame(), 1234, undefined, 0, undefined, wiz({ gift: true }));
-    expect(data.version).toBe(2);
+    expect(data.version).toBe(3);
+    expect(data.wizard).toMatchObject({ gift: true });
   });
 
   test('a default wizard is not written at all (the save is what the step before wrote)', () => {
@@ -160,23 +162,23 @@ describe('wizard save fields', () => {
     expect(stored().wizard).toEqual({ gift: true, met: false, led: false, solved: 6, clean: 4, bought: 0 });
   });
 
-  test('a save from a newer build (version above 2) is never overwritten', () => {
-    const newer = JSON.stringify({ ...base(), version: 3, wizard: { gift: true } });
+  test('a save from a newer build (version above 3) is never overwritten', () => {
+    const newer = JSON.stringify({ ...base(), version: 4, wizard: { gift: true } });
     localStorage.setItem(SAVE_KEY, newer);
     expect(readSave(localStorage)).toBeNull();
     expect(storeSave(localStorage, serialise(makeGame(), 1234, undefined, 0, undefined, wiz({ gift: true })))).toBe(false);
     expect(localStorage.getItem(SAVE_KEY)).toBe(newer);
   });
 
-  test('a damaged v2 is copied to .bad before it is replaced, with the wizard fields present', () => {
+  test('a damaged v3 is copied to .bad before it is replaced, with the wizard fields present', () => {
     const damaged = raw({ wizard: { gift: true, clean: 6, solved: 6 }, edits: [[30, 6, 30, BlockId.Planks], [1, 2, 3, 999]] });
     localStorage.setItem(SAVE_KEY, damaged);
     const data = readSave(localStorage)!;
     expect(data.wizard).toEqual({ gift: true, clean: 6, solved: 6 });
-    expect(localStorage.getItem(BAD_V2_KEY)).toBe(damaged);
+    expect(localStorage.getItem(BAD_V3_KEY)).toBe(damaged);
     const game = new Game(applySave(data));
     expect(storeSave(localStorage, serialise(game, 1234, undefined, 0, undefined, applySave(data).wizard))).toBe(true);
-    expect(localStorage.getItem(BAD_V2_KEY)).toBe(damaged);
+    expect(localStorage.getItem(BAD_V3_KEY)).toBe(damaged);
     expect(stored().wizard).toMatchObject({ gift: true, clean: 6, solved: 6 });
   });
 
@@ -184,7 +186,7 @@ describe('wizard save fields', () => {
     localStorage.setItem(SAVE_KEY, raw({ wizard: { gift: 'maybe' } }));
     expect(readSave(localStorage)).not.toBeNull();
     expect(storeSave(localStorage, serialise(makeGame(), 1234))).toBe(true);
-    expect(localStorage.getItem(BAD_V2_KEY)).toBeNull();
+    expect(localStorage.getItem(BAD_V3_KEY)).toBeNull();
   });
 
   test('a v1 save still migrates with the default wizard and the v1 key is never written', () => {
@@ -243,5 +245,41 @@ describe('wizard save fields', () => {
     } finally {
       vi.useRealTimers();
     }
+  });
+
+  describe('a v2 save from the live game (the v2 key) migrates with its wizard', () => {
+    const v2 = (extra: Record<string, unknown> = {}): string => JSON.stringify({
+      version: 2, gen: 3, seed: 1234, edits: [[30, 6, 30, BlockId.MoonBlock]], inventory: { [BlockId.SunBlock]: 2 },
+      player: { x: 24.5, y: 9, z: 24.5 }, flags: { ledToVillage: true }, ...extra,
+    });
+
+    test('every wizard field is carried over as it is, and the v2 key stays byte-identical', () => {
+      const w = { gift: true, met: true, led: true, solved: 9, clean: 5, bought: 3, hints: ['seeLight', 'towerHint'] };
+      const payload = v2({ wizard: w });
+      localStorage.setItem(V2_SAVE_KEY, payload);
+      const data = readSave(localStorage)!;
+      expect(data.version).toBe(3);
+      expect(data.wizard).toEqual(w);
+      expect(data.edits).toEqual([[78, 54, 78, BlockId.MoonBlock]]);
+      expect(stored().wizard).toEqual(w);
+      expect(applySave(data).wizard).toEqual(w);
+      expect(localStorage.getItem(V2_SAVE_KEY)).toBe(payload);
+      expect(localStorage.getItem(BACKUP_V2_KEY)).toBe(payload);
+    });
+
+    test('a bad wizard field in the v2 save is dropped on its own; the builds survive', () => {
+      localStorage.setItem(V2_SAVE_KEY, v2({ wizard: { gift: 'yes', solved: 4, clean: 9, hints: ['boo', 'seeLight'] } }));
+      const data = readSave(localStorage)!;
+      expect(data.wizard).toEqual({ solved: 4, clean: 4, hints: ['seeLight'] });
+      expect(data.edits).toHaveLength(1);
+      expect(data.inventory).toEqual({ [BlockId.SunBlock]: 2 });
+    });
+
+    test('after the migration the wizard is never lowered by a stale write', () => {
+      localStorage.setItem(V2_SAVE_KEY, v2({ wizard: { gift: true, solved: 12, clean: 8, bought: 5 } }));
+      const applied = applySave(readSave(localStorage)!);
+      expect(storeSave(localStorage, serialise(new Game(applied), 1234, undefined, 0, undefined, wiz({ solved: 1 })))).toBe(true);
+      expect(stored().wizard).toMatchObject({ gift: true, solved: 12, clean: 8, bought: 5 });
+    });
   });
 });

@@ -9,7 +9,7 @@ import { generateWorld } from '../../src/core/worldgen';
 import { Game } from '../../src/game/game';
 
 const base = (): SaveData => ({
-  version: 2, gen: 1, seed: 1234, edits: [], inventory: { [BlockId.Wood]: 4 }, player: { x: 24, y: 9, z: 24 },
+  version: 3, gen: 1, origin: [48, 48, 48], seed: 1234, edits: [], inventory: { [BlockId.Wood]: 4 }, player: { x: 72, y: 57, z: 72 },
   flags: { ledToVillage: false },
 });
 
@@ -22,7 +22,7 @@ describe('items in the save', () => {
     const data = serialise(game, 1234);
     expect('items' in data).toBe(false);
     expect('itemOrder' in data).toBe(false);
-    expect(data.version).toBe(2);
+    expect(data.version).toBe(3);
     expect(data.inventory).toEqual({ [BlockId.Wood]: 2 });
   });
 
@@ -50,7 +50,7 @@ describe('items in the save', () => {
     game.world.set(30, 15, 30, BlockId.RainbowBlock);
     const data = serialise(game, 1234);
     expect(Object.keys(data).sort()).toEqual(Object.keys(serialise(new Game(generateWorld(1234)), 1234)).sort());
-    expect(data.version).toBe(2);
+    expect(data.version).toBe(3);
     expect(data.inventory).toEqual({ [BlockId.Wood]: 2, [BlockId.MagicMirror]: 4, [BlockId.StarlightCrystal]: 1 });
     expect(data.edits).toContainEqual([30, 15, 30, BlockId.RainbowBlock]);
     expect(storeSave(localStorage, data)).toBe(true);

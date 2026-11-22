@@ -1,5 +1,6 @@
 import { test, expect, type Page } from '@playwright/test';
-import { mkdirSync, writeFileSync } from 'node:fs';
+import { createHash } from 'node:crypto';
+import { mkdirSync, readFileSync, writeFileSync } from 'node:fs';
 import { join } from 'node:path';
 import { frames, press, ready, type FarmDbg } from './helpers';
 
@@ -75,4 +76,46 @@ test('save a copy, load it on a fresh device, and a corrupted file changes nothi
   expect(after.keys.length).toBe(1); // the fresh game that was replaced was kept
   await shot(p2, 'transfer-4-result.png');
   await ctx2.close();
+});
+
+test('a copy saved by the old game (the v2 key) loads into this game, shifted into the big world', async ({ browser }, info) => {
+  test.setTimeout(120_000);
+  // The bundle exactly as the build before this one wrote it: its main key was blockpals.save.v2.
+  const raw = readFileSync(new URL('../tests/fixtures/saves/v2-gen3-tower.json', import.meta.url), 'utf8');
+  const v2 = JSON.parse(raw) as { edits: number[][]; wizard: Record<string, unknown> };
+  const keys = { 'blockpals.save.v2': raw };
+  const canonical = JSON.stringify(Object.fromEntries(Object.keys(keys).sort().map(k => [k, keys[k as keyof typeof keys]])));
+  const bundle = {
+    format: 'blockpals-save-bundle', formatVersion: 1, createdAt: new Date(Date.UTC(2026, 10, 20)).toISOString(), keys,
+    checksum: createHash('sha256').update(canonical).digest('hex'),
+  };
+  mkdirSync(info.outputDir, { recursive: true });
+  const file = info.outputPath('old-copy.json');
+  writeFileSync(file, JSON.stringify(bundle));
+
+  const ctx = await browser.newContext({ viewport: { width: 1280, height: 800 }, hasTouch: true });
+  const page = await ctx.newPage();
+  await ready(page);
+  await page.evaluate(() => (window.__debug as unknown as FarmDbg).saveNow());
+  await openPanel(page);
+  await page.locator('[data-testid="transfer-file"]').setInputFiles(file);
+  await expect(page.locator('.gu-replace')).toBeVisible();
+  await Promise.all([page.waitForEvent('load'), page.locator('.gu-replace').click()]);
+  await page.waitForFunction(() => !!(window as unknown as { __debug?: unknown }).__debug);
+  await frames(page, 10);
+  const got = await page.evaluate(edits => {
+    const d = window.__debug as unknown as FarmDbg;
+    return edits.map(([x, y, z]) => d.game.world.get(x + 48, y + 48, z + 48));
+  }, v2.edits);
+  // The last two edits are a wheat plant and a sapling: they grow while the copy was away (offline
+  // growth), so only the blocks he built or dug must match exactly.
+  expect(got.slice(0, -2)).toEqual(v2.edits.slice(0, -2).map(e => e[3]));
+  expect(got.slice(-2).every(id => id !== 0)).toBe(true);
+  const stored = await page.evaluate(() => ({ v2: localStorage.getItem('blockpals.save.v2'), v3: localStorage.getItem('blockpals.save.v3') }));
+  expect(stored.v2).toBeNull(); // the old key is never written on this device
+  const v3 = JSON.parse(stored.v3!);
+  expect(v3.version).toBe(3);
+  expect(v3.wizard).toEqual(v2.wizard);
+  expect(v3.edits).toEqual(expect.arrayContaining(v2.edits.slice(0, -2).map(([x, y, z, id]) => [x + 48, y + 48, z + 48, id])));
+  await ctx.close();
 });

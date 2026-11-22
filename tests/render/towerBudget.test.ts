@@ -29,11 +29,16 @@ beforeAll(() => {
 });
 afterAll(() => vi.restoreAllMocks());
 
+// The world is 192 x 68 x 192 (bigger-world plan, chunk A): the old 96 x 96 meadow, tower included,
+// is its middle 6 x 6 chunks (cx, cz 3..8) and keeps the wizard step's budget; per-view section
+// budgets replace the whole-world figure in chunk B.
+const OLD = (cx: number, cz: number): boolean => cx >= 3 && cx <= 8 && cz >= 3 && cz <= 8;
+
 const meshChunks = (world: ReturnType<typeof generateWorld>['world'], keys?: Set<string>) => {
   const per: number[] = [];
   const cx = Math.ceil(world.sizeX / CHUNK_SIZE), cz = Math.ceil(world.sizeZ / CHUNK_SIZE);
   for (let z = 0; z < cz; z++) for (let x = 0; x < cx; x++) {
-    if (keys && !keys.has(`${x},${z}`)) continue;
+    if (keys ? !keys.has(`${x},${z}`) : !OLD(x, z)) continue;
     const g = buildChunkGeometry(world, x, z, uvFor);
     per.push((g.indices.length + g.transparent.indices.length) / 3);
   }
@@ -47,7 +52,7 @@ describe('wizard step budgets (Tab A8)', () => {
   const per = meshChunks(world);
   const total = per.reduce((a, b) => a + b, 0);
 
-  it('world triangle budget: at most 118,000 in all and 12,000 per chunk; generate stays under the build-time guard', () => {
+  it('world triangle budget: the old meadow at most 118,000 and 12,000 per chunk; generate stays under the build-time guard', () => {
     console.log(`towerBudget: world ${total} triangles, max chunk ${Math.max(...per)}, generate ${genMs.toFixed(0)} ms`);
     expect(total).toBeLessThanOrEqual(118_000);
     expect(Math.max(...per)).toBeLessThanOrEqual(12_000);
@@ -55,7 +60,8 @@ describe('wizard step budgets (Tab A8)', () => {
   });
 
   it('the tower itself adds at most 2,500 triangles', () => {
-    const r = TOWER_PLAN.footprint;
+    const r = tower.rect; // world coordinates (TOWER_PLAN.footprint + ORIGIN)
+    expect(r.x0 - TOWER_PLAN.footprint.x0).toBe(48);
     const keys = new Set<string>();
     for (let x = r.x0; x <= r.x1; x++) for (let z = r.z0; z <= r.z1; z++) keys.add(`${Math.floor(x / CHUNK_SIZE)},${Math.floor(z / CHUNK_SIZE)}`);
     const withTower = meshChunks(world, keys).reduce((a, b) => a + b, 0);

@@ -1,16 +1,20 @@
 import { BlockId } from './blocks';
-import { insideWall, LEGACY_WORLD, WORLD } from './bounds';
+import { insideWall, LEGACY_WORLD, ORIGIN, V2_WORLD, WORLD } from './bounds';
+import { generateOuter, type OuterInfo } from './outer';
 import type { Cell } from './pathfind';
 import { mulberry32, valueNoise2D } from './rng';
-import { buildTower, type TowerInfo } from './tower';
+import { ShiftedWorld, shiftLayout, shiftTowerLayout, type WorldCells } from './shifted';
+import { buildTower, TOWER_PLAN, type TowerInfo, type TowerLayout } from './tower';
 import { buildVillage, type Rect, type VillageLayout } from './village';
 import { World } from './world';
 
 /**
- * Bump when later steps add stamps, so saves can tell which generator made the world.
- * 3: the wizard's tower, its hill and its path. Old saves regenerate and replay his edits on top.
+ * Bump when later steps add stamps, so saves can tell which generator made the world. Never lowered.
+ * 2: village step 2 (96 x 20 x 96). 3: the wizard's tower, its hill and its path (still 96 x 20 x 96).
+ * 4: the 192 x 68 x 192 world, the gen 3 meadow (tower included) unchanged at +ORIGIN.
+ * Old saves regenerate and replay his edits on top.
  */
-export const GEN_VERSION = 3;
+export const GEN_VERSION = 4;
 
 type Cell3 = { x: number; y: number; z: number };
 type Tree = { x: number; z: number };
@@ -36,26 +40,38 @@ function column(noise: (x: number, z: number) => number, plateau: number, x: num
   return { height, inPond, onShore };
 }
 
-/** The v1 height formula in absolute coordinates: beyond x or z 47 the same noise rolls on. */
-export function heightAt(seed: number, x: number, z: number): number {
+/** The v1 height formula for one seed, built once (meadow coordinates; it rolls on beyond the old edges). */
+export function makeHeightAt(seed: number): (x: number, z: number) => number {
   const noise = valueNoise2D(seed);
   const plateau = 5 + Math.round(noise(24 / 12, 24 / 12) * 4);
-  return column(noise, plateau, x, z).height;
+  return (x, z) => column(noise, plateau, x, z).height;
+}
+
+/** The v1 height formula in absolute coordinates: beyond x or z 47 the same noise rolls on. */
+export function heightAt(seed: number, x: number, z: number): number {
+  return makeHeightAt(seed)(x, z);
 }
 
 export interface GeneratedWorld {
   world: World;
+  /** World coordinates. */
   spawn: { x: number; y: number; z: number };
+  /** World coordinates (the step 2 layout moved by ORIGIN). */
   village: VillageLayout;
+  /** The new land around the old rectangle (hills, ponds, trees), world coordinates. */
+  outer: OuterInfo;
+  /** World coordinates (the gen 3 tower moved by ORIGIN). */
   tower: TowerInfo;
-  /** Centre line of the path from the village square to the tower door. */
+  /** Centre line of the path from the village square to the tower door (world coordinates). */
   towerRoute: Cell[];
-  /** Everything the tower's generator may have changed. */
+  /** Everything the tower's generator may have changed (world coordinates). */
   towerRects: Rect[];
+  /** The tower's level hilltop (TOWER_PLAN.pad moved by ORIGIN): arriving there ends Pip's walk. */
+  towerPad: Rect;
 }
 
 function plantTree(
-  world: World, heights: Uint8Array, trees: Tree[], spawn: Cell3, x: number, z: number, maxY: number,
+  world: WorldCells, heights: Uint8Array, trees: Tree[], spawn: Cell3, x: number, z: number, maxY: number,
   blocked: (x: number, z: number) => boolean = () => false,
 ): boolean {
   if (!world.inBounds(x - 1, 0, z - 1) || !world.inBounds(x + 1, 0, z + 1)) return false;
@@ -80,12 +96,13 @@ function plantTree(
 
 /**
  * Stages 1 and 2: terrain for the whole 96 world, then the v1 trees only (verbatim v1 stream
- * and constants, so the v1 meadow is bit-identical). No stamps. Exposed for tests.
+ * and constants, so the v1 meadow is bit-identical). No stamps. Writes into `target` (the
+ * ShiftedWorld view of the big world, or a plain 96 world by default). Exposed for tests.
  */
-export function generateMeadowStage(seed = 2026): {
-  world: World; spawn: Cell3; heights: Uint8Array; trees: Tree[];
-} {
-  const world = new World(WORLD.x, WORLD.y, WORLD.z);
+export function generateMeadowStage<W extends WorldCells = World>(
+  seed = 2026, target?: W,
+): { world: W; spawn: Cell3; heights: Uint8Array; trees: Tree[] } {
+  const world = target ?? (new World(V2_WORLD.x, V2_WORLD.y, V2_WORLD.z) as unknown as W);
   const noise = valueNoise2D(seed);
   const random = mulberry32(seed);
   const heights = new Uint8Array(world.sizeX * world.sizeZ);
@@ -146,9 +163,15 @@ export function generateMeadowStage(seed = 2026): {
 const inRect = (r: Rect, x: number, z: number, margin = 0): boolean =>
   x >= r.x0 - margin && x <= r.x1 + margin && z >= r.z0 - margin && z <= r.z1 + margin;
 
-export function generateWorld(seed = 2026): GeneratedWorld {
+/**
+ * The step 2 world (terrain, v1 trees, village, farm, pasture, stage 4 trees), unchanged, written
+ * into `world` (a plain 96 world, or the ShiftedWorld view of the big one). Meadow coordinates.
+ */
+export function generateMeadowWorld(
+  seed: number, world: WorldCells,
+): { spawn: Cell3; village: VillageLayout; tower: TowerLayout } {
   // Stages 1 and 2.
-  const { world, spawn, heights, trees } = generateMeadowStage(seed);
+  const { spawn, heights, trees } = generateMeadowStage(seed, world);
 
   // Stage 3: pads, houses and the path (Task 5).
   const village = buildVillage(world, spawn);
@@ -190,8 +213,45 @@ export function generateWorld(seed = 2026): GeneratedWorld {
     candidates[chosen] = candidates[i];
     plant(candidate.x, candidate.z);
   }
+  return { spawn, village, tower };
+}
 
+/**
+ * The bigger, deeper world (192 x 68 x 192). Stage 0 fills the deep rock in whole layers; stage 1
+ * runs the step 2 generator UNCHANGED on a ShiftedWorld view at +ORIGIN, so the old region is
+ * identical by construction (old streams `seed` and `seed ^ 0x5eed` consumed exactly as before).
+ * The one documented difference (D1): the old bedrock row (now y 48) is Stone, so he can dig past it.
+ * Stages 2 and 3 add the outer land (src/core/outer.ts) around the old rectangle, never inside it.
+ * Everything runs in bulk mode: no edit records, a clean world.
+ */
+export function generateWorld(seed = 2026): GeneratedWorld {
+  const world = new World(WORLD.x, WORLD.y, WORLD.z);
+  world.beginBulk();
+
+  // Stage 0: bedrock floor, deep stone up to the old world's floor.
+  world.fillLayer(0, BlockId.Bedrock);
+  for (let y = 1; y < ORIGIN.y; y++) world.fillLayer(y, BlockId.Stone);
+
+  // Stage 1: the old region, on the view.
+  const view = new ShiftedWorld(world);
+  const meadow = generateMeadowWorld(seed, view);
+  // D1: the old bedrock row becomes Stone.
+  for (let z = 0; z < view.sizeZ; z++) {
+    for (let x = 0; x < view.sizeX; x++) {
+      if (view.get(x, 0, z) === BlockId.Bedrock) view.set(x, 0, z, BlockId.Stone);
+    }
+  }
+  const village = shiftLayout(meadow.village, world);
+  const tower = shiftTowerLayout(meadow.tower, world);
+  const spawn = { x: meadow.spawn.x + ORIGIN.x, y: meadow.spawn.y + ORIGIN.y, z: meadow.spawn.z + ORIGIN.z };
+
+  // Stages 2 and 3: the outer ring (its own streams; only columns outside the old rectangle).
+  const outer = generateOuter(world, seed);
+
+  world.endBulk();
   world.clearEdits();
   world.markClean();
-  return { world, spawn, village, tower: tower.info, towerRoute: tower.route, towerRects: tower.stampedRects };
+  const p = TOWER_PLAN.pad;
+  const towerPad: Rect = { x0: p.x0 + ORIGIN.x, z0: p.z0 + ORIGIN.z, x1: p.x1 + ORIGIN.x, z1: p.z1 + ORIGIN.z };
+  return { world, spawn, village, outer, tower: tower.info, towerRoute: tower.route, towerRects: tower.stampedRects, towerPad };
 }

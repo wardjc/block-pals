@@ -38,7 +38,8 @@ function saveText(seed = 1234, edit = true): string {
   storeSave(s, serialise(game, seed, { ledToVillage: false }, 5));
   return s.data.get(SAVE_KEY) as string;
 }
-const deps = (storage: Storage | null) => ({ storage, now: () => NOW, sha256, app: 'test' });
+// The game has just written itself to the stored save (the forced save the panel makes first).
+const deps = (storage: Storage | null) => ({ storage, now: () => NOW, sha256, app: 'test', flush: () => true });
 function bundleOf(raw: string, extra: Record<string, string> = {}): Bundle {
   const keys = { [SAVE_KEY]: raw, ...extra };
   return { format: BUNDLE_FORMAT, formatVersion: 1, createdAt: new Date(NOW).toISOString(), keys, checksum: '' };
@@ -83,7 +84,7 @@ describe('export', () => {
   test('a browser without WebCrypto gives a friendly refusal, not a crash', async () => {
     const s = new FakeStorage();
     s.data.set(SAVE_KEY, saveText());
-    const r = await buildBundle({ storage: s, now: () => NOW, sha256: () => Promise.reject(new Error('no')) });
+    const r = await buildBundle({ storage: s, now: () => NOW, flush: () => true, sha256: () => Promise.reject(new Error('no')) });
     expect(r).toMatchObject({ ok: false, reason: 'crypto' });
   });
 
@@ -278,8 +279,8 @@ describe('import: committing', () => {
 });
 
 describe('reset', () => {
-  test('transferResetKeys covers the pre-import slots and the transfer note, and none are in the bundle', () => {
-    expect(transferResetKeys()).toEqual([...preimportKeys(), TRANSFER_KEY]);
+  test('transferResetKeys covers the pre-import slots (v3, and the old build\'s v2 ones) and the transfer note, and none are in the bundle', () => {
+    expect(transferResetKeys()).toEqual([...preimportKeys(), ...preimportKeys('blockpals.save.v2'), TRANSFER_KEY]);
     expect(preimportKeys()).toEqual([`${SAVE_KEY}.preimport`, `${SAVE_KEY}.preimport.2`, `${SAVE_KEY}.preimport.3`]);
     for (const k of transferResetKeys()) expect(ALL_SAVE_KEYS).not.toContain(k);
   });
