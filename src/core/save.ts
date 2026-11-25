@@ -5,6 +5,7 @@ import { BLOCKS, BlockId, isCarriable } from './blocks';
 import { LEGACY_WORLD, ORIGIN, V2_WORLD, WORLD } from './bounds';
 import { GrowthClock, STAGE_MS, TREE_STAGE_MS } from './growth';
 import { Inventory, MAX_STACK } from './inventory';
+import { cleanGrumpFields, grumpsOf, isDefaultStats, type SavedFriend, type SavedGrump, type SavedGrumps, type SavedGrumpStats } from './grumpSave';
 import { isItemId } from './items';
 import { isStandable, settleCell, type Cell } from './pathfind';
 import type { TowerInfo } from './tower';
@@ -43,7 +44,8 @@ export const ALL_SAVE_KEYS: readonly string[] = [
 const SAVE_ORIGIN: [number, number, number] = [ORIGIN.x, ORIGIN.y, ORIGIN.z];
 
 /** Hint names the farm and the caves (digDown, gemFound) may save; anything else in a save is ignored. */
-export const HINT_NAMES: readonly string[] = ['plantSome', 'needWaterSun', 'cropReady', 'holdOutFood', 'tryMunch', 'digDown', 'gemFound'];
+export const HINT_NAMES: readonly string[] = ['plantSome', 'needWaterSun', 'cropReady', 'holdOutFood', 'tryMunch', 'digDown', 'gemFound',
+  'grumpArrives', 'plantsWaiting', 'craftWeapon', 'pickWeapon', 'friendMade'];
 /** More crop or tree records than this in a save are ignored (the plants still exist as blocks). */
 export const MAX_FARM_RECORDS = 2000;
 
@@ -114,11 +116,17 @@ export interface SaveData extends Omit<SaveDataV2, 'version'> {
   origin: [number, number, number];
   /** Set when this save was made by migrating an older one. */
   migratedFrom?: 1 | 2;
+  /** The grumps step (additive, optional): kind, x, y, z (tenths), mood. At most 3, inside the farm zone. */
+  grumps?: SavedGrump[];
+  /** Kind, variant, x, y, z (tenths), seconds to the next job. At most 5; never dropped for a bad place. */
+  friends?: SavedFriend[];
+  /** Cheered-up count, spawn timer, spawn interval, first met. Timers are never counted down offline. */
+  grumpStats?: SavedGrumpStats;
 }
 
 export function serialise(
   game: Game, seed: number, flags: SaveFlags = { ledToVillage: false }, now: number = Date.now(), animals?: SavedAnimalTuple[],
-  wizard?: WizardState,
+  wizard?: WizardState, grumps?: SavedGrumps,
 ): SaveData {
   // Records first: this brings any pending plant growth into the world before the edits are read.
   const farm = game.farm.records();
@@ -151,6 +159,11 @@ export function serialise(
   if (wizard) {
     const w = wizardState(cleanWizard(wizard));
     if (!sameWizard(w, defaultWizard())) data.wizard = toSaved(w);
+  }
+  if (grumps) {
+    if (grumps.grumps.length > 0) data.grumps = grumps.grumps.map(e => [...e] as SavedGrump);
+    if (grumps.friends.length > 0) data.friends = grumps.friends.map(e => [...e] as SavedFriend);
+    if (!isDefaultStats(grumps.stats)) data.grumpStats = [...grumps.stats] as SavedGrumpStats;
   }
   return data;
 }
@@ -477,6 +490,8 @@ export function inspectSave(
     const { version: _v2, ...rest } = own;
     const data: SaveData = { version: 3, ...rest, origin: [...SAVE_ORIGIN] };
     if (parsed.migratedFrom === 1 || parsed.migratedFrom === 2) data.migratedFrom = parsed.migratedFrom;
+    // The grumps step only ever wrote v3 saves, so only a v3 save may carry its fields.
+    Object.assign(data, cleanGrumpFields(parsed));
     return { data, skipped, from: 3 };
   } catch {
     return null;
@@ -501,6 +516,8 @@ export interface Applied {
   animals: SavedAnimalTuple[];
   /** The wizard's state, defaults when the save has none (cleaned again here, so any object handed in is safe). */
   wizard: WizardState;
+  /** Grumps, friends and the spawner's numbers, defaults when the save has none. Restored as saved, never counted down. */
+  grumps: SavedGrumps;
   /** Time to grow while the game was closed: never negative, never more than 8 hours. */
   offlineMs: number;
 }
@@ -549,6 +566,7 @@ export function applySave(data: SaveData, now: number = Date.now(), generated?: 
     },
     animals: (data.animals ?? []).map(a => [...a] as SavedAnimalTuple),
     wizard: wizardState(cleanWizard(data.wizard)),
+    grumps: grumpsOf(cleanGrumpFields(data as unknown as Record<string, unknown>)),
     // No savedAt (an older save): nothing extra grows. A future savedAt or a backwards clock gives 0.
     offlineMs: isFinite_(data.savedAt) ? new GrowthClock(data.savedAt).step(now) : 0,
   };
