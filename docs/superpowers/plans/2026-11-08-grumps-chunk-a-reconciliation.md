@@ -25,3 +25,11 @@ These tests pinned lists that the plan deliberately extends. Only the pinned lis
 ## Gate notes
 
 Generation-timing tests (`worldInvariants`, `caves`, `caveLights`, `pathScale`) are load-sensitive; run them alone if the machine is busy.
+
+## Chunk B rulings (tasks 4 to 7, 9, 10, 11; no graphics, no `game.ts` wiring)
+
+- **Zone** (`src/core/farmZone.ts`): plot grown 3 west, north and east, ending 2 cells before the pasture fence, in world coordinates, computed from the layout. `plannedFarmZone()` gives the same rectangle from the fixed village plan so the save can check positions without generating a world (a test pins that they agree). Avoided cells are within 2 of any door, house rectangle, the plot-to-gate path or the village route.
+- **Entities** (`src/game/grumps.ts`): grumps and friends share one id counter (a friend keeps the id of the grump it was), so `hit(friendId)` is ignored. They use the shared wander core. Personal space is a `WanderRules.allow` veto plus a rescue that never lifts a grump closer to him; friends use the same veto with no 4-block floor.
+- **Plant pause**: `Farm.advance(ms, paused?)` skips the time for a paused record and changes nothing else. `pauseFor(step, pauses)` returns undefined for any step over 5 s, so time away is never paused. `plantCells()` and `growingNear()` are new read-only helpers.
+- **Save**: `grumps`, `friends` and `grumpStats` are additive optional fields on v3 only (v1 and v2 payloads ignore them). Positions are tenths of a block. A bad grump is dropped, a friend is never dropped (a bad place becomes the zone centre and the game lifts it to a free cell on restore). Timers are restored as saved, never counted down offline. `serialise` takes a new last parameter and `applySave` returns `grumps`; `main.ts` wiring is chunk C. Five hint names are added to `HINT_NAMES`.
+- **Rewards**: a roll that does not fit falls through to the next fitting gift; a friend always brings one Gem if it fits.
