@@ -22,7 +22,7 @@ describe('grumps never hurt, never frighten, never lose anything', () => {
 
   test('in the real world, no grump or friend is ever below ground minus 3, off a standable cell or on an avoided cell', () => {
     const zone = farmZone(g.village), avoid = avoidCells(g.village);
-    const sys = new GrumpSystem(mulberry32(5), zone, avoid);
+    const sys = new GrumpSystem(mulberry32(5), zone, avoid, ZONE_Y);
     const border = zoneBorder(zone, g.world, avoid);
     const spawner = new GrumpSpawner(mulberry32(6));
     const player = { x: zone.x0 - 10, y: ZONE_Y, z: zone.z0 - 10 };
@@ -60,11 +60,11 @@ describe('grumps never hurt, never frighten, never lose anything', () => {
 
   test('a restore never loses a friend, even into a world that has been rebuilt on top of them', () => {
     const zone = farmZone(g.village), avoid = avoidCells(g.village);
-    const sys = new GrumpSystem(mulberry32(1), zone, avoid);
+    const sys = new GrumpSystem(mulberry32(1), zone, avoid, ZONE_Y);
     const border = zoneBorder(zone, g.world, avoid);
     for (let i = 0; i < 5; i++) sys.makeFriend(sys.spawn(border[i], 'jelly').id);
     const saved = sys.toJSON();
-    const again = new GrumpSystem(mulberry32(2), zone, avoid);
+    const again = new GrumpSystem(mulberry32(2), zone, avoid, ZONE_Y);
     again.restore(saved, g.world, []);
     expect(again.friends.length).toBe(5);
   });

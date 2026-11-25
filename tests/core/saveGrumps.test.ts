@@ -156,4 +156,18 @@ describe('grump save fields (additive, on the v3 key)', () => {
   test('the origin constant used for the planned zone is the world origin', () => {
     expect(zone.x0).toBeGreaterThanOrEqual(ORIGIN.x);
   });
+
+  test('a friend entry with extra values keeps its first six and is never dropped for length', () => {
+    const long = [...f(inZone.x, inZone.z, 1, 2, 50), 'extra', 9];
+    const data = parseSave(raw({ friends: [long, [0, 1, 2]] }))!;
+    expect(data.friends).toEqual([f(inZone.x, inZone.z, 1, 2, 50)]); // the short one is not a friend entry at all
+  });
+
+  test('a grump below the farm level is dropped and a friend there is re-placed on the farm level', () => {
+    const deep = [0, Math.round(inZone.x * 10), ZONE_Y - 20, Math.round(inZone.z * 10), 0];
+    const data = parseSave(raw({ grumps: [deep, g(inZone.x, inZone.z)], friends: [[0, 0, Math.round(inZone.x * 10), ZONE_Y - 20, Math.round(inZone.z * 10), 10]] }))!;
+    expect(data.grumps).toEqual([g(inZone.x, inZone.z)]);
+    expect(data.friends).toHaveLength(1);
+    expect(data.friends![0][3]).toBe(ZONE_Y);
+  });
 });

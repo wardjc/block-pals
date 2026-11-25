@@ -1,7 +1,6 @@
 import { FIRST_SPAWN_SECONDS } from '../game/grumps';
 import type { Rect } from './houses';
 import { ZONE_Y, plannedFarmZone } from './farmZone';
-import { WORLD } from './bounds';
 
 /** kind 0 jelly or 1 cloud, x, y, z (x and z in tenths of a block), mood 0 sulky or 1 unsure. */
 export type SavedGrump = [number, number, number, number, number];
@@ -46,7 +45,7 @@ export function cleanGrumpFields(parsed: Record<string, unknown>): { grumps?: Sa
       if (kept.length >= MAX_SAVED_GRUMPS) break;
       if (!Array.isArray(e) || e.length !== 5 || !e.every(isNum)) continue;
       const [kind, x, y, z, mood] = e as number[];
-      if ((kind !== 0 && kind !== 1) || (mood !== 0 && mood !== 1) || !Number.isInteger(y) || y < 0 || y >= WORLD.y) continue;
+      if ((kind !== 0 && kind !== 1) || (mood !== 0 && mood !== 1) || !Number.isInteger(y) || Math.abs(y - ZONE_Y) > 1) continue; // never underground
       if (!inZone(zone, x, z)) continue;
       kept.push([kind, Math.round(x), y, Math.round(z), mood]);
     }
@@ -57,9 +56,9 @@ export function cleanGrumpFields(parsed: Record<string, unknown>): { grumps?: Sa
     const cx = Math.floor((zone.x0 + zone.x1 + 1) / 2) * 10 + 5, cz = Math.floor((zone.z0 + zone.z1 + 1) / 2) * 10 + 5;
     for (const e of parsed.friends) {
       if (kept.length >= MAX_SAVED_FRIENDS) break;
-      if (!Array.isArray(e) || e.length !== 6) continue;
+      if (!Array.isArray(e) || e.length < 6) continue; // longer entries (a newer game) keep their first six values
       const [kind, variant, x, y, z, job] = e as unknown[];
-      const goodPlace = isNum(x) && isNum(y) && isNum(z) && Number.isInteger(y) && y >= 0 && y < WORLD.y && inZone(zone, x, z);
+      const goodPlace = isNum(x) && isNum(y) && isNum(z) && Number.isInteger(y) && Math.abs((y as number) - ZONE_Y) <= 1 && inZone(zone, x, z);
       kept.push([
         kind === 1 ? 1 : 0,
         clampInt(variant, 0, 4, 0),

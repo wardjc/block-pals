@@ -71,7 +71,12 @@ export class GrumpSystem {
   private nextId = 1;
   private readonly spots = new Map<string, Spot>();
 
-  constructor(private readonly rng: () => number, private readonly zone: Rect, private readonly avoid: Set<string>) {}
+  /** `level` is the farm's feet level: when given, nothing is ever lifted or restored more than one block off it. */
+  constructor(private readonly rng: () => number, private readonly zone: Rect, private readonly avoid: Set<string>, private readonly level?: number) {}
+
+  private get band(): { min: number; max: number } | undefined {
+    return this.level === undefined ? undefined : { min: this.level - 1, max: this.level + 1 };
+  }
 
   /** A place grumps may live. The farm zone is the only one in use; a villager's door is ready for later. */
   addSpot(spot: Spot): void {
@@ -159,7 +164,7 @@ export class GrumpSystem {
       const z = roam.z0 + Math.floor(this.rng() * (roam.z1 - roam.z0 + 1));
       for (const dy of HEIGHTS) { const c: Cell = [x, g.y + dy, z]; if (ok(c)) { g.settle = c; return; } }
     }
-    g.settle = nearestFree(ctx.world, roam, c => !blocked(c), g.x, g.y, g.z, g) ?? [Math.floor(g.x), g.y, Math.floor(g.z)];
+    g.settle = nearestFree(ctx.world, roam, c => !blocked(c), g.x, g.y, g.z, g, null, this.band) ?? [Math.floor(g.x), g.y, Math.floor(g.z)];
   }
 
   // ------------------------------------------------------------------ updating
@@ -205,7 +210,7 @@ export class GrumpSystem {
     }
     const roam = this.roamOf(g.spot);
     const rules = (speed: number, area: Rect, hop: [number, number]): WanderRules => ({
-      roam: area, speed, hop, blocked,
+      roam: area, speed, hop, blocked, band: this.band,
       allow: this.keepAway(ctx.player, PERSONAL_SPACE),
       // A lift out of a walled-in place never takes it closer to him.
       rescueBlocked: c => blocked(c) || (distance <= FOLLOW_LIMIT && Math.hypot(c[0] + 0.5 - ctx.player.x, c[2] + 0.5 - ctx.player.z) < distance),
@@ -258,7 +263,7 @@ export class GrumpSystem {
     }
     const blocked = this.makeBlocked(f.id, occ, plants);
     const rules: WanderRules = {
-      roam: this.zone, speed: FRIEND_SPEED, hop: [1, 3], blocked,
+      roam: this.zone, speed: FRIEND_SPEED, hop: [1, 3], blocked, band: this.band,
       allow: this.keepAway(ctx.player, 0),
       rescueBlocked: c => blocked(c),
     };
@@ -349,6 +354,10 @@ export class GrumpSystem {
     return cells;
   }
 
+  private onLevel(y: number): boolean {
+    return this.level === undefined || Math.abs(y - this.level) <= 1;
+  }
+
   // ------------------------------------------------------------------ saving
 
   toJSON(): { grumps: SavedGrump[]; friends: SavedFriend[] } {
@@ -370,7 +379,7 @@ export class GrumpSystem {
     const free = (c: Cell): boolean => insideRect(this.zone, c[0], c[2]) && !this.avoid.has(`${c[0]},${c[2]}`) && !taken.has(key3(c[0], c[1], c[2]));
     for (const [k, x10, y, z10, mood] of saved.grumps) {
       const cell: Cell = [Math.floor(x10 / 10), y, Math.floor(z10 / 10)];
-      if (!free(cell) || !isStandable(world, cell)) continue;
+      if (!free(cell) || !isStandable(world, cell) || !this.onLevel(y)) continue; // a grump that is underground is dropped
       const g = this.spawn(cell, KINDS[k] ?? 'jelly');
       g.x = x10 / 10; g.z = z10 / 10;
       g.mood = mood === 1 ? 1 : 0; g.hits = g.mood;
@@ -379,11 +388,11 @@ export class GrumpSystem {
     }
     for (const [k, variant, x10, y, z10, jobIn] of saved.friends) {
       let cell: Cell = [Math.floor(x10 / 10), y, Math.floor(z10 / 10)];
-      const exact = free(cell) && isStandable(world, cell);
+      const exact = free(cell) && isStandable(world, cell) && this.onLevel(y);
       if (!exact) {
-        cell = nearestFree(world, this.zone, free, x10 / 10, y, z10 / 10)
-          ?? nearestFree(world, this.zone, c => insideRect(this.zone, c[0], c[2]), x10 / 10, y, z10 / 10)
-          ?? settleCell(world, cell);
+        cell = nearestFree(world, this.zone, free, x10 / 10, this.level ?? y, z10 / 10, undefined, null, this.band)
+          ?? nearestFree(world, this.zone, c => insideRect(this.zone, c[0], c[2]), x10 / 10, this.level ?? y, z10 / 10, undefined, null, this.band)
+          ?? settleCell(world, [cell[0], this.level ?? cell[1], cell[2]]);
       }
       const f: Friend = {
         id: this.nextId++, kind: KINDS[k] ?? 'jelly', variant: ((variant % 5) + 5) % 5,

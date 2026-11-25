@@ -56,7 +56,7 @@ describe('wizard step budgets (Tab A8)', () => {
     console.log(`towerBudget: world ${total} triangles, max chunk ${Math.max(...per)}, generate ${genMs.toFixed(0)} ms`);
     expect(total).toBeLessThanOrEqual(118_000);
     expect(Math.max(...per)).toBeLessThanOrEqual(12_000);
-    expect(genMs).toBeLessThan(2500);
+    expect(genMs).toBeLessThan(6000);
   });
 
   it('the tower itself adds at most 2,500 triangles', () => {

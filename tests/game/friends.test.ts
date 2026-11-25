@@ -190,4 +190,27 @@ describe('friends', () => {
     for (const f of u.sys.friends) expect(isStandable(u.world, [Math.floor(f.x), f.y, Math.floor(f.z)])).toBe(true);
     expect(u.sys.friends.map(f => f.kind)).toEqual(['jelly', 'cloud']);
   });
+
+  test('with a farm level, an underground grump is dropped and an underground friend is lifted to the farm level, never lost', () => {
+    const world = flat();
+    world.set(15, 5, 15, BlockId.Stone); // a ledge: standing at y 6 is standable but not on the farm level
+    const sys = new GrumpSystem(mulberry32(1), ZONE, new Set(), Y);
+    sys.restore({ grumps: [[0, 155, 6, 155, 0]], friends: [[0, 0, 155, 6, 155, 30]] }, world, []);
+    expect(sys.grumps.length).toBe(0);
+    expect(sys.friends.length).toBe(1);
+    expect(Math.abs(sys.friends[0].y - Y)).toBeLessThanOrEqual(1);
+  });
+
+  test('a rescue with a farm level never lifts a walled-in grump to another level', () => {
+    const world = flat();
+    for (let x = 0; x < 40; x++) for (let z = 0; z < 30; z++) { world.set(x, 5, z, BlockId.Stone); } // a roof-level floor far above
+    const sys = new GrumpSystem(mulberry32(2), ZONE, new Set(), Y);
+    const player: PlayerPos = { x: 38.5, y: Y, z: 28.5 };
+    const grump = sys.spawn([15, Y, 15], 'jelly');
+    for (let i = 0; i < 20; i++) sys.update({ world, player, occupied: [], plantCells: [], dt: 0.1 });
+    const [cx, , cz] = [Math.floor(grump.x), 0, Math.floor(grump.z)];
+    for (let dx = -1; dx <= 1; dx++) for (let dz = -1; dz <= 1; dz++) if (dx || dz) world.set(cx + dx, Y, cz + dz, BlockId.Stone);
+    for (let i = 0; i < 200; i++) sys.update({ world, player, occupied: [], plantCells: [], dt: 0.1 });
+    expect(Math.abs(grump.y - Y)).toBeLessThanOrEqual(1);
+  });
 });

@@ -26,6 +26,8 @@ export interface WanderRules {
   /** Extra veto for a whole move (personal space): from and to are the walker's own position and the next one. */
   /** Cells a rescue may not lift the walker into (defaults to `blocked`). */
   rescueBlocked?(cell: Cell): boolean;
+  /** Heights (feet level, inclusive) a rescue may lift the walker to: keeps it off low cave levels. */
+  band?: { min: number; max: number };
   allow?(from: { x: number; z: number }, to: { x: number; z: number }): boolean;
 }
 
@@ -114,13 +116,14 @@ export function bestNeighbour(
 
 /** The nearest free standable cell in the roam rectangle, preferring the walker's own level; `free` says which cells are open. */
 export function nearestFree(
-  world: World, roam: Rect, free: (c: Cell) => boolean, x: number, y: number, z: number, self?: Walker, avoid?: Set<string> | null,
+  world: World, roam: Rect, free: (c: Cell) => boolean, x: number, y: number, z: number, self?: Walker, avoid?: Set<string> | null, band?: { min: number; max: number },
 ): Cell | null {
   const cx = Math.max(roam.x0, Math.min(roam.x1, Math.floor(x)));
   const cz = Math.max(roam.z0, Math.min(roam.z1, Math.floor(z)));
   const radius = Math.max(cx - roam.x0, roam.x1 - cx, cz - roam.z0, roam.z1 - cz);
   for (let level = 0; level <= world.sizeY; level++) {
     const cy = level === 0 ? Math.floor(y) : level;
+    if (band && (cy < band.min || cy > band.max)) continue;
     if (level !== 0 && cy === Math.floor(y)) continue;
     for (let r = 0; r <= radius; r++) {
       for (let dz = -r; dz <= r; dz++) for (let dx = -r; dx <= r; dx++) {
@@ -136,8 +139,8 @@ export function nearestFree(
 }
 
 /** Lift a stuck walker to the nearest free standable cell. False (and no change) when there is none. */
-export function rescue(w: Walker, world: World, roam: Rect, blocked: (c: Cell) => boolean): boolean {
-  const c = nearestFree(world, roam, cell => insideRect(roam, cell[0], cell[2]) && !blocked(cell), w.x, w.y, w.z, w);
+export function rescue(w: Walker, world: World, roam: Rect, blocked: (c: Cell) => boolean, band?: { min: number; max: number }): boolean {
+  const c = nearestFree(world, roam, cell => insideRect(roam, cell[0], cell[2]) && !blocked(cell), w.x, w.y, w.z, w, null, band);
   if (!c) return false;
   w.x = c[0] + 0.5; w.y = c[1]; w.z = c[2] + 0.5;
   w.stuckFor = 0;
@@ -169,6 +172,6 @@ export function stepWander(
   } else {
     w.stuckFor += dt;
   }
-  if (w.stuckFor >= RESCUE_SECONDS && rescue(w, world, rules.roam, rules.rescueBlocked ?? rules.blocked)) t = null;
+  if (w.stuckFor >= RESCUE_SECONDS && rescue(w, world, rules.roam, rules.rescueBlocked ?? rules.blocked, rules.band)) t = null;
   return { target: t, moved };
 }
