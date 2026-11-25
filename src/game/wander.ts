@@ -24,6 +24,8 @@ export interface WanderRules {
   /** Cells other entities or avoided places occupy. */
   blocked(cell: Cell): boolean;
   /** Extra veto for a whole move (personal space): from and to are the walker's own position and the next one. */
+  /** Cells a rescue may not lift the walker into (defaults to `blocked`). */
+  rescueBlocked?(cell: Cell): boolean;
   allow?(from: { x: number; z: number }, to: { x: number; z: number }): boolean;
 }
 
@@ -167,6 +169,6 @@ export function stepWander(
   } else {
     w.stuckFor += dt;
   }
-  if (w.stuckFor >= RESCUE_SECONDS && rescue(w, world, rules.roam, rules.blocked)) t = null;
+  if (w.stuckFor >= RESCUE_SECONDS && rescue(w, world, rules.roam, rules.rescueBlocked ?? rules.blocked)) t = null;
   return { target: t, moved };
 }

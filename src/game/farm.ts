@@ -6,6 +6,16 @@ import { ItemId } from '../core/items';
 import type { Cell } from '../core/pathfind';
 import type { World } from '../core/world';
 
+/**
+ * A clock step bigger than this (a sleeping tab, or the catch-up on load) is applied with no pause,
+ * so time away is never penalised.
+ */
+export const PAUSE_STEP_MAX_MS = 5000;
+
+/** The pause predicate for one clock step: only ordinary short steps are ever paused. */
+export const pauseFor = (stepMs: number, pauses: (x: number, y: number, z: number) => boolean): ((x: number, y: number, z: number) => boolean) | undefined =>
+  stepMs <= PAUSE_STEP_MAX_MS ? pauses : undefined;
+
 /** Progress (ms) toward the next stage. Kind and stage come from the block itself. */
 export interface CropRec { x: number; y: number; z: number; p: number }
 /** x, y, z = the trunk base cell. */
@@ -233,6 +243,24 @@ export class Farm {
     return best;
   }
 
+  /** Crop cells and tree base cells, for the spawner and the sad markers. */
+  plantCells(): Cell[] {
+    return [...this.crops.values()].map((c): Cell => [c.x, c.y, c.z]).concat(this.trees.map((t): Cell => [t.x, t.y, t.z]));
+  }
+
+  /** The nearest plant within `radius` (flat distance) that is not yet ripe: where a friend lends a hand. */
+  growingNear(from: Cell, radius: number): Cell | null {
+    let best: Cell | null = null;
+    let bestD = radius * radius;
+    const consider = (c: Cell): void => {
+      const d = (c[0] - from[0]) ** 2 + (c[2] - from[2]) ** 2;
+      if (d <= bestD) { bestD = d; best = c; }
+    };
+    for (const c of this.crops.values()) if (c.stage < 3) consider([c.x, c.y, c.z]);
+    for (const t of this.trees) if (t.stage < 3) consider([t.x, t.y, t.z]);
+    return best;
+  }
+
   seedsAndGrowing(): { seeds: number; growing: number } {
     return {
       seeds: SEEDS.reduce((n, id) => n + this.inv.count(id), 0),
@@ -368,18 +396,22 @@ export class Farm {
 
   // ---------------------------------------------------------------- time
 
-  /** Natural growth. Time only adds: bad or negative amounts add nothing, and one call adds at most the offline cap. */
-  advance(ms: number): void {
+  /**
+   * Natural growth. Time only adds: bad or negative amounts add nothing, and one call adds at most the
+   * offline cap. A record for which `paused` is true simply does not add this time: nothing else
+   * about it changes, so a pause can never lower a stage or remove a plant.
+   */
+  advance(ms: number, paused?: (x: number, y: number, z: number) => boolean): void {
     if (!(ms > 0)) return;
     const amount = Math.min(ms, OFFLINE_CAP_MS);
     for (const c of this.crops.values()) {
-      if (c.stage >= 3) continue;
+      if (c.stage >= 3 || paused?.(c.x, c.y, c.z)) continue;
       const r = advanceStage(c.stage, c.p, amount * growthRateAt(this.world, [c.x, c.y, c.z]), STAGE_MS, 3);
       c.p = r.progress;
       if (r.stage > c.stage) { c.stage = r.stage; this.due.add(c); }
     }
     for (const t of this.trees) {
-      if (t.stage >= 3) continue;
+      if (t.stage >= 3 || paused?.(t.x, t.y, t.z)) continue;
       const r = advanceStage(t.stage, t.p, amount * growthRateAt(this.world, [t.x, t.y, t.z]), TREE_STAGE_MS, 3);
       t.p = r.progress;
       if (r.stage > t.stage) { t.stage = r.stage; this.due.add(t); }
