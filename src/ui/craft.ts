@@ -1,7 +1,7 @@
 import { canCraft } from '../core/crafting';
 import type { Inventory } from '../core/inventory';
 import { stackName, type StackId } from '../core/items';
-import { RECIPES, type Recipe } from '../core/recipes';
+import { RECIPES, owns, type Recipe } from '../core/recipes';
 import type { Action } from '../input/mapping';
 import { createDebouncer } from '../input/tap';
 import { stackPicture } from './picture';
@@ -9,6 +9,8 @@ import { stackPicture } from './picture';
 export interface CraftRow {
   recipe: Recipe;
   can: boolean;
+  /** A once-only recipe (a weapon) he already has. */
+  owned: boolean;
   missing: StackId[];
 }
 
@@ -17,6 +19,7 @@ export function craftRows(inv: Inventory): CraftRow[] {
   return RECIPES.map(recipe => ({
     recipe,
     can: canCraft(inv, recipe),
+    owned: owns(inv, recipe),
     missing: recipe.inputs.filter(i => inv.count(i.id) < i.n).map(i => i.id),
   }));
 }
@@ -105,7 +108,7 @@ export class CraftScreen {
     const now = this.deps.now ? this.deps.now() : performance.now();
     if (!this.allow(source, now)) return;
     const row = craftRows(this.deps.inventory)[i];
-    if (!row) return;
+    if (!row || row.owned) return;
     if (!row.can) {
       if (row.missing.length === 0) {
         (this.deps.sayFull ?? this.deps.sayNeedMore)();
@@ -139,7 +142,7 @@ export class CraftScreen {
     (this.list.children[this.selected] as HTMLElement | undefined)?.scrollIntoView?.({ block: 'nearest' });
   }
 
-  private item(id: StackId, n: number, have?: number): HTMLElement {
+  private item(id: StackId, n: number, have?: number, owned = false): HTMLElement {
     const wrap = document.createElement('button');
     wrap.type = 'button';
     wrap.className = 'craft-item';
@@ -155,7 +158,8 @@ export class CraftScreen {
       if (have !== undefined && d >= have) dot.className = 'short';
       dots.appendChild(dot);
     }
-    wrap.append(img, digit, dots);
+    if (owned) wrap.append(img);
+    else wrap.append(img, digit, dots);
     wrap.addEventListener('click', e => {
       e.stopPropagation();
       this.deps.sfxTap();
@@ -177,18 +181,24 @@ export class CraftScreen {
     this.list.replaceChildren();
     craftRows(this.deps.inventory).forEach((row, i) => {
       const el = document.createElement('div');
-      el.className = 'craft-row' + (row.can ? '' : ' dim');
+      el.className = 'craft-row' + (row.owned ? ' owned' : row.can ? '' : ' dim');
       el.addEventListener('click', () => {
         this.selected = i;
         this.refreshSelection();
-        if (!row.can) this.make(i);
+        if (!row.can && !row.owned) this.make(i);
       });
       row.recipe.inputs.forEach((inp, k) => {
         if (k > 0) el.appendChild(this.sign('+'));
-        el.appendChild(this.item(inp.id, inp.n, this.deps.inventory.count(inp.id)));
+        el.appendChild(this.item(inp.id, inp.n, this.deps.inventory.count(inp.id), row.owned));
       });
       el.appendChild(this.sign('='));
-      el.appendChild(this.item(row.recipe.output.id, row.recipe.output.n));
+      el.appendChild(this.item(row.recipe.output.id, row.recipe.output.n, undefined, row.owned));
+      if (row.owned) {
+        const tick = document.createElement('span');
+        tick.className = 'owned-tick';
+        tick.textContent = '✅';
+        el.appendChild(tick);
+      }
       const ok = document.createElement('button');
       ok.type = 'button';
       ok.className = 'craft-make';
@@ -199,7 +209,7 @@ export class CraftScreen {
         this.selected = i;
         this.make(i);
       });
-      el.appendChild(ok);
+      if (!row.owned) el.appendChild(ok);
       this.list.appendChild(el);
     });
     this.list.scrollTop = keep;

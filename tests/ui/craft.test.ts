@@ -13,7 +13,7 @@ const row = (inv: Inventory, id: string) => craftRows(inv).find(r => r.recipe.id
 
 describe('craftRows', () => {
   test('lists every recipe', () => {
-    expect(craftRows(new Inventory()).map(r => r.recipe.id)).toEqual(['planks', 'glass', 'bricks', 'wool-white', 'wool-red', 'wool-blue', 'wool-yellow']);
+    expect(craftRows(new Inventory()).map(r => r.recipe.id)).toEqual(['planks', 'glass', 'bricks', 'wool-white', 'wool-red', 'wool-blue', 'wool-yellow', 'bubble-blaster', 'magic-wand', 'water-squirter']);
   });
   test('can make planks with 1 wood', () => {
     const inv = new Inventory();

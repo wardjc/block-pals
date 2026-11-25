@@ -75,11 +75,11 @@ describe('cave block ids', () => {
 });
 
 describe('the Gem item', () => {
-  test('Gem is 123: a gift item, not edible, not a feed, not a seed, and 111..122 stay free', () => {
+  test('Gem is 123: a gift item, not edible, not a feed, not a seed, and 111..119 stay free (120..122 are the weapons)', () => {
     expect(ItemId.Gem).toBe(123);
     const gem = ITEMS[ItemId.Gem];
     expect(gem).toMatchObject({ id: 123, name: 'gem', icon: '💎', kind: 'gift', edible: false });
-    for (let id = 111; id <= 122; id++) expect(isItemId(id), `item ${id}`).toBe(false);
+    for (let id = 111; id <= 119; id++) expect(isItemId(id), `item ${id}`).toBe(false);
   });
 
   test('the wizard trades the real Gem', () => {
