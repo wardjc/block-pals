@@ -366,6 +366,8 @@ html, body {
 .craft-row.dim .craft-item,
 .craft-row.dim .craft-sign { opacity: 0.55; }
 .craft-row.dim .craft-make { background: #98a3ad; box-shadow: 0 6px 0 #747e87; }
+.craft-row.owned { background: #dff3e2; }
+.owned-tick { font-size: 64px; line-height: 1; margin-left: 12px; }
 .craft-row.made { animation: craft-pop 0.4s ease; }
 .craft-item {
   display: flex;

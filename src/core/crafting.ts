@@ -1,8 +1,9 @@
 import type { StackId } from './items';
 import { Inventory, MAX_STACK } from './inventory';
-import type { Recipe } from './recipes';
+import { owns, type Recipe } from './recipes';
 
 export function canCraft(inv: Inventory, r: Recipe): boolean {
+  if (owns(inv, r)) return false; // a once-only recipe he already has
   // Require space for the whole output so crafting never discards items.
   if (inv.count(r.output.id) + r.output.n > MAX_STACK) return false;
   const required = new Map<StackId, number>();

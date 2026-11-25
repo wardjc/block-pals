@@ -16,6 +16,10 @@ export enum ItemId {
   Egg,
   Milk,
   Wool,
+  /** The three friendly weapons (grumps step). Never consumed, eaten, fed or placed. */
+  BubbleBlaster = 120,
+  MagicWand = 121,
+  WaterSquirter = 122,
   /**
    * A shiny gem (spec 7f, 7g, 7h): dug from gem stone in the caves, found in treasure chests and,
    * later, left by cheered-up grumps. One stack, one id: the wizard takes it for his magic blocks.
@@ -34,12 +38,18 @@ export interface ItemDef {
   icon: string;
   /** A small second picture, so each seed shows which crop it grows. */
   badge?: string;
-  kind: 'seed' | 'food' | 'gift';
+  kind: 'seed' | 'food' | 'gift' | 'tool';
   edible: boolean;
+  /** Set on the friendly weapons only. */
+  weapon?: WeaponKind;
 }
+
+export type WeaponKind = 'bubble' | 'wand' | 'water';
 
 const def = (id: ItemId, name: string, icon: string, kind: ItemDef['kind'], edible: boolean, badge?: string): ItemDef =>
   badge === undefined ? { id, name, icon, kind, edible } : { id, name, icon, badge, kind, edible };
+
+const weapon = (id: ItemId, name: string, icon: string, kind: WeaponKind): ItemDef => ({ ...def(id, name, icon, 'tool', false), weapon: kind });
 
 export const ITEMS: Record<ItemId, ItemDef> = {
   [ItemId.WheatSeed]: def(ItemId.WheatSeed, 'wheat seeds', '🌱', 'seed', false, '🌾'),
@@ -53,6 +63,9 @@ export const ITEMS: Record<ItemId, ItemDef> = {
   [ItemId.Egg]: def(ItemId.Egg, 'egg', '🥚', 'gift', false),
   [ItemId.Milk]: def(ItemId.Milk, 'milk', '🥛', 'food', true),
   [ItemId.Wool]: def(ItemId.Wool, 'wool', '🧶', 'gift', false),
+  [ItemId.BubbleBlaster]: weapon(ItemId.BubbleBlaster, 'bubble blaster', '🫧', 'bubble'),
+  [ItemId.MagicWand]: weapon(ItemId.MagicWand, 'magic wand', '🪄', 'wand'),
+  [ItemId.WaterSquirter]: weapon(ItemId.WaterSquirter, 'water squirter', '💦', 'water'),
   [ItemId.Gem]: def(ItemId.Gem, 'gem', '💎', 'gift', false),
 };
 
@@ -70,6 +83,13 @@ export const GIFT: Record<'chicken' | 'cow' | 'sheep' | 'pig', ItemId> = {
   sheep: ItemId.Wool,
   pig: ItemId.Potato,
 };
+
+/** The three friendly weapons, in recipe order. */
+export const WEAPONS: readonly ItemId[] = [ItemId.BubbleBlaster, ItemId.MagicWand, ItemId.WaterSquirter];
+
+export const isWeapon = (id: number): id is ItemId => WEAPONS.includes(id as ItemId);
+
+export const weaponKind = (id: ItemId): WeaponKind | null => ITEMS[id]?.weapon ?? null;
 
 /** The word for a stack, for the few places that say it aloud. */
 export function stackName(id: StackId): string {

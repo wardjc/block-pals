@@ -136,15 +136,15 @@ describe('the craft list follows the controller', () => {
     });
     screen.open();
     const rows = [...document.querySelectorAll('.craft-row')];
-    expect(rows.length).toBe(7);
+    expect(rows.length).toBe(10);
     expect(revealed.at(-1)).toBe(rows[0]);
-    for (let i = 1; i < 7; i++) {
+    for (let i = 1; i < 10; i++) {
       screen.padInput([1, 0], []);
       screen.padInput([0, 0], []);
       expect(revealed.at(-1), `row ${i}`).toBe(rows[i]);
     }
     screen.padInput([-1, 0], []); // back round
-    expect(revealed.at(-1)).toBe(rows[5]);
+    expect(revealed.at(-1)).toBe(rows[8]);
   });
 });
 

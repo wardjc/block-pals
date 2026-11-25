@@ -1,6 +1,7 @@
 import type { Rect } from '../core/houses';
 import { FEEDS, GIFT, type ItemId, type StackId } from '../core/items';
 import { canStep, isStandable, settleCell, type Cell } from '../core/pathfind';
+import { HEIGHTS, NEIGHBOURS, bestNeighbour, insideRect, moveToward, nearestFree, pickTarget } from './wander';
 import type { SavedAnimalTuple } from '../core/save';
 import type { World } from '../core/world';
 
@@ -58,9 +59,7 @@ const RING_MAX = 2.9;
 
 const KINDS: readonly AnimalKind[] = ['chicken', 'cow', 'sheep', 'pig'];
 const SPEED: Record<AnimalKind, number> = { chicken: 1, cow: 0.7, sheep: 0.8, pig: 0.9 };
-const HEIGHTS = [0, 1, -1] as const;
-const NEIGHBOURS = [[1, 0], [-1, 0], [0, 1], [0, -1], [1, 1], [1, -1], [-1, 1], [-1, -1]] as const;
-const inside = (r: Rect, x: number, z: number): boolean => x >= r.x0 && x <= r.x1 && z >= r.z0 && z <= r.z1;
+const inside = insideRect;
 const food = (held: StackId | 'hand'): held is ItemId => held !== 'hand' && FEEDS.includes(held as ItemId);
 
 export class Herd {
@@ -126,24 +125,7 @@ export class Herd {
   }
 
   private nearest(world: World, roam: Rect, occupied: Cell[], x: number, y: number, z: number, self?: Animal, avoid?: Set<string> | null): Cell | null {
-    const cx = Math.max(roam.x0, Math.min(roam.x1, Math.floor(x)));
-    const cz = Math.max(roam.z0, Math.min(roam.z1, Math.floor(z)));
-    const radius = Math.max(cx - roam.x0, roam.x1 - cx, cz - roam.z0, roam.z1 - cz);
-    // Prefer the existing ground level before looking on other surfaces.
-    for (let level = 0; level <= world.sizeY; level++) {
-      const cy = level === 0 ? Math.floor(y) : level;
-      if (level !== 0 && cy === Math.floor(y)) continue;
-      for (let r = 0; r <= radius; r++) {
-        for (let dz = -r; dz <= r; dz++) for (let dx = -r; dx <= r; dx++) {
-          if (Math.max(Math.abs(dx), Math.abs(dz)) !== r) continue;
-          const c: Cell = [cx + dx, cy, cz + dz];
-          if (self && c[0] === Math.floor(self.x) && c[1] === self.y && c[2] === Math.floor(self.z)) continue;
-          if (avoid?.has(c.join(','))) continue;
-          if (this.free(c, roam, occupied, self) && isStandable(world, c)) return c;
-        }
-      }
-    }
-    return null;
+    return nearestFree(world, roam, c => this.free(c, roam, occupied, self), x, y, z, self, avoid);
   }
 
   restore(saved: SavedAnimalTuple[], spawns: Cell[], world: World, roam: Rect, elapsedSeconds: number): void {
@@ -206,21 +188,10 @@ export class Herd {
   }
 
   private wanderTarget(a: Animal, ctx: HerdContext, allowed: (c: Cell) => boolean): boolean {
-    for (let i = 0; i < 16; i++) {
-      const angle = this.rng() * Math.PI * 2;
-      const distance = 2 + this.rng() * 3;
-      const x = Math.floor(a.x + Math.cos(angle) * distance);
-      const z = Math.floor(a.z + Math.sin(angle) * distance);
-      const d = Math.hypot(x + 0.5 - a.x, z + 0.5 - a.z);
-      if (d < 2 || d > 5) continue;
-      for (const dy of HEIGHTS) {
-        this.to[0] = x; this.to[1] = a.y + dy; this.to[2] = z;
-        if (!allowed(this.to) || !isStandable(ctx.world, this.to)) continue;
-        a.tx = x + 0.5; a.tz = z + 0.5;
-        return true;
-      }
-    }
-    return false;
+    const t = pickTarget(a, ctx.world, this.rng, allowed, 2, 5);
+    if (!t) return false;
+    a.tx = t.x; a.tz = t.z;
+    return true;
   }
 
   private comeTarget(a: Animal, ctx: HerdContext, allowed: (c: Cell) => boolean): boolean {
@@ -244,48 +215,22 @@ export class Herd {
     return best < Infinity;
   }
 
-  // Check each crossed cell before committing the whole, constant-length move.
+  // Check each crossed cell before committing the whole, constant-length move (the shared wander core).
   private move(a: Animal, ctx: HerdContext, allowed: (c: Cell) => boolean, tx: number, tz: number, speed: number, come: boolean): 'moved' | 'arrived' | 'blocked' {
-    const dx = tx - a.x, dz = tz - a.z;
-    const distance = Math.hypot(dx, dz), step = speed * ctx.dt;
-    if (distance < step || distance < 1e-8) return 'arrived';
-    const nx = a.x + dx / distance * step, nz = a.z + dz / distance * step;
-    const samples = Math.max(1, Math.ceil(step / 0.2));
-    this.from[0] = Math.floor(a.x); this.from[1] = a.y; this.from[2] = Math.floor(a.z);
-    for (let i = 1; i <= samples; i++) {
-      const x = a.x + (nx - a.x) * i / samples, z = a.z + (nz - a.z) * i / samples;
-      if (come) {
+    const veto = come
+      ? (x: number, z: number): boolean => {
         const before = Math.hypot(a.x - ctx.player.x, a.z - ctx.player.z);
-        if (Math.hypot(x - ctx.player.x, z - ctx.player.z) < Math.min(1.2, before)) return 'blocked';
+        return Math.hypot(x - ctx.player.x, z - ctx.player.z) < Math.min(1.2, before);
       }
-      this.to[0] = Math.floor(x); this.to[2] = Math.floor(z);
-      if (this.to[0] === this.from[0] && this.to[2] === this.from[2]) continue;
-      let valid = false;
-      for (const dy of HEIGHTS) {
-        this.to[1] = this.from[1] + dy;
-        if (canStep(ctx.world, this.from, this.to, allowed)) { valid = true; break; }
-      }
-      if (!valid) return 'blocked';
-      this.from[0] = this.to[0]; this.from[1] = this.to[1]; this.from[2] = this.to[2];
-    }
-    a.x = nx; a.y = this.from[1]; a.z = nz;
-    a.heading = Math.atan2(dx, dz);
-    a.stuckFor = 0;
-    return 'moved';
+      : undefined;
+    return moveToward(a, ctx.world, allowed, tx, tz, speed, ctx.dt, veto);
   }
 
   private neighbour(a: Animal, ctx: HerdContext, allowed: (c: Cell) => boolean): Cell | null {
-    this.from[0] = Math.floor(a.x); this.from[1] = a.y; this.from[2] = Math.floor(a.z);
-    let best: Cell | null = null, score = Infinity;
-    for (const [dx, dz] of NEIGHBOURS) for (const dy of HEIGHTS) {
-      this.to[0] = this.from[0] + dx; this.to[1] = a.y + dy; this.to[2] = this.from[2] + dz;
-      if (a.state === 'come' && Math.hypot(this.to[0] + 0.5 - ctx.player.x, this.to[2] + 0.5 - ctx.player.z) < 1.25) continue;
-      if (!canStep(ctx.world, this.from, this.to, allowed)) continue;
-      const d = Number.isFinite(a.tx) ? Math.hypot(this.to[0] + 0.5 - a.tx, this.to[2] + 0.5 - a.tz) : 0;
-      if (d < score) { best = [...this.to]; score = d; }
-      break;
-    }
-    return best;
+    const skip = a.state === 'come'
+      ? (c: Cell): boolean => Math.hypot(c[0] + 0.5 - ctx.player.x, c[2] + 0.5 - ctx.player.z) < 1.25
+      : undefined;
+    return bestNeighbour(a, ctx.world, allowed, a.tx, a.tz, skip);
   }
 
   /**
