@@ -7,6 +7,7 @@ import { DirtySections, sectionKey } from './chunkDirty';
 import { cameraZone, CULL_MARGIN, FOG_FAR, radialFactor, SectionQueue, visibleSections, type CameraZone } from './chunkCull';
 import { CAMERA_FAR, NEAR_MAX, cameraFar, cameraNear, easeNear, nearMaxFor, setCurrentCameraFar } from './depthPolicy';
 import { viewFog } from './viewDistance';
+import { Horizon, OUTDOOR_HAZE } from './horizonMesh';
 import { caveLook, luminance, OUTDOOR_LOOK, type CaveLook } from './caveLook';
 
 /** The cave look takes about this long to ease in or out as the camera's zone changes. */
@@ -22,6 +23,13 @@ const MARKER_SECONDS = 0.9;
 // Three r155+ no longer pre-multiplies light intensity by PI, so scale to get the classic bright look.
 const LIGHT_SCALE = Math.PI;
 const FOV = 60;
+/** The linear fog of the land, scaled by uHaze (see the Horizon). */
+const FOG_FRAGMENT = `
+#ifdef USE_FOG
+  float fogFactor = smoothstep( fogNear, fogFar, vFogDepth ) * uHaze;
+  gl_FragColor.rgb = mix( gl_FragColor.rgb, fogColor, fogFactor );
+#endif
+`;
 
 interface SectionMeshes {
   /** null when the section has nothing of that kind (no empty draw calls). */
@@ -80,6 +88,9 @@ export class GameScene {
   private readonly chunks = new Map<string, SectionMeshes>();
   private readonly dirty: DirtySections;
   private readonly queue = new SectionQueue(LAZY_PER_FRAME);
+  /** The far-terrain layer (one extra draw call, own pass) and whether this frame draws it. */
+  private readonly horizon: Horizon;
+  private horizonOn = false;
   private readonly solidMat: THREE.MeshLambertMaterial;
   private readonly transMat: THREE.MeshLambertMaterial;
   /** Yaw, pitch and the wall-aware distance of the camera (spec §7c). */
@@ -144,6 +155,8 @@ export class GameScene {
     this.renderer.setPixelRatio(Math.min(window.devicePixelRatio || 1, 1.5));
     host.appendChild(this.renderer.domElement);
 
+    this.horizon = new Horizon(world);
+    this.renderer.info.autoReset = false; // the frame has two passes; render() resets the counters once
     this.scene.background = new THREE.Color(0x78c6ff);
     this.scene.fog = new THREE.Fog(0x78c6ff, 20, FOG_FAR);
     this.hemi = new THREE.HemisphereLight(0xffffff, OUTDOOR_LOOK.groundColor, OUTDOOR_LOOK.hemiIntensity * LIGHT_SCALE);
@@ -161,6 +174,16 @@ export class GameScene {
       transparent: true,
       alphaTest: 0.05,
     });
+    // Outdoors the detailed land is hazed only up to OUTDOOR_HAZE at its fog end, so the horizon beyond it
+    // shows through; in caves the scale goes to 1 (the old full fog). The scale is the horizon's shared uniform.
+    for (const m of [this.solidMat, this.transMat]) {
+      m.onBeforeCompile = shader => {
+        shader.uniforms.uHaze = this.horizon.hazeUniform;
+        shader.fragmentShader = shader.fragmentShader
+          .replace('void main() {', 'uniform float uHaze;\nvoid main() {')
+          .replace('#include <fog_fragment>', FOG_FRAGMENT);
+      };
+    }
 
     // A soft ring on the ground where a walk tap is heading.
     this.marker = new THREE.Mesh(
@@ -304,6 +327,18 @@ export class GameScene {
   /** The view distance asked for, the fog end now, and the far plane. */
   view(): { target: number; fogEnd: number; fogNear: number; cameraFar: number; drawFogEnd: number } {
     return { target: this.viewTarget, fogEnd: this.viewEased, fogNear: this.viewFogNow.near, cameraFar: this.camera.far, drawFogEnd: this.fogEnd };
+  }
+
+  /** Test and tools: draws the horizon (default) or leaves it out. */
+  setHorizonEnabled(on: boolean): void {
+    this.horizonEnabled = on;
+  }
+
+  private horizonEnabled = true;
+
+  /** The horizon layer's numbers (debug panel and the budget checks). */
+  horizonStats(): ReturnType<Horizon['stats']> & { on: boolean } {
+    return { ...this.horizon.stats(), on: this.horizonOn };
   }
 
   /** The look now (debug and the brightness checks): fog colour and its luminance, depth factor, fog range. */
@@ -508,6 +543,7 @@ export class GameScene {
    */
   markSectionDirty(x: number, y: number, z: number): void {
     this.dirty.mark(x, y, z);
+    this.horizon.markDirty(x, z);
     if (!this.world.inBounds(x, 0, z)) return;
     const i = x + this.world.sizeX * z;
     const top = this.world.topSolidY(x, z);
@@ -672,8 +708,43 @@ export class GameScene {
       this.disposeFar();
     }
     if (this.anyVisibleShimmer() && this.atlas.shimmer(timeSeconds)) this.shimmerRepaints++;
-    this.renderer.render(this.scene, this.camera);
+    this.drawFrame();
   }
+
+  /**
+   * Draws the frame: the horizon first (own camera, far reach) when it is ready and the camera is outdoors,
+   * then the detailed land over it with the depth cleared. Underground only the land is drawn, as before.
+   */
+  private drawFrame(): void {
+    const r = this.renderer;
+    r.info.reset(); // the per-frame counters: the two passes below add up
+    const now = performance.now() / 1000;
+    this.horizon.update(Math.min(0.25, Math.max(0, now - this.horizonClock)));
+    this.horizonClock = now;
+    this.horizonOn = this.horizonEnabled && this.followed && this.horizon.ready && this.caveDepth < 0.999;
+    if (!this.horizonOn) {
+      this.horizon.hazeUniform.value = 1;
+      r.autoClear = true;
+      r.render(this.scene, this.camera);
+      return;
+    }
+    const f = this.scene.fog as THREE.Fog;
+    const haze = OUTDOOR_HAZE + (1 - OUTDOOR_HAZE) * this.caveDepth;
+    this.horizon.visible = true;
+    this.horizon.prepare(this.camera, f.color, f.near, f.far, haze, Math.max(0, this.fogEnd - 4));
+    const bg = this.scene.background;
+    this.scene.background = null;
+    r.autoClear = false;
+    r.setClearColor(f.color, 1);
+    r.clear(true, true, false);
+    r.render(this.horizon.scene, this.horizon.camera);
+    r.clearDepth();
+    r.render(this.scene, this.camera);
+    this.scene.background = bg;
+    r.autoClear = true;
+  }
+
+  private horizonClock = performance.now() / 1000;
 
   private lastDisposeCheck = -Infinity;
   /** Where the camera was, and the draw fog end, at the last dispose check (set at the first frame). */

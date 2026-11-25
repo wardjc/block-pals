@@ -1109,6 +1109,8 @@ if (debugOn) {
       entityAt: (x: number, y: number) => entityAt(x, y),
     }),
     giveGem: (n: number) => { game.inventory.add(ItemId.Gem, n); renderHud(); return game.inventory.count(ItemId.Gem); },
+    horizon: () => ({ ...scene.horizonStats(), tower: tower.beacon }),
+    setHorizon: (on: boolean) => scene.setHorizonEnabled(on),
     beacon: () => ({ ...lastBeacon, markerVisible: edgeMarker.visible, spriteVisible: beacon.sprite.visible }),
     leadTowerState: () => leadTower.state,
     depthBits: () => {
