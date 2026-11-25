@@ -26,8 +26,12 @@ export function digDownReady(flags: Pick<SaveFlags, 'ledToVillage' | 'cavesSeen'
 }
 
 /** Once-only hints, saved (`flags.hints`). Each is a plain-word line from Pip. */
-export type HintKey = 'plantSome' | 'needWaterSun' | 'cropReady' | 'holdOutFood' | 'tryMunch';
-const HINT_KEYS: readonly HintKey[] = ['plantSome', 'needWaterSun', 'cropReady', 'holdOutFood', 'tryMunch'];
+export type HintKey = 'plantSome' | 'needWaterSun' | 'cropReady' | 'holdOutFood' | 'tryMunch'
+  | 'grumpArrives' | 'plantsWaiting' | 'craftWeapon' | 'pickWeapon' | 'friendMade';
+const HINT_KEYS: readonly HintKey[] = [
+  'plantSome', 'needWaterSun', 'cropReady', 'holdOutFood', 'tryMunch',
+  'grumpArrives', 'plantsWaiting', 'craftWeapon', 'pickWeapon', 'friendMade',
+];
 
 /** The facts a hint needs to be true when it is said. */
 export interface HintContext {
@@ -40,7 +44,20 @@ export interface HintContext {
   hasFood: boolean;
   nearPasture: boolean;
   edibleSelected: boolean;
+  /** The grumps step (all optional: absent means false or zero). */
+  grumpHere?: boolean;
+  /** Seconds since the first grump on the farm arrived. */
+  grumpWaitedSeconds?: number;
+  /** Some plant is paused by a sulky grump. */
+  plantsPaused?: boolean;
+  hasWeapon?: boolean;
+  weaponSelected?: boolean;
+  sulkyInView?: boolean;
+  friendJustMade?: boolean;
 }
+
+/** Pip says the weapon hint this long after a grump arrives, if he still has no weapon. */
+export const CRAFT_WEAPON_AFTER_SECONDS = 20;
 
 /** One reaction line per kind this often (the Pal's own 4 s gap still applies on top). */
 export const REACTION_GAP_MS = 20_000;
@@ -51,6 +68,11 @@ const READY: Record<HintKey, (c: HintContext) => boolean> = {
   cropReady: c => c.ripeNearby,
   holdOutFood: c => c.nearPasture && c.hasFood,
   tryMunch: c => c.edibleSelected,
+  grumpArrives: c => c.grumpHere === true,
+  plantsWaiting: c => c.plantsPaused === true,
+  craftWeapon: c => c.grumpHere === true && c.hasWeapon !== true && (c.grumpWaitedSeconds ?? 0) >= CRAFT_WEAPON_AFTER_SECONDS,
+  pickWeapon: c => c.hasWeapon === true && c.sulkyInView === true && c.weaponSelected !== true,
+  friendMade: c => c.friendJustMade === true,
 };
 
 export class FarmHints {

@@ -5,7 +5,7 @@ const keys = Object.keys(LINES) as LineKey[];
 
 describe('lines', () => {
   it('every LineKey has at least one line', () => {
-    expect(keys).toHaveLength(46); // step 2's 34, the wizard step's 5 and the caves' 7 (the grumps step is not built yet)
+    expect(keys).toHaveLength(55); // step 2's 34, the wizard step's 5, the caves' 7 and the grumps' 9
     for (const k of keys) {
       expect(LINES[k].length).toBe(4);
       expect(new Set(LINES[k]).size).toBe(4);
@@ -60,6 +60,23 @@ describe('lines', () => {
     for (const l of LINES.goUp) expect(l).toMatch(/\b(up|way|follow|home|daylight|sunshine)\b/i);
     // backUp is said only on the surface, after the Home lift or the walk up.
     for (const l of LINES.backUp) expect(l).not.toMatch(/\b(cave|down|meadow|house)\b/i);
+  });
+  it('the grumps\' nine Pip lines exist, each with a picture, gentle, plain and short (Task 12)', () => {
+    const GRUMP_KEYS = ['grumpArrives', 'plantsWaiting', 'craftWeapon', 'pickWeapon', 'cheerHalf', 'cheeredUp', 'grumpGift', 'friendMade', 'friendHelps'] as const;
+    const icons = { grumpArrives: '☁️', plantsWaiting: '🌱', craftWeapon: '🫧', pickWeapon: '🪄', cheerHalf: '🙂', cheeredUp: '🎊', grumpGift: '🎁', friendMade: '💛', friendHelps: '💦' };
+    for (const k of GRUMP_KEYS) {
+      expect(LINES[k]).toHaveLength(4);
+      expect(new Set(LINES[k]).size).toBe(4);
+      expect(LINE_ICONS[k]).toBe(icons[k]);
+      for (const l of LINES[k]) {
+        expect(l.split(/\s+/).length).toBeLessThanOrEqual(12);
+        expect(l).not.toMatch(/\b(ooh+|hmm+|mmm+|aww+|ta-?da|hup|whee+|yay|yippee|woo-?hoo|hooray|yum+)\b/i);
+        expect(l).not.toMatch(/\b(tap|taps|click|touch|button)\b/i);
+        expect(l).not.toMatch(/\b(bad|scary|scared|angry|fight|kill|hurt|beat|attack|monster|enemy|dark|afraid|lost|get it)\b/i);
+        expect(l).not.toMatch(/\b(color|favorite|gray)\b/i);
+        expect(l).not.toMatch(/\d/);
+      }
+    }
   });
   it('puzzleStuck is true for every puzzle kind (it never mentions counting or dots)', () => {
     for (const l of LINES.puzzleStuck) expect(l).not.toMatch(/\b(count|dots?|basket)\b/i);
