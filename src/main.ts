@@ -1226,6 +1226,8 @@ if (debugOn) {
     bag: () => game.inventory.slots().map(id => ({ id, count: game.inventory.count(id) })),
     farm: () => ({ ...game.farm.records(), seeds: game.farm.seedsAndGrowing() }),
     advanceFarm: (ms: number) => game.farm.advance(ms),
+    // Time in 1 s steps with the grumps' pause on (a long single step is never paused, by design).
+    advanceFarmPaused: (ms: number) => { for (let t = 0; t < ms; t += 1000) game.farm.advance(1000, (x, y, z) => play.system.pausesCell([x, y, z])); },
     plantAt: (x: number, z: number, kind: CropKind) => {
       const y = world.topSolidY(x, z) + 1;
       game.inventory.add(seedFor(kind), 1);
