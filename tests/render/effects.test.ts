@@ -11,7 +11,7 @@ describe('Sparkles', () => {
     const s = new Sparkles(scene);
     expect(scene.children).toEqual([s.points]);
     expect(s.points.isPoints).toBe(true);
-    expect(s.capacity).toBe(64);
+    expect(s.capacity).toBe(96);
   });
   it('a burst makes 12 particles that are gone after one second', () => {
     const s = new Sparkles(new THREE.Scene());
