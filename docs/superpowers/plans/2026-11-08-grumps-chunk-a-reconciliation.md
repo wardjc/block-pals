@@ -33,3 +33,11 @@ Generation-timing tests (`worldInvariants`, `caves`, `caveLights`, `pathScale`) 
 - **Plant pause**: `Farm.advance(ms, paused?)` skips the time for a paused record and changes nothing else. `pauseFor(step, pauses)` returns undefined for any step over 5 s, so time away is never paused. `plantCells()` and `growingNear()` are new read-only helpers.
 - **Save**: `grumps`, `friends` and `grumpStats` are additive optional fields on v3 only (v1 and v2 payloads ignore them). Positions are tenths of a block. A bad grump is dropped, a friend is never dropped (a bad place becomes the zone centre and the game lifts it to a free cell on restore). Timers are restored as saved, never counted down offline. `serialise` takes a new last parameter and `applySave` returns `grumps`; `main.ts` wiring is chunk C. Five hint names are added to `HINT_NAMES`.
 - **Rewards**: a roll that does not fit falls through to the next fitting gift; a friend always brings one Gem if it fits.
+
+## Chunk C rulings (tasks 12 to 14: lines, render, sounds; still no `main.ts` wiring)
+
+- **Lines:** the nine Pip keys follow the plan's samples, with two rewordings so every line passes the existing policy tests (`friendHelps` no longer starts "Look, a", and `pickWeapon` no longer names all three weapons, since he may own only one). Pip speaks them (speaker `pip` only); Orlo's voice and lines are untouched. The five hint keys join `HELD_KEYS`. The 36 new Pip clips were generated with `tools/voice` and have not been listened to: please check "sulky", "wobbled", "squirter" and "confetti".
+- **Palette:** "lightness" is HSL lightness and "saturation" is HSV saturation (HSL saturation of the bright friend yellow is 1.0 by definition). The friend rose is hue 344 degrees, one degree outside the red-ish band.
+- **Sizes:** at most 12 boxes per model (120 triangles), nothing over 1.1 blocks, clouds hover 0.6 above the ground.
+- **Effects:** `Sparkles` capacity is now 96. The projectile is one mesh whose shape and colour change per weapon; the trailing bubbles are left to the sparkle pool.
+- **Screenshots** for judging "is it scary?" are in `docs/screenshots/grumps-*.png`.

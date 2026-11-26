@@ -54,7 +54,18 @@ export type LineKey =
   /** A treasure chest has just opened. */
   | 'treasureFound'
   /** The first time he stands in the Old Hideout. */
-  | 'oldBase';
+  | 'oldBase'
+  // The grumps (sulky little visitors on the farm) and the friendly weapons. Plain words only; each
+  // is true whenever it can fire. Pip never calls a grump bad: it is "sulky", "cheered up" or "a friend".
+  | 'grumpArrives'
+  | 'plantsWaiting'
+  | 'craftWeapon'
+  | 'pickWeapon'
+  | 'cheerHalf'
+  | 'cheeredUp'
+  | 'grumpGift'
+  | 'friendMade'
+  | 'friendHelps';
 
 /** Lines spoken by Pip. British English, short and warm. */
 export const LINES: Record<LineKey, string[]> = {
@@ -337,6 +348,60 @@ export const LINES: Record<LineKey, string[]> = {
     "An old base! Let's tidy it up.",
     'Such a cosy old hideout. We can build here.',
   ],
+  grumpArrives: [
+    'Look, someone small and sulky has wobbled onto the farm.',
+    'A sulky little visitor is on the farm.',
+    'Someone grumpy has come to sit by the plants.',
+    "There's a sulky one by the plants.",
+  ],
+  plantsWaiting: [
+    "The plants are waiting. They grow again when it's happy.",
+    'Plants wait while someone is sulking nearby.',
+    'The little plants are resting until it cheers up.',
+    'Our plants will grow again when it smiles.',
+  ],
+  craftWeapon: [
+    'We could make a bubble blaster, a wand or a squirter.',
+    "Something friendly might cheer it up. Let's make one.",
+    'Try the crafting screen. A friendly helper is in there.',
+    'Shall we make something friendly to cheer it up?',
+  ],
+  pickWeapon: [
+    'Choose your friendly helper from the bar.',
+    'Pick your friendly helper, then point it at the sulky one.',
+    'Your friendly helper is ready. Pick it from the bar.',
+    'Choose a helper from the bar to cheer it up.',
+  ],
+  cheerHalf: [
+    "It's feeling a bit better.",
+    "Look, it's less sulky now.",
+    "One more and it'll be smiling.",
+    "It's starting to cheer up.",
+  ],
+  cheeredUp: [
+    "It's cheered up! Look at all the confetti!",
+    "It's all smiles now!",
+    'No more sulking. Look at that confetti!',
+    "It's happy again!",
+  ],
+  grumpGift: [
+    'It left you something nice.',
+    'Look what it left in your bag.',
+    'A little thank you for you.',
+    "You've got a present.",
+  ],
+  friendMade: [
+    "A new friend for the farm! It's staying.",
+    'It wants to stay and be your friend.',
+    "You've made a friend. It lives here now.",
+    'Your farm has a new friend.',
+  ],
+  friendHelps: [
+    'Your little friend is helping the plants.',
+    'A friend is helping one of the plants.',
+    'A friend is giving a plant a hand.',
+    'Your friend helped a plant grow.',
+  ],
 };
 
 /** Pick a variant for a key, never the same one twice in a row. */
@@ -396,4 +461,13 @@ export const LINE_ICONS: Record<LineKey, string> = {
   backUp: '🌞',
   treasureFound: '🎁',
   oldBase: '🧱',
+  grumpArrives: '☁️',
+  plantsWaiting: '🌱',
+  craftWeapon: '🫧',
+  pickWeapon: '🪄',
+  cheerHalf: '🙂',
+  cheeredUp: '🎊',
+  grumpGift: '🎁',
+  friendMade: '💛',
+  friendHelps: '💦',
 };

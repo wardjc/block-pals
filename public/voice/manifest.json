@@ -119,6 +119,11 @@
   "text": "Hello, neighbour! I am Captain Pebble.",
   "duration": 3.4
  },
+ "pip/008ca767302a": {
+  "file": "pip/008ca767302a.ogg",
+  "text": "It's feeling a bit better.",
+  "duration": 1.59
+ },
  "pip/0108db0c5d65": {
   "file": "pip/0108db0c5d65.ogg",
   "text": "Your bag has a new magic block.",
@@ -129,10 +134,25 @@
   "text": "Carrots grow under the ground.",
   "duration": 1.67
  },
+ "pip/04bf07c47adf": {
+  "file": "pip/04bf07c47adf.ogg",
+  "text": "You've got a present.",
+  "duration": 1.31
+ },
+ "pip/06b106d7a744": {
+  "file": "pip/06b106d7a744.ogg",
+  "text": "Choose a helper from the bar to cheer it up.",
+  "duration": 2.44
+ },
  "pip/07192390c278": {
   "file": "pip/07192390c278.ogg",
   "text": "What a gentle pat!",
   "duration": 1.33
+ },
+ "pip/08b3ce0c79a2": {
+  "file": "pip/08b3ce0c79a2.ogg",
+  "text": "Your farm has a new friend.",
+  "duration": 1.73
  },
  "pip/093d954f8bc7": {
   "file": "pip/093d954f8bc7.ogg",
@@ -143,6 +163,11 @@
   "file": "pip/09b732c13aa6.ogg",
   "text": "Milk is good for you.",
   "duration": 1.39
+ },
+ "pip/09fc1fe5b69d": {
+  "file": "pip/09fc1fe5b69d.ogg",
+  "text": "Someone grumpy has come to sit by the plants.",
+  "duration": 2.58
  },
  "pip/0b6fe595eeb3": {
   "file": "pip/0b6fe595eeb3.ogg",
@@ -163,6 +188,11 @@
   "file": "pip/0daac2e65f80.ogg",
   "text": "A little rest first, then more.",
   "duration": 1.85
+ },
+ "pip/0e4891189ced": {
+  "file": "pip/0e4891189ced.ogg",
+  "text": "It's starting to cheer up.",
+  "duration": 1.61
  },
  "pip/0f0749babcb6": {
   "file": "pip/0f0749babcb6.ogg",
@@ -203,6 +233,11 @@
   "file": "pip/15123e498f65.ogg",
   "text": "A sweet, juicy apple!",
   "duration": 1.43
+ },
+ "pip/172b54309413": {
+  "file": "pip/172b54309413.ogg",
+  "text": "It's all smiles now!",
+  "duration": 1.45
  },
  "pip/1a191267d837": {
   "file": "pip/1a191267d837.ogg",
@@ -264,10 +299,20 @@
   "text": "A lovely drink of milk!",
   "duration": 1.47
  },
+ "pip/25439307e2e7": {
+  "file": "pip/25439307e2e7.ogg",
+  "text": "A friend is helping one of the plants.",
+  "duration": 2.01
+ },
  "pip/269159fc7056": {
   "file": "pip/269159fc7056.ogg",
   "text": "Super! That one's in your bag!",
   "duration": 2.54
+ },
+ "pip/26f987d39aed": {
+  "file": "pip/26f987d39aed.ogg",
+  "text": "Shall we make something friendly to cheer it up?",
+  "duration": 2.5
  },
  "pip/281a74a341a6": {
   "file": "pip/281a74a341a6.ogg",
@@ -324,6 +369,11 @@
   "text": "What a happy animal!",
   "duration": 1.27
  },
+ "pip/3792ab65841e": {
+  "file": "pip/3792ab65841e.ogg",
+  "text": "A sulky little visitor is on the farm.",
+  "duration": 2.37
+ },
  "pip/393d2f06814e": {
   "file": "pip/393d2f06814e.ogg",
   "text": "What a crunchy apple!",
@@ -339,10 +389,30 @@
   "text": "You're back! I missed you!",
   "duration": 2.1
  },
+ "pip/3d413e42b216": {
+  "file": "pip/3d413e42b216.ogg",
+  "text": "Your friendly helper is ready. Pick it from the bar.",
+  "duration": 3.51
+ },
+ "pip/3dda156dc1c0": {
+  "file": "pip/3dda156dc1c0.ogg",
+  "text": "Look, someone small and sulky has wobbled onto the farm.",
+  "duration": 3.16
+ },
  "pip/402babc2e8f1": {
   "file": "pip/402babc2e8f1.ogg",
   "text": "Shall we get some wood? Let's find a tree!",
   "duration": 3.09
+ },
+ "pip/41b819d836ec": {
+  "file": "pip/41b819d836ec.ogg",
+  "text": "There's a sulky one by the plants.",
+  "duration": 1.83
+ },
+ "pip/4364174554b2": {
+  "file": "pip/4364174554b2.ogg",
+  "text": "We could make a bubble blaster, a wand or a squirter.",
+  "duration": 2.92
  },
  "pip/4472c4eee31a": {
   "file": "pip/4472c4eee31a.ogg",
@@ -414,6 +484,11 @@
   "text": "Nicely picked! Now you can plant again.",
   "duration": 2.99
  },
+ "pip/575b039a313f": {
+  "file": "pip/575b039a313f.ogg",
+  "text": "It left you something nice.",
+  "duration": 1.69
+ },
  "pip/583896d88b5e": {
   "file": "pip/583896d88b5e.ogg",
   "text": "Shall we plant our seeds?",
@@ -438,6 +513,11 @@
   "file": "pip/5fac825f4e43.ogg",
   "text": "What a funny little potato!",
   "duration": 1.75
+ },
+ "pip/604b7ae27a12": {
+  "file": "pip/604b7ae27a12.ogg",
+  "text": "Choose your friendly helper from the bar.",
+  "duration": 2.19
  },
  "pip/611a3e92fefa": {
   "file": "pip/611a3e92fefa.ogg",
@@ -489,6 +569,11 @@
   "text": "Shall we have a little snack?",
   "duration": 1.59
  },
+ "pip/69a243105508": {
+  "file": "pip/69a243105508.ogg",
+  "text": "It's happy again!",
+  "duration": 1.09
+ },
  "pip/6bced522f69e": {
   "file": "pip/6bced522f69e.ogg",
   "text": "Hungry? The big mouth is for eating.",
@@ -508,6 +593,11 @@
   "file": "pip/6d506493642f.ogg",
   "text": "Seeds grow into plants. Shall we plant some?",
   "duration": 3.27
+ },
+ "pip/6db4b82086a9": {
+  "file": "pip/6db4b82086a9.ogg",
+  "text": "You've made a friend. It lives here now.",
+  "duration": 3.03
  },
  "pip/6e0e67567e7c": {
   "file": "pip/6e0e67567e7c.ogg",
@@ -559,10 +649,25 @@
   "text": "Shall we go and meet our neighbours?",
   "duration": 1.95
  },
+ "pip/796c0027e53f": {
+  "file": "pip/796c0027e53f.ogg",
+  "text": "It wants to stay and be your friend.",
+  "duration": 2.07
+ },
  "pip/7aef1480da01": {
   "file": "pip/7aef1480da01.ogg",
   "text": "Milk from the cow. How lovely!",
   "duration": 2.7
+ },
+ "pip/7afe07ccdf9a": {
+  "file": "pip/7afe07ccdf9a.ogg",
+  "text": "Try the crafting screen. A friendly helper is in there.",
+  "duration": 3.81
+ },
+ "pip/7c58b97cf8f2": {
+  "file": "pip/7c58b97cf8f2.ogg",
+  "text": "Plants wait while someone is sulking nearby.",
+  "duration": 2.56
  },
  "pip/7d7dcc331e66": {
   "file": "pip/7d7dcc331e66.ogg",
@@ -608,6 +713,11 @@
   "file": "pip/868ca75b5d1f.ogg",
   "text": "There might be sparkly caves down below.",
   "duration": 2.21
+ },
+ "pip/870e5d5fbe6b": {
+  "file": "pip/870e5d5fbe6b.ogg",
+  "text": "It's cheered up! Look at all the confetti!",
+  "duration": 2.83
  },
  "pip/8b60ffde4469": {
   "file": "pip/8b60ffde4469.ogg",
@@ -664,6 +774,11 @@
   "text": "A light is shining far away.",
   "duration": 1.85
  },
+ "pip/9b9fde473d88": {
+  "file": "pip/9b9fde473d88.ogg",
+  "text": "One more and it'll be smiling.",
+  "duration": 1.97
+ },
  "pip/9be37b580715": {
   "file": "pip/9be37b580715.ogg",
   "text": "Shall we visit the wizard? Follow me.",
@@ -679,6 +794,16 @@
   "text": "Look how tall it is. Shall we go in?",
   "duration": 2.99
  },
+ "pip/9c7cfd32cb86": {
+  "file": "pip/9c7cfd32cb86.ogg",
+  "text": "A friend is giving a plant a hand.",
+  "duration": 2.01
+ },
+ "pip/9e455c5f3758": {
+  "file": "pip/9e455c5f3758.ogg",
+  "text": "A new friend for the farm! It's staying.",
+  "duration": 2.89
+ },
  "pip/9f4b6e7217c7": {
   "file": "pip/9f4b6e7217c7.ogg",
   "text": "Something is glowing over there.",
@@ -689,6 +814,11 @@
   "text": "Here we are! This is the village!",
   "duration": 2.54
  },
+ "pip/a068446944d3": {
+  "file": "pip/a068446944d3.ogg",
+  "text": "No more sulking. Look at that confetti!",
+  "duration": 3.07
+ },
  "pip/a0ee23f2104e": {
   "file": "pip/a0ee23f2104e.ogg",
   "text": "What a cosy little home!",
@@ -698,6 +828,11 @@
   "file": "pip/a13e857dc98d.ogg",
   "text": "This is your very own cottage!",
   "duration": 1.75
+ },
+ "pip/a255a372c82f": {
+  "file": "pip/a255a372c82f.ogg",
+  "text": "A little thank you for you.",
+  "duration": 1.69
  },
  "pip/a257527de2b9": {
   "file": "pip/a257527de2b9.ogg",
@@ -718,6 +853,11 @@
   "file": "pip/a4551087b53d.ogg",
   "text": "Choose a food, then visit the animals.",
   "duration": 2.19
+ },
+ "pip/a47505f6294e": {
+  "file": "pip/a47505f6294e.ogg",
+  "text": "Your little friend is helping the plants.",
+  "duration": 2.23
  },
  "pip/a83b521c9109": {
   "file": "pip/a83b521c9109.ogg",
@@ -759,6 +899,11 @@
   "text": "Shall we look at it together?",
   "duration": 1.61
  },
+ "pip/af0e03238ce4": {
+  "file": "pip/af0e03238ce4.ogg",
+  "text": "Look what it left in your bag.",
+  "duration": 1.81
+ },
  "pip/b00485805376": {
   "file": "pip/b00485805376.ogg",
   "text": "This is the village. Lots of neighbours live here!",
@@ -789,6 +934,11 @@
   "text": "Whoops! Let me help you up!",
   "duration": 2.18
  },
+ "pip/b6111bdd8b32": {
+  "file": "pip/b6111bdd8b32.ogg",
+  "text": "Look, it's less sulky now.",
+  "duration": 1.73
+ },
  "pip/b65bdaa44cfc": {
   "file": "pip/b65bdaa44cfc.ogg",
   "text": "Back up top again. What a lovely trip!",
@@ -808,6 +958,16 @@
   "file": "pip/b8dabd1632cc.ogg",
   "text": "Someone has a light on a hill.",
   "duration": 1.79
+ },
+ "pip/babe44c9f396": {
+  "file": "pip/babe44c9f396.ogg",
+  "text": "Something friendly might cheer it up. Let's make one.",
+  "duration": 3.61
+ },
+ "pip/bc1f0d0ebf41": {
+  "file": "pip/bc1f0d0ebf41.ogg",
+  "text": "Your friend helped a plant grow.",
+  "duration": 1.83
  },
  "pip/bdb7627272a7": {
   "file": "pip/bdb7627272a7.ogg",
@@ -904,6 +1064,11 @@
   "text": "Plants grow with water and sunshine.",
   "duration": 2.09
  },
+ "pip/d66c90f2973c": {
+  "file": "pip/d66c90f2973c.ogg",
+  "text": "Our plants will grow again when it smiles.",
+  "duration": 2.27
+ },
  "pip/da05bf810d02": {
   "file": "pip/da05bf810d02.ogg",
   "text": "Goodness! Look at that!",
@@ -964,6 +1129,11 @@
   "text": "Apples grow on trees.",
   "duration": 1.61
  },
+ "pip/e7491ea35ff6": {
+  "file": "pip/e7491ea35ff6.ogg",
+  "text": "Pick your friendly helper, then point it at the sulky one.",
+  "duration": 2.98
+ },
  "pip/ea4c42878c19": {
   "file": "pip/ea4c42878c19.ogg",
   "text": "Treasure for your bag!",
@@ -983,6 +1153,16 @@
   "file": "pip/ee6ca3a5421b.ogg",
   "text": "Hiya! You came back!",
   "duration": 2.02
+ },
+ "pip/eeaf8e7a8b2f": {
+  "file": "pip/eeaf8e7a8b2f.ogg",
+  "text": "The plants are waiting. They grow again when it's happy.",
+  "duration": 3.63
+ },
+ "pip/f032f51ec2bd": {
+  "file": "pip/f032f51ec2bd.ogg",
+  "text": "The little plants are resting until it cheers up.",
+  "duration": 2.7
  },
  "pip/f0e8bf952324": {
   "file": "pip/f0e8bf952324.ogg",

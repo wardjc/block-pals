@@ -210,8 +210,77 @@ export const farmSfx = {
   oink: once('oink', () => { blip(300, 0, 0.12, 'triangle', 0.25, 210); blip(270, 0.16, 0.14, 'triangle', 0.22, 190); }),
 };
 
+/** A short soft band-limited noise burst sweeping 800 to 2400 Hz: the water squirter. */
+function squirtNoise(): void {
+  const c = ctx;
+  if (!c || !master || c.state !== 'running') return;
+  try {
+    if (!noise) {
+      noise = c.createBuffer(1, Math.floor(c.sampleRate * 0.12), c.sampleRate);
+      const d = noise.getChannelData(0);
+      for (let i = 0; i < d.length; i++) d[i] = Math.random() * 2 - 1;
+    }
+    const t = c.currentTime;
+    const src = c.createBufferSource();
+    src.buffer = noise;
+    src.loop = true;
+    const f = c.createBiquadFilter();
+    f.type = 'bandpass';
+    f.frequency.setValueAtTime(800, t);
+    f.frequency.linearRampToValueAtTime(2400, t + 0.3);
+    f.Q.value = 1.4;
+    const g = c.createGain();
+    g.gain.setValueAtTime(0.0001, t);
+    g.gain.linearRampToValueAtTime(0.2, t + 0.03);
+    g.gain.exponentialRampToValueAtTime(0.0001, t + 0.32);
+    src.connect(f);
+    f.connect(g);
+    g.connect(master);
+    src.start(t);
+    src.stop(t + 0.34);
+  } catch {
+    /* sound is optional */
+  }
+}
+
+const SULK_GAP_MS = 12_000;
+const SULK_RANGE = 10;
+let lastSulk = -Infinity;
+
+/**
+ * The grumps' and friendly weapons' sounds. Soft sine and triangle blips only (noise only in the
+ * squirt), nothing under 200 Hz, nothing over 1 s, peak gain 0.3 at most. No growls, ever.
+ */
+export const grumpSfx = {
+  /** Bubble blaster: a rising bubbly glide. */
+  blub: once('blub', () => { blip(330, 0, 0.22, 'sine', 0.26, 700); blip(660, 0.1, 0.12, 'sine', 0.1, 900); }),
+  /** Magic wand: three high pentatonic notes. */
+  twinkle: once('twinkle', () => [1047, 1319, 1568].forEach((f, i) => blip(f, i * 0.08, 0.2, 'sine', 0.2))),
+  /** Water squirter: a short soft splash of filtered noise. */
+  squirt: once('squirt', () => squirtNoise()),
+  /** First hit: a soft rising boing. */
+  grumpHop: once('grumpHop', () => blip(260, 0, 0.2, 'sine', 0.26, 520)),
+  /** Cheered up: four rising notes and a quiet tick. */
+  confetti: once('confetti', () => {
+    [523, 659, 784, 1047].forEach((f, i) => blip(f, i * 0.08, 0.2, 'triangle', 0.22));
+    blip(1800, 0.3, 0.03, 'sine', 0.08);
+  }),
+  /** A new friend: a gentle major triad. */
+  friendChime: once('friendChime', () => [523, 659, 784].forEach(f => blip(f, 0, 0.6, 'sine', 0.14))),
+  /** A grump wobbling in: very quiet. */
+  plip: once('plip', () => blip(600, 0, 0.08, 'sine', 0.08, 800)),
+  /** A soft two-note falling blip, once per 12 s at most and only within 10 blocks of him. */
+  sulk: (distance = 0): void => {
+    const now = typeof performance !== 'undefined' ? performance.now() : Date.now();
+    if (!(distance <= SULK_RANGE) || (now >= lastSulk && now - lastSulk < SULK_GAP_MS)) return;
+    lastSulk = now;
+    play(() => { blip(520, 0, 0.15, 'sine', 0.14, 440); blip(392, 0.16, 0.2, 'sine', 0.14, 330); });
+  },
+};
+
 export const sfx = {
   ...farmSfx,
+  ...grumpSfx,
   /** The shared AudioContext and its master gain, for voice clips. Null when Web Audio is unavailable. */
   audioOut: (): { ctx: AudioContext; out: AudioNode } | null => {
     const c = ensure();

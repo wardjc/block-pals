@@ -6,6 +6,7 @@ export const HELD_KEYS: ReadonlySet<LineKey> = new Set<LineKey>([
   'plantSome', 'needWaterSun', 'cropReady', 'holdOutFood', 'tryMunch',
   'letsVisitWizard', 'meetWizard', 'seeTowerLight',
   'digDown', 'cavesLit', 'gemFound', 'goUp', 'backUp', 'treasureFound', 'oldBase',
+  'grumpArrives', 'plantsWaiting', 'craftWeapon', 'pickWeapon', 'friendMade',
 ]);
 
 /**
