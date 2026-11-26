@@ -18,7 +18,14 @@ import { fernGift } from './game/fern';
 import { Herd } from './game/animals';
 import { mulberry32 } from './core/rng';
 import { AnimalView, ANIMAL_VIEW_RANGE } from './render/animals';
-import { Sparkles } from './render/effects';
+import { Projectile, SadMarks, Sparkles } from './render/effects';
+import { GrumpView, GRUMP_VIEW_RANGE } from './render/grumps';
+import { GrumpPlay } from './game/grumpPlay';
+import { Delayed } from './game/delayed';
+import { PAUSE_STEP_MAX_MS, pauseFor } from './game/farm';
+import { FLIGHT_SECONDS } from './core/grumpRules';
+import { ZONE_Y, avoidCells, farmZone, zoneBorder } from './core/farmZone';
+import { WEAPONS, weaponKind } from './core/items';
 import { pickAnimalAlongRay } from './input/entityPick';
 import { GamepadInput } from './input/gamepad';
 import { loadMapping } from './input/mapping';
@@ -87,6 +94,13 @@ const herd = new Herd(mulberry32((seed ^ 0xa11) >>> 0));
 if (loaded) herd.restore(loaded.animals, village.farm.herdSpawns, world, roam, loaded.offlineMs / 1000);
 else herd.populate(village.farm.herdSpawns);
 game.herd = herd;
+// Grumps and friends: small harmless visitors on the farm (surface only, never in the caves or the tower).
+const grumpZone = farmZone(village);
+const grumpAvoid = avoidCells(village);
+const play = new GrumpPlay({
+  game, world, zone: grumpZone, avoid: grumpAvoid, border: zoneBorder(grumpZone, world, grumpAvoid),
+  rng: mulberry32((seed ^ 0x6b1) >>> 0), level: ZONE_Y, saved: loaded?.grumps,
+});
 const scene = new GameScene(document.getElementById('game')!, world);
 // Within reach of a cave mouth the layers below are drawn too, so looking into a tunnel never shows a hole.
 scene.setMouths(mouthCells(caves));
@@ -99,12 +113,16 @@ viewDistance.pause(3); // loading and the first frames
 scene.setViewDistance(viewDistance.distance);
 const animalView = new AnimalView(scene.scene);
 const sparkles = new Sparkles(scene.scene);
+const grumpView = new GrumpView(scene.scene);
+const sadMarks = new SadMarks(scene.scene);
+const projectile = new Projectile(scene.scene);
+const delayed = new Delayed();
 const flags = loaded?.flags ?? { ledToVillage: false };
 const hints = new FarmHints(flags.hints ?? []);
 /** Orlo's gift, visit, lead and puzzle counters: read live by every save. */
 const wizard = loaded?.wizard ?? newWizardState();
-const saveGame = (): boolean => storeSave(storage, serialise(game, seed, flags, Date.now(), herd.toJSON(), wizard));
-const autosave = createAutosaveControl(() => startAutosave(game, seed, storage, flags, () => herd.toJSON(), wizard), saveGame);
+const saveGame = (): boolean => storeSave(storage, serialise(game, seed, flags, Date.now(), herd.toJSON(), wizard, play.saved()));
+const autosave = createAutosaveControl(() => startAutosave(game, seed, storage, flags, () => herd.toJSON(), wizard, () => play.saved()), saveGame);
 const usage = new UsageTracker(storage);
 world.onChange((x, y, z) => scene.markSectionDirty(x, y, z));
 
@@ -209,12 +227,19 @@ const peopleCells = (): Cell[] => {
   return cells;
 };
 /** Everyone, animals too: nothing can be built into an animal and the ground under one is never dug. */
-const occupied = (): Cell[] => [...peopleCells(), ...herd.occupiedCells()];
+const occupied = (): Cell[] => [...peopleCells(), ...herd.occupiedCells(), ...play.system.occupiedCells()];
 game.setOccupied(occupied);
 
 // Real-time growth: one clock, one rule (never negative, capped). A sleeping tab sees one capped step.
 const growthClock = new GrowthClock(Date.now());
-const tickGrowth = (): void => game.farm.advance(growthClock.step(Date.now()));
+/** Sad little bubbles over the plants a sulky grump is pausing (drawn only: nothing is written to the world). */
+const refreshSadMarks = (): void => sadMarks.set(play.system.pausedCells(game.farm.plantCells()), performance.now() / 1000);
+const tickGrowth = (): void => {
+  const step = growthClock.step(Date.now());
+  // A short step is paused near a sulky grump; time away (a long step) never is.
+  game.farm.advance(step, pauseFor(step, (x, y, z) => play.system.pausesCell([x, y, z])));
+  refreshSadMarks();
+};
 setInterval(tickGrowth, 1000);
 document.addEventListener('visibilitychange', () => { if (document.visibilityState === 'visible') tickGrowth(); });
 const burstAt = (cell: Cell, kind: 'water' | 'sun' | 'both' | 'heart' | 'crumb'): void =>
@@ -241,6 +266,60 @@ game.on(e => {
     sfx.pet();
     sparkles.burst(at, 'heart', 6);
     react(e.type === 'resting' ? 'animalFull' : 'petAnimal');
+  }
+});
+
+// ---- grumps and friends: the pictures and sounds that follow what the game already decided ----
+/** What each grump shows while the shot is still flying (the game has already changed its mood). */
+const shownMood = new Map<number, 0 | 1>();
+/** A cheered-up grump stays on screen until the shot arrives; a new friend hides until then. */
+const leaving = new Map<number, import('./game/grumps').Grump>();
+const hiddenFriends = new Set<number>();
+let friendJustMade = false;
+const WEAPON_SFX = { bubble: sfx.blub, wand: sfx.twinkle, water: sfx.squirt } as const;
+const WEAPON_BURST = { bubble: 'bubble', wand: 'star', water: 'drop' } as const;
+/** Pip's grump lines never talk over a voice (Orlo, a neighbour or Pip) or the break reminder. */
+function grumpSay(key: LineKey): void {
+  if (voice.speaking() || hud.breakOpen || wizardScreen.isOpen) return;
+  react(key);
+}
+game.on(e => {
+  if (e.type === 'fired') {
+    projectile.launch(e.from, e.to, e.weapon);
+    WEAPON_SFX[e.weapon]();
+    lastFire.weapon = e.weapon; lastFire.sfx = { bubble: 'blub', wand: 'twinkle', water: 'squirt' }[e.weapon]; lastFire.projectile = e.weapon;
+    delayed.after(FLIGHT_SECONDS, () => sparkles.burst(e.to, WEAPON_BURST[e.weapon], 8));
+  } else if (e.type === 'unsure') {
+    shownMood.set(e.grump, 0);
+    delayed.after(FLIGHT_SECONDS, () => {
+      shownMood.delete(e.grump);
+      sfx.grumpHop();
+      sparkles.burst({ x: e.at.x, y: e.at.y + 0.8, z: e.at.z }, 'sun', 8);
+      refreshSadMarks();
+      grumpSay('cheerHalf');
+    });
+    refreshSadMarks();
+  } else if (e.type === 'cheered') {
+    // The shot is still flying: the unsure grump stays in the picture until it arrives (a new friend waits too).
+    leaving.set(e.grump, {
+      id: e.grump, kind: e.kind, variant: e.variant, x: e.at.x, y: e.at.y, z: e.at.z, heading: e.heading, mood: 1, hits: 1,
+      state: 'idle', stateT: 0, spawnT: 1, sulkNoiseIn: 99, stuckFor: 0, settle: null, crop: null, spot: 'farm', target: null, walkT: 0,
+    });
+    if (e.friend) hiddenFriends.add(e.grump);
+    delayed.after(FLIGHT_SECONDS, () => {
+      leaving.delete(e.grump);
+      hiddenFriends.delete(e.grump);
+      const at = { x: e.at.x, y: e.at.y + 0.6, z: e.at.z };
+      if (e.friend) { sparkles.burst(at, 'heart', 10); sparkles.burst(at, 'star', 8); sfx.friendChime(); }
+      else { sparkles.burst(at, 'confetti', 24); sfx.confetti(); }
+      if (e.reward.length > 0) hud.showBubble(ITEMS[e.reward[0].id].icon);
+      refreshSadMarks();
+      if (e.friend) { friendJustMade = true; window.setTimeout(() => { friendJustMade = false; }, 8000); }
+      else { grumpSay('cheeredUp'); if (e.reward.length > 0) window.setTimeout(() => grumpSay('grumpGift'), 4500); }
+    });
+  } else if (e.type === 'friendPetted') {
+    const f = play.system.friends.find(o => o.id === e.friend);
+    if (f) { sfx.pet(); sparkles.burst({ x: f.x, y: f.y + 0.9, z: f.z }, 'heart', 6); }
   }
 });
 
@@ -444,7 +523,7 @@ const grownUps = new GrownUps(document.getElementById('ui')!, {
   resumeAutosave: () => autosave.resume(),
   // "Save a copy" never hands out stale progress: write the game now, else copy the live game.
   flushSave: () => !autosave.frozen && saveGame(),
-  snapshotSave: () => JSON.stringify(serialise(game, seed, flags, Date.now(), herd.toJSON(), wizard)),
+  snapshotSave: () => JSON.stringify(serialise(game, seed, flags, Date.now(), herd.toJSON(), wizard, play.saved())),
   onOpenChange: syncOverlays,
   getViewSetting: () => viewDistance.currentSetting,
   onViewSettingSaved: s => viewDistance.setSetting(s),
@@ -485,7 +564,7 @@ const animalAt = (clientX: number, clientY: number): number | null => {
  */
 const entityAt = (clientX: number, clientY: number): { type: EntityType; id: number } | null => {
   const r = scene.pickRay(clientX, clientY);
-  const boxes: EntityBox[] = animalView.boxes().map(b => ({ ...b, type: 'animal' as const }));
+  const boxes: EntityBox[] = [...animalView.boxes().map(b => ({ ...b, type: 'animal' as const })), ...grumpView.boxes()];
   // Orlo is pickable only as far as the ray looks for walls (it would not see one farther away).
   const s = tower.wizardSpot;
   const cam = scene.camera.position;
@@ -535,9 +614,14 @@ function handleGesture(events: GestureEvent[]): void {
         const animal = tapped === null ? undefined : herd.animals.find(o => o.id === tapped);
         const pf = game.player.pos;
         const ws = tower.wizardSpot;
+        const bodyHit = (b: { id: number; x: number; y: number; z: number } | undefined) => b
+          ? { id: b.id, dist: Math.hypot(b.x - pf.x, b.y + 0.5 - (pf.y + 1.6), b.z - pf.z), cell: [Math.floor(b.x), b.y, Math.floor(b.z)] as Cell }
+          : null;
         game.applyIntent(resolveTap(
           scene.pick(ev.x, ev.y), game.effectiveSelected(), game.player.feetCell(), world, occupied(),
           {
+            grumpHit: tappedOn?.type === 'grump' ? bodyHit(play.system.grumps.find(o => o.id === tappedOn.id)) : null,
+            friendHit: tappedOn?.type === 'friend' ? bodyHit(play.system.friends.find(o => o.id === tappedOn.id)) : null,
             plantAt: c => game.farm.isPlantCell(c),
             animalHit: animal
               ? { id: animal.id, dist: Math.hypot(animal.x - pf.x, animal.z - pf.z), cell: [Math.floor(animal.x), animal.y, Math.floor(animal.z)] }
@@ -676,13 +760,14 @@ let cosySaid = false;
 const cottage = village.houses.find(h => h.id === 'cottage');
 const saveNow = (): void => autosave.save();
 
-const HINT_ORDER: readonly HintKey[] = ['cropReady', 'tryMunch', 'plantSome', 'needWaterSun', 'holdOutFood'];
+const HINT_ORDER: readonly HintKey[] = ['cropReady', 'tryMunch', 'plantSome', 'needWaterSun', 'holdOutFood', 'grumpArrives', 'plantsWaiting', 'craftWeapon', 'pickWeapon', 'friendMade'];
 const isHintKey = (k: LineKey): k is HintKey => (HINT_ORDER as readonly string[]).includes(k);
 let hintClock = 0;
 let reactionsWarmed = false;
 const REACTION_KEYS: readonly LineKey[] = [
   'harvested', 'ateApple', 'ateCarrot', 'atePotato', 'drankMilk', 'fedAnimal', 'animalFull', 'petAnimal', 'gotEgg', 'gotMilk', 'gotWool',
   'plantSome', 'needWaterSun', 'cropReady', 'holdOutFood', 'tryMunch',
+  'cheerHalf', 'cheeredUp', 'grumpGift', 'friendHelps',
 ];
 const SEED_ITEMS = [ItemId.WheatSeed, ItemId.CarrotSeed, ItemId.PotatoSeed, ItemId.AppleSapling];
 const within = (r: { x0: number; z0: number; x1: number; z1: number }, c: Cell, pad: number): boolean =>
@@ -701,6 +786,13 @@ function hintContext(cell: Cell): HintContext {
     hasFood: FEEDS.some(id => game.inventory.count(id) > 0),
     nearPasture: within(pasture, cell, 6),
     edibleSelected: sel !== 'hand' && isItemId(sel) && ITEMS[sel].edible,
+    grumpHere: play.system.grumps.length > 0,
+    grumpWaitedSeconds: grumpWait,
+    plantsPaused: play.system.pausedCells(game.farm.plantCells()).length > 0,
+    hasWeapon: WEAPONS.some(id => game.inventory.count(id) > 0),
+    weaponSelected: sel !== 'hand' && weaponKind(sel as never) !== null,
+    sulkyInView: play.system.grumps.some(g => g.mood === 0 && Math.hypot(g.x - cell[0], g.z - cell[2]) < 24),
+    friendJustMade,
   };
 }
 
@@ -891,6 +983,55 @@ function updateHerd(dt: number, seconds: number): void {
   animalView.sync(herd.animals, (x, z) => Math.hypot(x - cam.x, z - cam.z) < ANIMAL_VIEW_RANGE, seconds);
 }
 
+/** Grumps and friends: they wobble, settle by the plants and keep their distance. A menu stops all of it (dt 0). */
+let grumpWait = 0;
+let sadClock = 0;
+/** ?debug only: what the last shot was (its weapon, picture and sound). */
+const lastFire = { weapon: '', sfx: '', projectile: '' };
+/** One game-time step of the grump rules (the frame calls it, and so do the debug hooks that skip waiting). */
+function updateGrumpsStep(dt: number): void {
+  const over = game.paused || hud.blockingOverlayOpen || hud.breakOpen || homeFade.running;
+  const res = play.update(dt, {
+    player: game.player.pos, occupied: [...peopleCells(), ...herd.occupiedCells()], plantCells: game.farm.plantCells(),
+    overlayOpen: over, paused: game.paused, deep: game.isDeep(),
+  });
+  if (res.spawned) refreshSadMarks();
+}
+function updateGrumps(dt: number, seconds: number): void {
+  const over = game.paused || hud.blockingOverlayOpen || hud.breakOpen || homeFade.running;
+  const res = play.update(dt, {
+    player: game.player.pos, occupied: [...peopleCells(), ...herd.occupiedCells()], plantCells: game.farm.plantCells(),
+    overlayOpen: over, paused: game.paused, deep: game.isDeep(),
+  });
+  const frozen = helperDt(over, dt);
+  delayed.update(frozen);
+  projectile.update(frozen);
+  const p = game.player.pos;
+  for (const ev of res.grumps) {
+    if (ev.type === 'arrived') {
+      const g = play.system.grumps.find(o => o.id === ev.id);
+      if (g && Math.hypot(g.x - p.x, g.z - p.z) <= 12) sfx.plip();
+    } else if (ev.dist <= 10 && !voice.speaking() && !hud.blockingOverlayOpen) {
+      sfx.sulk(ev.dist);
+    }
+  }
+  for (const ev of res.friends) {
+    const f = play.system.friends.find(o => o.id === ev.friend);
+    if (f) sparkles.burst({ x: f.x, y: f.y + 1.1, z: f.z }, 'heart', 5);
+    grumpSay('friendHelps');
+  }
+  if (res.spawned) { sfx.plip(); refreshSadMarks(); }
+  if (play.system.grumps.length === 0) grumpWait = 0; else if (!over) grumpWait += dt;
+  sadClock += dt;
+  if (sadClock >= 0.25) { sadClock = 0; refreshSadMarks(); }
+  const cam = scene.camera.position;
+  grumpView.sync(
+    play.system, (x, z) => Math.hypot(x - cam.x, z - cam.z) < GRUMP_VIEW_RANGE, seconds,
+    id => shownMood.get(id) ?? play.system.grumps.find(g => g.id === id)?.mood ?? 1,
+    [...leaving.values()], (type, id) => type === 'friend' && hiddenFriends.has(id),
+  );
+}
+
 /** The munch: arms up, head dips, the little picture shrinks, crumbs on each bite, Pip speaks when it ends. */
 function updateEating(): void {
   const e = game.eating;
@@ -985,8 +1126,36 @@ if (debugOn) {
     drawCalls: () => scene.renderer.info.render.calls,
     stats: () => {
       const gl = scene.renderer.getContext();
-      return { ...scene.stats(), fps: fpsValue, worldTriangles: scene.triangleCount(), animals: herd.animals.length, particles: sparkles.live, depthBits: gl.getParameter(gl.DEPTH_BITS) as number };
+      return { ...scene.stats(), fps: fpsValue, worldTriangles: scene.triangleCount(), animals: herd.animals.length, particles: sparkles.live, grumps: play.system.grumps.length, friends: play.system.friends.length, markers: sadMarks.shown, depthBits: gl.getParameter(gl.DEPTH_BITS) as number };
     },
+    // ---- grumps (debug only) ----
+    grumps: () => play.system.grumps.map(g => ({ id: g.id, kind: g.kind, x: g.x, y: g.y, z: g.z, mood: g.mood, hits: g.hits, state: g.state })),
+    friends: () => play.system.friends.map(f => ({ id: f.id, kind: f.kind, variant: f.variant, x: f.x, y: f.y, z: f.z, jobIn: f.jobIn, state: f.state })),
+    spawnGrump: (kind: 'jelly' | 'cloud' = 'jelly') => {
+      const border = zoneBorder(grumpZone, world, grumpAvoid);
+      const p = game.player.pos;
+      const far = border.filter(c => Math.hypot(c[0] + 0.5 - p.x, c[2] + 0.5 - p.z) >= 8);
+      const c = (far[0] ?? border[0]) as Cell | undefined;
+      return c ? play.system.spawn(c, kind).id : null;
+    },
+    spawnGrumpAt: (x: number, z: number, kind: 'jelly' | 'cloud' = 'jelly') => {
+      const c = settleCell(world, [Math.floor(x), ZONE_Y, Math.floor(z)]);
+      return play.system.spawn(c, kind).id;
+    },
+    spawnerState: () => ({ ...play.spawner.state(), cheered: game.cheered }),
+    fire: (id: number) => game.fireWeapon(id).map(e => e.type),
+    giveWeapon: (kind: 'bubble' | 'wand' | 'water') => { game.inventory.add({ bubble: ItemId.BubbleBlaster, wand: ItemId.MagicWand, water: ItemId.WaterSquirter }[kind], 1); renderHud(); },
+    makeFriend: (id: number) => play.system.tryMakeFriend(id, 5)?.id ?? null,
+    setCheered: (n: number) => { game.cheered = n; },
+    advanceSpawner: (seconds: number) => { for (let t = 0; t < seconds; t += 0.5) updateGrumpsStep(0.5); },
+    advanceFriendJobs: (seconds: number) => { for (let t = 0; t < seconds; t += 0.5) updateGrumpsStep(0.5); },
+    screenOfGrump: (id: number) => {
+      const p = grumpView.screenPositions(scene.camera, canvas.getBoundingClientRect()).find(o => o.id === id && o.type === 'grump');
+      return p ? { x: p.sx, y: p.sy } : null;
+    },
+    markers: () => sadMarks.shown,
+    lastFire: () => ({ ...lastFire }),
+    projectileActive: () => projectile.active,
     herd: () => herd.animals.map(a => ({ id: a.id, kind: a.kind, x: a.x, y: a.y, z: a.z, state: a.state, giftIn: a.giftIn })),
     pasture: () => ({ ...pasture, roam, gate: village.farm.gate }),
     animalAt: (x: number, y: number) => animalAt(x, y), // the animal a finger at this point would be on (the real pick)
@@ -1057,6 +1226,8 @@ if (debugOn) {
     bag: () => game.inventory.slots().map(id => ({ id, count: game.inventory.count(id) })),
     farm: () => ({ ...game.farm.records(), seeds: game.farm.seedsAndGrowing() }),
     advanceFarm: (ms: number) => game.farm.advance(ms),
+    // Time in 1 s steps with the grumps' pause on (a long single step is never paused, by design).
+    advanceFarmPaused: (ms: number) => { for (let t = 0; t < ms; t += 1000) game.farm.advance(1000, (x, y, z) => play.system.pausesCell([x, y, z])); },
     plantAt: (x: number, z: number, kind: CropKind) => {
       const y = world.topSolidY(x, z) + 1;
       game.inventory.add(seedFor(kind), 1);
@@ -1109,6 +1280,8 @@ if (debugOn) {
       entityAt: (x: number, y: number) => entityAt(x, y),
     }),
     giveGem: (n: number) => { game.inventory.add(ItemId.Gem, n); renderHud(); return game.inventory.count(ItemId.Gem); },
+    horizon: () => ({ ...scene.horizonStats(), tower: tower.beacon }),
+    setHorizon: (on: boolean) => scene.setHorizonEnabled(on),
     beacon: () => ({ ...lastBeacon, markerVisible: edgeMarker.visible, spriteVisible: beacon.sprite.visible }),
     leadTowerState: () => leadTower.state,
     depthBits: () => {
@@ -1185,6 +1358,7 @@ function frame(now: number): void {
     game.farm.update(dt);
     updateHerd(dt, now / 1000);
   }
+  updateGrumps(dt, now / 1000);
   sparkles.update(dt);
   chestReveal.update(dt);
   homeFade.update(rawMs / 1000);

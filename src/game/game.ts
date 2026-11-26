@@ -3,7 +3,8 @@ import { insideWall } from '../core/bounds';
 import { canCraft, craft } from '../core/crafting';
 import { cropOf, yields } from '../core/crops';
 import { Inventory, MAX_STACK } from '../core/inventory';
-import { FEEDS, GIFT, isItemId, ITEMS, type ItemId, type StackId } from '../core/items';
+import { FIRE_COOLDOWN, WEAPON_REACH, becomesFriend, rewardFor, type RewardEntry as GrumpReward } from '../core/grumpRules';
+import { FEEDS, GIFT, isItemId, isWeapon, ITEMS, weaponKind, type ItemId, type StackId, type WeaponKind } from '../core/items';
 import { findPath, GENTLE_DROP, isStandable, pathTowards, smoothPath, type Cell } from '../core/pathfind';
 import { EMPTY_CAVES, type CaveLayout } from '../core/caves';
 import { homeSpot, isDeep } from '../core/home';
@@ -18,6 +19,7 @@ import type { HoldIntent, TapIntent } from '../input/tap';
 import type { AnimalKind, Herd } from './animals';
 import { EatState } from './eating';
 import { Farm } from './farm';
+import type { GrumpKind, GrumpSystem } from './grumps';
 import { Player } from './player';
 
 export type GameEvent =
@@ -46,6 +48,15 @@ export type GameEvent =
   | { type: 'ate'; id: ItemId }
   /** He asked to talk to the wizard (a tap on him, or the pad facing him): main opens his screen. */
   | { type: 'talk' }
+  /** A friendly weapon was fired at a grump (the picture flies; the result below is already decided). */
+  | { type: 'fired'; weapon: WeaponKind; grump: number; from: { x: number; y: number; z: number }; to: { x: number; y: number; z: number } }
+  /** The first hit: the grump is less sulky and the plants around it grow again. */
+  | { type: 'unsure'; grump: number; kind: GrumpKind; at: { x: number; y: number; z: number } }
+  /** The second hit: it bursts into confetti (or becomes a friend) and the reward is already in the bag. */
+  | { type: 'cheered'; grump: number; kind: GrumpKind; friend: boolean; reward: readonly GrumpReward[]; at: { x: number; y: number; z: number }; variant: number; heading: number }
+  /** A cheered-up grump stays as a friend. */
+  | { type: 'friendMade'; friend: number }
+  | { type: 'friendPetted'; friend: number }
   /** n: which idle hint this is (1 after 20 s of quiet, 2 after another 60 s). */
   | { type: 'idle'; n?: number };
 
@@ -70,6 +81,15 @@ export class Game {
   herd: Herd | null = null;
   /** Bumps when an animal gives a gift, so the autosave notices. */
   herdRevision = 0;
+  /** The grumps and friends on the farm (set by main). Entities, not blocks. */
+  grumps: GrumpSystem | null = null;
+  /** Randomness for rewards (injectable for tests). */
+  grumpRng: () => number = Math.random;
+  /** Grumps cheered up, ever (saved). Every fifth one becomes a friend. */
+  cheered = 0;
+  /** Bumps on every hit, cheer-up and friend, so the autosave notices. */
+  grumpRevision = 0;
+  private fireCooldown = 0;
   selected: StackId | 'hand' = 'hand';
   /** Hook for the HUD craft screen (Task 11). */
   /** While true (overlay open) the player does not move. */
@@ -180,6 +200,14 @@ export class Game {
         this.active();
         this.emit({ type: 'talk' });
         return;
+      case 'fire':
+        this.active();
+        this.fireWeapon(intent.grump);
+        return;
+      case 'petFriend':
+        this.active();
+        this.petFriend(intent.friend);
+        return;
       case 'pet': {
         this.active();
         const a = this.herd?.animals.find(o => o.id === intent.animal);
@@ -188,6 +216,80 @@ export class Game {
       }
       default:
     }
+  }
+
+  /** The eye the shot leaves from. */
+  private eye(): { x: number; y: number; z: number } {
+    const p = this.player.pos;
+    return { x: p.x, y: p.y + 1.6, z: p.z };
+  }
+
+  /**
+   * A quick tap with a friendly weapon on a grump. Decided at once and deterministically (the picture
+   * follows a moment later): needs a selected weapon, a grump within reach, no cooldown and no
+   * pause. The first hit makes it unsure, the second cheers it up (reward into the bag, every fifth
+   * becomes a friend). Nothing is ever used up and nothing else changes.
+   */
+  fireWeapon(grumpId: number): GameEvent[] {
+    const out: GameEvent[] = [];
+    const sys = this.grumps;
+    const sel = this.effectiveSelected();
+    if (!sys || this.paused || this.fireCooldown > 0 || sel === 'hand' || !isWeapon(sel)) return out;
+    const weapon = weaponKind(sel);
+    const g = sys.grumps.find(o => o.id === grumpId);
+    if (!g || !weapon) return out;
+    const eye = this.eye();
+    const to = { x: g.x, y: g.y + 0.5, z: g.z };
+    if (Math.hypot(to.x - eye.x, to.y - eye.y, to.z - eye.z) > WEAPON_REACH) return out;
+    this.fireCooldown = FIRE_COOLDOWN;
+    out.push({ type: 'fired', weapon, grump: g.id, from: eye, to });
+    const kind = g.kind, at = { x: g.x, y: g.y, z: g.z }, variant = g.variant, heading = g.heading;
+    const hit = sys.hit(g.id);
+    this.grumpRevision++;
+    if (hit.result === 'unsure') {
+      out.push({ type: 'unsure', grump: g.id, kind, at });
+    } else if (hit.result === 'cheered') {
+      this.cheered++;
+      const friend = becomesFriend(this.cheered, sys.friends.length);
+      const atCap = !friend && this.cheered % 5 === 0 && sys.friends.length >= 5;
+      const reward = rewardFor(this.grumpRng, this.inventory, { friend, atCap });
+      for (const r of reward) this.inventory.add(r.id, r.n);
+      if (friend) {
+        // The burst already removed the grump; a friend stands where it was.
+        const spot = hit.grump ?? g;
+        sys.grumps.push(spot);
+        sys.makeFriend(spot.id);
+      }
+      out.push({ type: 'cheered', grump: g.id, kind, friend, reward, at, variant, heading });
+      if (friend) out.push({ type: 'friendMade', friend: g.id });
+    }
+    for (const e of out) this.emit(e);
+    return out;
+  }
+
+  /** A pat for a friend: it hops. Costs nothing, changes nothing else. */
+  petFriend(id: number): void {
+    const f = this.grumps?.friends.find(o => o.id === id);
+    if (!f) return;
+    f.state = 'hop';
+    f.stateT = 1;
+    this.emit({ type: 'friendPetted', friend: id });
+  }
+
+  /** The pad's Place button with a weapon: the nearest grump in reach. False (and nothing happens) when none. */
+  fireNearest(): boolean {
+    const sys = this.grumps;
+    if (!sys) return false;
+    const eye = this.eye();
+    let best: number | null = null;
+    let bestD = WEAPON_REACH;
+    for (const g of sys.grumps) {
+      const d = Math.hypot(g.x - eye.x, g.y + 0.5 - eye.y, g.z - eye.z);
+      if (d <= bestD) { best = g.id; bestD = d; }
+    }
+    if (best === null) return false;
+    this.active();
+    return this.fireWeapon(best).length > 0;
   }
 
   /**
@@ -433,6 +535,11 @@ export class Game {
           const cell = this.frontCell(dy);
           if (this.world.get(...cell) === BlockId.Chest) { this.applyIntent({ kind: 'open', cell }); return; }
         }
+        // A friendly weapon selected: Place fires at the nearest grump in reach (never builds, never fires at nothing).
+        {
+          const held = this.effectiveSelected();
+          if (held !== 'hand' && isWeapon(held)) { this.fireNearest(); return; }
+        }
         // With a food selected: an animal right in front is fed; otherwise an edible is eaten. Blocks place as before.
         const sel = this.effectiveSelected();
         if (sel !== 'hand' && isItemId(sel)) {
@@ -497,6 +604,7 @@ export class Game {
     if (!this.paused) {
       this.player.update(this.world, dt);
       this.eating.update(dt);
+      this.fireCooldown = Math.max(0, this.fireCooldown - dt);
     }
     this.deep = isDeep(this.world, this.player.feetCell(), this.deep);
     this.normaliseSelection();

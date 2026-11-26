@@ -8,7 +8,11 @@ vi.mock('three', async (importOriginal) => {
   const three = await importOriginal<typeof import('three')>();
   class StubRenderer {
     domElement = document.createElement('canvas');
-    info = { render: { triangles: 0, calls: 0 } };
+    info = { render: { triangles: 0, calls: 0 }, autoReset: true, reset(): void {} };
+    autoClear = true;
+    setClearColor(): void {}
+    clear(): void {}
+    clearDepth(): void {}
     setPixelRatio(): void {}
     setSize(): void {}
     render(): void {}

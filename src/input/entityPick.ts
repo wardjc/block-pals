@@ -61,11 +61,14 @@ export function pickAnimalAlongRay(o: V3, d: V3, boxes: readonly AnimalBox[], bl
   return best;
 }
 
-/** Anyone a tap can land on: the animals and the wizard, in one list. */
-export type EntityType = 'animal' | 'wizard';
+/** Anyone a tap can land on: the animals, the wizard, grumps and friends, in one list. */
+export type EntityType = 'animal' | 'wizard' | 'grump' | 'friend';
 export interface ScreenEntity { type: EntityType; id: number; sx: number; sy: number; sz: number }
 /** Disc radius per kind (CSS px): the wizard is bigger than any animal. */
-export const PICK_RADIUS: Record<EntityType, number> = { animal: 56, wizard: 72 };
+export const PICK_RADIUS: Record<'animal' | 'wizard', number> = { animal: 56, wizard: 72 };
+/** Grumps and friends are small: their disc is a little bigger than an animal's. */
+export const BODY_RADIUS = 60;
+const radiusOf = (t: EntityType): number => (t === 'grump' || t === 'friend' ? BODY_RADIUS : PICK_RADIUS[t]);
 
 /**
  * Which entity is under a screen point: a disc round each one's projected middle, the radius by
@@ -77,7 +80,7 @@ export function pickEntity(screen: { x: number; y: number }, entities: readonly 
   let bestD = Infinity;
   for (const e of entities) {
     const d = Math.hypot(e.sx - screen.x, e.sy - screen.y);
-    if (d > PICK_RADIUS[e.type]) continue;
+    if (d > radiusOf(e.type)) continue;
     if (d < bestD || (d === bestD && best !== null && e.sz < best.sz)) { best = e; bestD = d; }
   }
   return best ? { type: best.type, id: best.id } : null;

@@ -1,6 +1,7 @@
 import { BLOCKS, BlockId } from '../core/blocks';
 import { canPlant } from '../core/crops';
-import { FEEDS, isItemId, ITEMS, type StackId } from '../core/items';
+import { WEAPON_REACH } from '../core/grumpRules';
+import { FEEDS, isItemId, isWeapon, ITEMS, type StackId } from '../core/items';
 import type { Cell } from '../core/pathfind';
 import { isStandable } from '../core/pathfind';
 import { canCollect, canPlace, withinPickReach, withinReach } from '../core/placement';
@@ -16,6 +17,10 @@ export type TapIntent =
   | { kind: 'help'; cell: Cell }
   | { kind: 'feed'; animal: number }
   | { kind: 'pet'; animal: number }
+  /** A friendly weapon selected and a grump within reach: the shot flies (no aiming, cannot miss). */
+  | { kind: 'fire'; grump: number }
+  /** A pat for a friend, with anything selected. Costs nothing. */
+  | { kind: 'petFriend'; friend: number }
   /** Opens the wizard's screen (spec §7g). Costs nothing, places nothing. */
   | { kind: 'talk' }
   /** A closed treasure chest in reach: it opens (whatever is selected). Never builds against it. */
@@ -45,7 +50,12 @@ export interface AnimalHit { id: number; dist: number; cell?: Cell }
 /** The wizard under the finger: how far he is from the player, and his feet cell. */
 export interface WizardHit { dist: number; cell: Cell }
 
+/** A grump or friend under the finger: its id, how far it is from the player, and its feet cell. */
+export interface BodyHit { id: number; dist: number; cell: Cell }
+
 export interface TapExtras {
+  grumpHit?: BodyHit | null;
+  friendHit?: BodyHit | null;
   animalHit?: AnimalHit | null;
   wizardHit?: WizardHit | null;
   /** Whether a cell is a plant or part of an apple tree. Defaults to "the block is a plant". */
@@ -74,6 +84,32 @@ export function besideWizard(world: World, wizard: Cell, playerFeet: Cell): Cell
   return best ?? [wx, wy, wz - 2];
 }
 
+/** Tapping a grump from farther than the weapon's reach walks him to a spot at least this far from it. */
+export const GRUMP_APPROACH = 6;
+
+/**
+ * The standable cell at least GRUMP_APPROACH from a grump (and within 8 of it, so a shot reaches),
+ * nearest to the player. Null when there is none.
+ */
+export function approachCell(world: World, grump: Cell, playerFeet: Cell): Cell | null {
+  let best: Cell | null = null;
+  let bestD = Infinity;
+  for (let dx = -WEAPON_REACH; dx <= WEAPON_REACH; dx++) {
+    for (let dz = -WEAPON_REACH; dz <= WEAPON_REACH; dz++) {
+      const d = Math.hypot(dx, dz);
+      if (d < GRUMP_APPROACH || d > WEAPON_REACH - 0.5) continue;
+      for (const dy of [0, 1, -1]) {
+        const c: Cell = [grump[0] + dx, grump[1] + dy, grump[2] + dz];
+        if (!isStandable(world, c)) continue;
+        const p = Math.hypot(c[0] - playerFeet[0], c[2] - playerFeet[2]);
+        if (p < bestD) { best = c; bestD = p; }
+        break;
+      }
+    }
+  }
+  return best;
+}
+
 /**
  * Quick tap. Order: (0) the wizard under the finger (in reach 4: talk, whatever is selected;
  * farther: walk to a cell beside him); (1) an animal under the finger (in reach: feed with any food selected, else
@@ -96,6 +132,16 @@ export function resolveTap(
   const wizard = extras.wizardHit;
   if (wizard) {
     return wizard.dist <= WIZARD_REACH ? { kind: 'talk' } : { kind: 'walk', to: besideWizard(world, wizard.cell, playerFeet) };
+  }
+  const friend = extras.friendHit;
+  if (friend) return { kind: 'petFriend', friend: friend.id };
+  const grump = extras.grumpHit;
+  if (grump) {
+    // Only a grump takes a weapon's shot; everything else just walks him over (never builds, feeds or plants).
+    if (selected !== 'hand' && isWeapon(selected) && grump.dist <= WEAPON_REACH) return { kind: 'fire', grump: grump.id };
+    const to = approachCell(world, grump.cell, playerFeet);
+    if (to) return { kind: 'walk', to };
+    return { kind: 'none' };
   }
   const animal = extras.animalHit;
   if (animal) {
