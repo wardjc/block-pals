@@ -128,6 +128,14 @@ Use `?debug` once for the frame-rate counter, then play without it.
 10. Controller: walk the path and enter a house with the stick.
 11. After 10 minutes the tablet is not hot and the frame rate is the same.
 
+## Grumps, friendly weapons and friends
+
+Now and then a small, slow, wobbly **grump** (a jelly blob or a sulky cloud, soft colours, big eyes) wobbles onto the farm and sits by the plants. The plants **pause** growing while it sulks (they never wilt or die). A grump never comes near him, never chases and cannot hurt anyone. It only appears in daylight on the farm, while he is near it and something is planted, never in the caves or tower, and never while a menu is open. At most one comes until he owns a weapon, then at most three.
+
+He can craft three **friendly weapons** (bubble blaster, magic wand, water squirter; each once). With one selected, a quick tap on a grump within eight blocks fires a soft bubble, sparkle or water squirt: no aiming and it cannot miss. The first hit cheers it up a bit and the plants grow again; the second bursts it into confetti and leaves a small gift in his bag (seeds, a gem or a sapling; the gems trade with the wizard as before). A quick tap anywhere else still just walks, a hold still digs, and a block still builds. On the controller, Place fires at the nearest grump.
+
+Every fifth cheered-up grump becomes a lasting **friend** that stays on the farm (at most five), can be patted, and helps a growing plant now and then. Nothing is ever hurt or lost. The weapons are never used up. Saved games keep the grumps, friends and counters (new optional fields on the same save).
+
 ## The wizard's tower
 
 Far to the south, on a hill, stands a tall stone tower with a soft glowing star above its roof. A stone path leads there from the village square. **How to find it:** tilt the view up from the meadow to see the star, or follow the little ⭐ that sits on the edge of the screen and points towards it (it goes away for good once he has been inside). Once he has his first gem, Pip offers to walk him there, once per saved game. He can always walk there himself.

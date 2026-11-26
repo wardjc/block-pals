@@ -1,6 +1,6 @@
 # Grumps and Friendly Weapons Implementation Plan
 
-**Status: plan for the parent to review (2026-11-08). Built AFTER Village step 2 (merged), the bigger, deeper world with caves and the villagers-wander step, and BEFORE the Wizard's tower (§7g) and Village step 3 (shops and coins), unless the parent says otherwise. Build in chunks, each reviewed (Claude builds, Codex reviews; Claude is the fallback builder and reviewer if Codex is out of allowance). Docs only: this PR contains no product code.**
+**Status (2026-11-26): BUILT in four stacked draft PRs (chunks A to D, see `2026-11-08-grumps-chunk-a-reconciliation.md` for the rulings made against the current main), awaiting review and the tablet playtest. Originally a plan for the parent to review (2026-11-08).**
 
 > **For agentic workers:** REQUIRED SUB-SKILL: Use superpowers:subagent-driven-development (recommended) or superpowers:executing-plans to implement this plan task-by-task. Steps use checkbox (`- [ ]`) syntax for tracking.
 
