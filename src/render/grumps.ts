@@ -66,8 +66,8 @@ export function grumpParts(look: GrumpLook): Array<{ role: PartRole; part: Part 
     for (const s of [-1, 1]) parts.push(box('lid', s * eyeX, eyeY + eyeH / 2 - lidH / 2 + 0.005, faceZ + 0.03, eyeW + 0.02, lidH, 0.02, body));
   }
   if (friend) {
-    parts.push(box('mouth', 0, mouthY, faceZ, 0.2, 0.04, 0.03, ink));
-    for (const s of [-1, 1]) parts.push(box('smile', s * 0.12, mouthY + 0.035, faceZ, 0.04, 0.05, 0.03, ink));
+    parts.push(box('mouth', 0, mouthY, faceZ, 0.18, 0.04, 0.03, ink));
+    for (const s of [-1, 1]) parts.push(box('smile', s * 0.115, mouthY + 0.03, faceZ, 0.05, 0.06, 0.03, ink));
   } else {
     parts.push(box('mouth', 0, mouthY, faceZ, sulky ? 0.14 : 0.2, 0.04, 0.03, ink));
   }
