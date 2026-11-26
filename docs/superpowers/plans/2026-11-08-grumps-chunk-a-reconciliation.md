@@ -41,3 +41,14 @@ Generation-timing tests (`worldInvariants`, `caves`, `caveLights`, `pathScale`) 
 - **Sizes:** at most 12 boxes per model (120 triangles), nothing over 1.1 blocks, clouds hover 0.6 above the ground.
 - **Effects:** `Sparkles` capacity is now 96. The projectile is one mesh whose shape and colour change per weapon; the trailing bubbles are left to the sparkle pool.
 - **Screenshots** for judging "is it scary?" are in `docs/screenshots/grumps-*.png`.
+
+## Chunk D rulings (tasks 8, 15 to 18: weapons, wiring, budgets, e2e, README)
+
+- **Tap precedence:** a grump or friend under the finger is picked with the animals and the wizard (one ray, nearest wins, nothing behind a block). Only a grump takes a weapon's shot; a hand, block, food or seed tapped on a grump walks him to a cell at least 6 blocks away. A friend is patted with any selection. Everywhere else the rules are unchanged (`gesture.ts` is untouched), and holding on any of them digs nothing.
+- **Game:** `fireWeapon` is decided at once (reach 8 from the eye, 0.5 s cooldown that only runs while the game is not paused); the picture follows 0.3 s later through `Delayed`, so a menu opening mid-flight loses nothing. The cheered grump and a new friend stay drawn as they were until the shot arrives.
+- **Play loop** (`src/game/grumpPlay.ts`): time stands still (dt 0) while any overlay, the break bubble, the Home lift or a pause is up. Spawning also needs him on the surface (never deep underground), within 16 blocks of the zone, and a planted crop in the zone.
+- **Speech:** the five hints go through the existing pending-line pipeline (`mayPipSpeakQueued`), and the four reactions go through `react()` behind `voice.speaking()`, the break bubble and the wizard's screen, so nothing talks over Orlo, a neighbour or Pip.
+- **Gems** flow into the existing shared Gem stack, so the wizard's gem trade works unchanged.
+- **Sad marks** are redrawn four times a second and when a hit lands; the plant pause is applied by `pauseFor` in the 1 s growth tick.
+- **Budgets:** 3 grumps and 5 friends are 8 draw calls and at most 1,040 triangles; the new effects add 3 more draw calls (11 of the plan's 12). Timing limits in `grumpBudget.test.ts` are three times the plan's numbers, for slow CI.
+- **e2e:** headless software rendering reports about 17 to 21 fps with 3 grumps, 5 friends and a burst in view; that is the CI renderer, not the tablet (the tablet number stays on the playtest checklist).
