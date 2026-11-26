@@ -755,9 +755,11 @@ export function startAutosave(
   animals?: () => SavedAnimalTuple[],
   /** Read live like `flags`: a gift, a visit or a solve marks the save dirty. */
   wizard?: WizardState,
+  /** The grumps, friends and spawner numbers ride along on every save; a hit or cheer-up (game.grumpRevision) marks it dirty. */
+  grumps?: () => SavedGrumps,
 ): () => void {
   // `flags` is read live, so flipping ledToVillage later also triggers a save.
-  const snapshot = (): string => JSON.stringify([game.inventory.toJSON(), game.inventory.order(), game.inventory.itemsToJSON(), game.inventory.itemOrder(), flags, game.farm.revision, game.herdRevision, wizard ?? null]);
+  const snapshot = (): string => JSON.stringify([game.inventory.toJSON(), game.inventory.order(), game.inventory.itemsToJSON(), game.inventory.itemOrder(), flags, game.farm.revision, game.herdRevision, game.grumpRevision, wizard ?? null]);
   let savedInventory = snapshot();
   let savedPos = { ...game.player.pos };
   // Stays true until a write succeeds: a failed or refused write is retried, never forgotten.
@@ -770,7 +772,7 @@ export function startAutosave(
     const inventory = snapshot();
     if (!force && !pending && !game.world.isDirty() && inventory === savedInventory && !moved()) return;
     pending = true;
-    if (storeSave(storage, serialise(game, seed, flags, Date.now(), animals?.(), wizard))) {
+    if (storeSave(storage, serialise(game, seed, flags, Date.now(), animals?.(), wizard, grumps?.()))) {
       pending = false;
       game.world.markClean();
       savedInventory = inventory;

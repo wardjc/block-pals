@@ -53,7 +53,7 @@ export type GameEvent =
   /** The first hit: the grump is less sulky and the plants around it grow again. */
   | { type: 'unsure'; grump: number; kind: GrumpKind; at: { x: number; y: number; z: number } }
   /** The second hit: it bursts into confetti (or becomes a friend) and the reward is already in the bag. */
-  | { type: 'cheered'; grump: number; kind: GrumpKind; friend: boolean; reward: readonly GrumpReward[]; at: { x: number; y: number; z: number } }
+  | { type: 'cheered'; grump: number; kind: GrumpKind; friend: boolean; reward: readonly GrumpReward[]; at: { x: number; y: number; z: number }; variant: number; heading: number }
   /** A cheered-up grump stays as a friend. */
   | { type: 'friendMade'; friend: number }
   | { type: 'friendPetted'; friend: number }
@@ -243,7 +243,7 @@ export class Game {
     if (Math.hypot(to.x - eye.x, to.y - eye.y, to.z - eye.z) > WEAPON_REACH) return out;
     this.fireCooldown = FIRE_COOLDOWN;
     out.push({ type: 'fired', weapon, grump: g.id, from: eye, to });
-    const kind = g.kind, at = { x: g.x, y: g.y, z: g.z };
+    const kind = g.kind, at = { x: g.x, y: g.y, z: g.z }, variant = g.variant, heading = g.heading;
     const hit = sys.hit(g.id);
     this.grumpRevision++;
     if (hit.result === 'unsure') {
@@ -260,7 +260,7 @@ export class Game {
         sys.grumps.push(spot);
         sys.makeFriend(spot.id);
       }
-      out.push({ type: 'cheered', grump: g.id, kind, friend, reward, at });
+      out.push({ type: 'cheered', grump: g.id, kind, friend, reward, at, variant, heading });
       if (friend) out.push({ type: 'friendMade', friend: g.id });
     }
     for (const e of out) this.emit(e);

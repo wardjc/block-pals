@@ -183,7 +183,11 @@ export class GrumpView {
   }
 
   /** `showMood(id)` says how to draw each one (a grump's mood, or 'friend'); `visible` is the range check. */
-  sync(sys: GrumpSystem, visible: (x: number, z: number) => boolean, timeSeconds: number, showMood: (id: number) => GrumpMood | 'friend'): void {
+  sync(
+    sys: GrumpSystem, visible: (x: number, z: number) => boolean, timeSeconds: number, showMood: (id: number) => GrumpMood | 'friend',
+    /** Grumps that have just left the system but are still shown (the shot is flying), and friends not shown yet. */
+    extra: readonly Grump[] = [], hide: (type: 'grump' | 'friend', id: number) => boolean = () => false,
+  ): void {
     const alive = new Set<string>();
     const draw = (e: Grump | Friend, type: Seen['type'], spawnT: number): void => {
       const key = `${type}:${e.id}`;
@@ -211,12 +215,24 @@ export class GrumpView {
       entry.group.scale.set(w.sx * grow, w.sy * grow, w.sz * grow);
     };
     for (const g of sys.grumps) draw(g, 'grump', g.spawnT);
-    for (const f of sys.friends) draw(f, 'friend', 1);
+    for (const g of extra) draw(g, 'grump', 1);
+    for (const f of sys.friends) if (!hide('friend', f.id)) draw(f, 'friend', 1);
     for (const [key, entry] of this.groups) {
       if (alive.has(key)) continue;
       this.scene.remove(entry.group);
       this.groups.delete(key);
     }
+  }
+
+  /** World-space boxes of the shown bodies, for picking by ray (padded by the picker). */
+  boxes(): Array<{ type: 'grump' | 'friend'; id: number; min: [number, number, number]; max: [number, number, number] }> {
+    const out: Array<{ type: 'grump' | 'friend'; id: number; min: [number, number, number]; max: [number, number, number] }> = [];
+    for (const e of this.groups.values()) {
+      if (!e.group.visible) continue;
+      const { x, y, z } = e.group.position;
+      out.push({ type: e.type, id: e.id, min: [x - 0.55, y, z - 0.55], max: [x + 0.55, y + 1.0, z + 0.55] });
+    }
+    return out;
   }
 
   /** Where each shown body is on screen (CSS px inside `rect`) and how deep, for tap picking. */
