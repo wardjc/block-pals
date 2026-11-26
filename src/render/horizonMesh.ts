@@ -117,7 +117,7 @@ export class Horizon {
 
   /** The whole world has been sampled and uploaded once: only then is the horizon drawn. */
   get ready(): boolean {
-    return this.settled && this.uploads > 0;
+    return this.settled;
   }
 
   /** A changed block: its cell is sampled again later. */
@@ -153,12 +153,6 @@ export class Horizon {
     }
     if (!this.settled && this.field.ready && this.field.pending === 0 && this.refill.size === 0) this.settled = true;
     this.sinceUpload += dt;
-    if (this.uploadDue && ((this.uploads === 0 && this.settled) || (this.uploads > 0 && this.sinceUpload >= HORIZON_UPLOAD_S))) {
-      this.uploadRanges();
-      this.uploadDue = false;
-      this.sinceUpload = 0;
-      this.uploads++;
-    }
     const ms = performance.now() - t0;
     this.busyMs += ms;
     if (ms > this.maxSliceMs) this.maxSliceMs = ms;
@@ -190,6 +184,14 @@ export class Horizon {
    * (landHaze); the horizon fades in over HORIZON_FADE_S.
    */
   prepare(main: THREE.PerspectiveCamera, fogColour: THREE.Color, near: number, far: number, haze: number, start: number, dt: number): void {
+    // Uploads happen only here, right before a draw: changed ranges pile up in toUpload while the horizon is
+    // hidden (Three.js consumes the update ranges only when it renders), and go to the GPU together.
+    if (this.uploadDue && (this.uploads === 0 || this.sinceUpload >= HORIZON_UPLOAD_S)) {
+      this.uploadRanges();
+      this.uploadDue = false;
+      this.sinceUpload = 0;
+      this.uploads++;
+    }
     const u = this.material.uniforms;
     (u.uFogColour.value as THREE.Color).copy(fogColour);
     u.uNear.value = near;
