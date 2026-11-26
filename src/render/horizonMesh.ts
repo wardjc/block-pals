@@ -1,6 +1,8 @@
 import * as THREE from 'three';
 import type { World } from '../core/world';
-import { HorizonField, VERTS_PER_CELL, fillCell, fillIndices } from './horizon';
+import {
+  HORIZON_FADE_S, HORIZON_HAZE_END, HORIZON_MAX_HAZE, INDICES_PER_CELL, HorizonField, VERTS_PER_CELL, fillCell, fillIndices, visibleIndices,
+} from './horizon';
 
 /** Cells sampled a frame at most, and the most time a frame may spend on it (it builds in idle slivers). */
 export const HORIZON_CELLS_PER_FRAME = 24;
@@ -11,40 +13,33 @@ export const HORIZON_UPLOAD_S = 1.5;
 /** The horizon camera reaches past the farthest corner of the world. */
 const HORIZON_CAM_NEAR = 10;
 const HORIZON_CAM_FAR = 520;
-/** The haze never quite hides the far land; it reaches this at HORIZON_HAZE_END blocks. */
-export const HORIZON_MAX_HAZE = 0.86;
-export const HORIZON_HAZE_END = 300;
-/** Outdoors the detailed land is hazed this much at its fog end (the rest shows through), so far hills are not lost to the fog. */
-export const OUTDOOR_HAZE = 0.7;
-
 const VERT = /* glsl */ `
   attribute vec3 color;
   varying vec3 vColour;
-  varying vec2 vWorldXZ;
+  varying float vDepth;
   void main() {
     vColour = color;
-    vec4 w = modelMatrix * vec4(position, 1.0);
-    vWorldXZ = w.xz;
-    gl_Position = projectionMatrix * viewMatrix * w;
+    vec4 mv = modelViewMatrix * vec4(position, 1.0);
+    vDepth = -mv.z; // planar view depth: the same number the land's fog (vFogDepth) uses
+    gl_Position = projectionMatrix * mv;
   }
 `;
 
+/** horizonHaze() in horizon.ts, with its constants taken from the same place. */
 const FRAG = /* glsl */ `
   uniform vec3 uFogColour;
-  uniform vec2 uEye;
   uniform float uNear;
   uniform float uFar;
   uniform float uHaze;
-  uniform float uMaxK;
-  uniform float uEnd;
-  uniform float uStart;
+  uniform float uFade;
   varying vec3 vColour;
-  varying vec2 vWorldXZ;
+  varying float vDepth;
+  const float MAX_K = ${HORIZON_MAX_HAZE.toFixed(4)};
+  const float END = ${HORIZON_HAZE_END.toFixed(1)};
   void main() {
-    float d = length(vWorldXZ - uEye);
-    if (d < uStart) discard;
-    float base = uHaze * smoothstep(uNear, uFar, d);
-    float k = base + (max(base, uMaxK) - base) * smoothstep(uFar, uEnd, d);
+    float base = uHaze * smoothstep(uNear, uFar, vDepth);
+    float k = base + (max(base, MAX_K) - base) * smoothstep(uFar, END, vDepth);
+    k = 1.0 + (k - 1.0) * uFade;
     gl_FragColor = vec4(mix(vColour, uFogColour, k), 1.0);
     #include <colorspace_fragment>
   }
@@ -60,8 +55,10 @@ export class Horizon {
   readonly scene = new THREE.Scene();
   readonly camera = new THREE.PerspectiveCamera(60, 1, HORIZON_CAM_NEAR, HORIZON_CAM_FAR);
   readonly field: HorizonField;
-  /** Haze scale for the detailed land too (OUTDOOR_HAZE outdoors, 1 in caves): GameScene patches it into the land's fog. */
-  readonly hazeUniform = { value: OUTDOOR_HAZE };
+  /** Haze scale for the detailed land too (see landHaze): GameScene patches it into the land's fog. */
+  readonly hazeUniform = { value: 1 };
+  /** 0 to 1 over HORIZON_FADE_S once the horizon is ready and drawn. */
+  fade = 0;
   private readonly positions: Float32Array;
   private readonly colours: Float32Array;
   private readonly geometry = new THREE.BufferGeometry();
@@ -69,7 +66,12 @@ export class Horizon {
   private readonly mesh: THREE.Mesh;
   private readonly posAttr: THREE.BufferAttribute;
   private readonly colAttr: THREE.BufferAttribute;
+  private readonly baseIndices: Uint16Array | Uint32Array;
+  private readonly indexAttr: THREE.BufferAttribute;
   private readonly refill = new Set<number>();
+  /** Cells whose vertices changed since the last upload (only these ranges go to the GPU). */
+  private readonly toUpload = new Set<number>();
+  private cut = { x: NaN, z: NaN, start: NaN };
   private sinceUpload = 0;
   private uploadDue = false;
   /** The first full build is done and uploaded; latched, so a later edit never hides the horizon. */
@@ -83,26 +85,28 @@ export class Horizon {
     const cells = this.field.cells;
     this.positions = new Float32Array(cells * VERTS_PER_CELL * 3);
     this.colours = new Float32Array(cells * VERTS_PER_CELL * 3);
-    const indices = cells * VERTS_PER_CELL > 65535 ? new Uint32Array(cells * 30) : new Uint16Array(cells * 30);
-    fillIndices(cells, indices);
+    const wide = cells * VERTS_PER_CELL > 65535;
+    this.baseIndices = wide ? new Uint32Array(cells * INDICES_PER_CELL) : new Uint16Array(cells * INDICES_PER_CELL);
+    fillIndices(cells, this.baseIndices);
+    // The drawn indices are the base ones minus the cells wholly under the land (a geometry cut-out, no discard).
+    const indices = wide ? new Uint32Array(cells * INDICES_PER_CELL) : new Uint16Array(cells * INDICES_PER_CELL);
+    indices.set(this.baseIndices);
     this.posAttr = new THREE.BufferAttribute(this.positions, 3).setUsage(THREE.DynamicDrawUsage);
     this.colAttr = new THREE.BufferAttribute(this.colours, 3).setUsage(THREE.DynamicDrawUsage);
     this.geometry.setAttribute('position', this.posAttr);
     this.geometry.setAttribute('color', this.colAttr);
-    this.geometry.setIndex(new THREE.BufferAttribute(indices, 1));
+    this.indexAttr = new THREE.BufferAttribute(indices, 1).setUsage(THREE.DynamicDrawUsage);
+    this.geometry.setIndex(this.indexAttr);
     this.material = new THREE.ShaderMaterial({
       vertexShader: VERT,
       fragmentShader: FRAG,
       side: THREE.DoubleSide,
       uniforms: {
         uFogColour: { value: new THREE.Color(0x78c6ff) },
-        uEye: { value: new THREE.Vector2() },
         uNear: { value: 20 },
         uFar: { value: 40 },
         uHaze: this.hazeUniform,
-        uMaxK: { value: HORIZON_MAX_HAZE },
-        uEnd: { value: HORIZON_HAZE_END },
-        uStart: { value: 36 },
+        uFade: { value: 0 },
       },
     });
     this.mesh = new THREE.Mesh(this.geometry, this.material);
@@ -142,6 +146,7 @@ export class Horizon {
       for (const i of this.refill) {
         this.refill.delete(i);
         fillCell(this.field, i, this.positions, this.colours);
+        this.toUpload.add(i);
         if (++n >= HORIZON_FILLS_PER_FRAME || performance.now() - t0 > HORIZON_MS_PER_FRAME) break;
       }
       this.uploadDue = true;
@@ -149,8 +154,7 @@ export class Horizon {
     if (!this.settled && this.field.ready && this.field.pending === 0 && this.refill.size === 0) this.settled = true;
     this.sinceUpload += dt;
     if (this.uploadDue && ((this.uploads === 0 && this.settled) || (this.uploads > 0 && this.sinceUpload >= HORIZON_UPLOAD_S))) {
-      this.posAttr.needsUpdate = true;
-      this.colAttr.needsUpdate = true;
+      this.uploadRanges();
       this.uploadDue = false;
       this.sinceUpload = 0;
       this.uploads++;
@@ -160,18 +164,50 @@ export class Horizon {
     if (ms > this.maxSliceMs) this.maxSliceMs = ms;
   }
 
+  /** Sends only the changed cells' vertex ranges to the GPU (everything the first time). */
+  private uploadRanges(): void {
+    for (const a of [this.posAttr, this.colAttr]) {
+      a.clearUpdateRanges();
+      if (this.uploads > 0) {
+        const cells = [...this.toUpload].sort((x, y) => x - y);
+        const per = VERTS_PER_CELL * 3;
+        let from = -1, to = -1;
+        for (const c of cells) {
+          if (from >= 0 && c - to <= 8) { to = c; continue; } // close cells share one range
+          if (from >= 0) a.addUpdateRange(from * per, (to - from + 1) * per);
+          from = to = c;
+        }
+        if (from >= 0) a.addUpdateRange(from * per, (to - from + 1) * per);
+      }
+      a.needsUpdate = true;
+    }
+    this.toUpload.clear();
+  }
+
   /**
    * Sets the look for this frame and lines the horizon camera up with the main one. `start` is where
-   * the detailed land's reach ends (nothing nearer is drawn); `haze` is 0.75 outdoors .. 1 deep.
+   * the detailed land's reach ends (cells wholly nearer are left out); `haze` is the land's haze scale
+   * (landHaze); the horizon fades in over HORIZON_FADE_S.
    */
-  prepare(main: THREE.PerspectiveCamera, fogColour: THREE.Color, near: number, far: number, haze: number, start: number): void {
+  prepare(main: THREE.PerspectiveCamera, fogColour: THREE.Color, near: number, far: number, haze: number, start: number, dt: number): void {
     const u = this.material.uniforms;
     (u.uFogColour.value as THREE.Color).copy(fogColour);
-    (u.uEye.value as THREE.Vector2).set(main.position.x, main.position.z);
     u.uNear.value = near;
     u.uFar.value = far;
-    this.hazeUniform.value = haze;
-    u.uStart.value = start;
+    u.uHaze.value = haze;
+    this.fade = Math.min(1, this.fade + Math.max(0, dt) / HORIZON_FADE_S);
+    u.uFade.value = this.fade;
+    // The cut-out moves in whole cells (quantised), so a walking camera re-uploads the index list only now and then.
+    const q = this.field.cell;
+    const cx = Math.round(main.position.x / q) * q, cz = Math.round(main.position.z / q) * q, st = Math.round(start / q) * q;
+    if (cx !== this.cut.x || cz !== this.cut.z || st !== this.cut.start) {
+      this.cut = { x: cx, z: cz, start: st };
+      const n = visibleIndices(this.field, this.baseIndices, this.indexAttr.array as Uint16Array, cx, cz, st);
+      this.geometry.setDrawRange(0, n);
+      this.indexAttr.clearUpdateRanges();
+      this.indexAttr.addUpdateRange(0, n);
+      this.indexAttr.needsUpdate = true;
+    }
     const c = this.camera;
     c.position.copy(main.position);
     c.quaternion.copy(main.quaternion);
@@ -181,6 +217,18 @@ export class Horizon {
       c.updateProjectionMatrix();
     }
     c.updateMatrixWorld();
+  }
+
+  /** The horizon is not drawn this frame (hidden, off or in a cave): it fades in afresh next time. */
+  rest(): void {
+    this.fade = 0;
+  }
+
+  /** Frees the GPU buffers and the shader. */
+  dispose(): void {
+    this.scene.remove(this.mesh);
+    this.geometry.dispose();
+    this.material.dispose();
   }
 
   set visible(v: boolean) {

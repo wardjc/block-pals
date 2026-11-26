@@ -7,7 +7,8 @@ import { DirtySections, sectionKey } from './chunkDirty';
 import { cameraZone, CULL_MARGIN, FOG_FAR, radialFactor, SectionQueue, visibleSections, type CameraZone } from './chunkCull';
 import { CAMERA_FAR, NEAR_MAX, cameraFar, cameraNear, easeNear, nearMaxFor, setCurrentCameraFar } from './depthPolicy';
 import { viewFog } from './viewDistance';
-import { Horizon, OUTDOOR_HAZE } from './horizonMesh';
+import { Horizon } from './horizonMesh';
+import { landHaze } from './horizon';
 import { caveLook, luminance, OUTDOOR_LOOK, type CaveLook } from './caveLook';
 
 /** The cave look takes about this long to ease in or out as the camera's zone changes. */
@@ -174,7 +175,7 @@ export class GameScene {
       transparent: true,
       alphaTest: 0.05,
     });
-    // Outdoors the detailed land is hazed only up to OUTDOOR_HAZE at its fog end, so the horizon beyond it
+    // Outdoors the detailed land is hazed only up to OUTDOOR_HAZE (0.7) at its fog end, once the horizon has faded in, so the horizon beyond it
     // shows through; in caves the scale goes to 1 (the old full fog). The scale is the horizon's shared uniform.
     for (const m of [this.solidMat, this.transMat]) {
       m.onBeforeCompile = shader => {
@@ -719,29 +720,35 @@ export class GameScene {
     const r = this.renderer;
     r.info.reset(); // the per-frame counters: the two passes below add up
     const now = performance.now() / 1000;
-    this.horizon.update(Math.min(0.25, Math.max(0, now - this.horizonClock)));
+    const dt = Math.min(0.25, Math.max(0, now - this.horizonClock));
+    this.horizon.update(dt);
     this.horizonClock = now;
     this.horizonOn = this.horizonEnabled && this.followed && this.horizon.ready && this.caveDepth < 0.999;
     if (!this.horizonOn) {
+      this.horizon.rest();
       this.horizon.hazeUniform.value = 1;
       r.autoClear = true;
       r.render(this.scene, this.camera);
       return;
     }
     const f = this.scene.fog as THREE.Fog;
-    const haze = OUTDOOR_HAZE + (1 - OUTDOOR_HAZE) * this.caveDepth;
     this.horizon.visible = true;
-    this.horizon.prepare(this.camera, f.color, f.near, f.far, haze, Math.max(0, this.fogEnd - 4));
+    // The land's haze eases with the horizon's fade-in (1 s) and with the cave look (see landHaze).
+    this.horizon.prepare(this.camera, f.color, f.near, f.far, landHaze(this.horizon.fade, this.caveDepth), Math.max(0, this.fogEnd), dt);
+    this.horizon.hazeUniform.value = landHaze(this.horizon.fade, this.caveDepth);
     const bg = this.scene.background;
-    this.scene.background = null;
-    r.autoClear = false;
-    r.setClearColor(f.color, 1);
-    r.clear(true, true, false);
-    r.render(this.horizon.scene, this.horizon.camera);
-    r.clearDepth();
-    r.render(this.scene, this.camera);
-    this.scene.background = bg;
-    r.autoClear = true;
+    try {
+      this.scene.background = null;
+      r.autoClear = false;
+      r.setClearColor(f.color, 1);
+      r.clear(true, true, false);
+      r.render(this.horizon.scene, this.horizon.camera);
+      r.clearDepth();
+      r.render(this.scene, this.camera);
+    } finally {
+      this.scene.background = bg;
+      r.autoClear = true;
+    }
   }
 
   private horizonClock = performance.now() / 1000;

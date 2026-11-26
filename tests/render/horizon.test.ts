@@ -2,7 +2,8 @@ import { describe, expect, it } from 'vitest';
 import { BlockId } from '../../src/core/blocks';
 import { World } from '../../src/core/world';
 import {
-  HORIZON_CELL, HORIZON_DROP, HorizonField, VERTS_PER_CELL, columnTop, fillCell, fillIndices, horizonColour, horizonHaze,
+  HORIZON_CELL, HORIZON_DROP, HORIZON_HAZE_END, HORIZON_MAX_HAZE, INDICES_PER_CELL, OUTDOOR_HAZE, HorizonField, VERTS_PER_CELL, columnTop,
+  fillCell, fillIndices, horizonColour, horizonHaze, landHaze, visibleIndices,
 } from '../../src/render/horizon';
 
 /** A flat 16 x 12 x 16 world: grass on top of y = 4. */
@@ -108,21 +109,55 @@ describe('horizon geometry', () => {
   });
 });
 
-describe('horizon haze', () => {
-  it('is clear near, matches the detailed haze at the seam, grows with distance and stays under maxK', () => {
-    expect(horizonHaze(10, 48, 96, 0.75, 0.92, 280)).toBe(0);
-    expect(horizonHaze(96, 48, 96, 0.75, 0.92, 280)).toBeCloseTo(0.75, 6);
+describe('horizon haze (the shipped constants, the same formula the shader runs)', () => {
+  it('is clear near, matches the land at its fog end, grows with view depth and stays under HORIZON_MAX_HAZE', () => {
+    expect(horizonHaze(10, 48, 96, OUTDOOR_HAZE)).toBe(0);
+    expect(horizonHaze(96, 48, 96, OUTDOOR_HAZE)).toBeCloseTo(OUTDOOR_HAZE, 6); // the land's fog at its end
     let prev = 0;
-    for (let d = 0; d <= 300; d += 5) {
-      const k = horizonHaze(d, 48, 96, 0.75, 0.92, 280);
+    for (let d = 0; d <= 320; d += 5) {
+      const k = horizonHaze(d, 48, 96, OUTDOOR_HAZE);
       expect(k).toBeGreaterThanOrEqual(prev - 1e-9);
-      expect(k).toBeLessThanOrEqual(0.92 + 1e-9);
+      expect(k).toBeLessThanOrEqual(HORIZON_MAX_HAZE + 1e-9);
       prev = k;
     }
-    expect(horizonHaze(280, 48, 96, 0.75, 0.92, 280)).toBeCloseTo(0.92, 6);
+    expect(horizonHaze(HORIZON_HAZE_END, 48, 96, OUTDOOR_HAZE)).toBeCloseTo(HORIZON_MAX_HAZE, 6);
+  });
+
+  it('fade 0 is pure haze (invisible), fade 1 is the full look, and it is monotone between', () => {
+    expect(horizonHaze(150, 48, 96, OUTDOOR_HAZE, 0)).toBe(1);
+    let prev = 1;
+    for (let f = 0; f <= 1.0001; f += 0.1) {
+      const k = horizonHaze(150, 48, 96, OUTDOOR_HAZE, f);
+      expect(k).toBeLessThanOrEqual(prev + 1e-9);
+      prev = k;
+    }
+    expect(prev).toBeCloseTo(horizonHaze(150, 48, 96, OUTDOOR_HAZE), 6);
+  });
+
+  it('the land haze eases from the old full fog to OUTDOOR_HAZE with the fade, and is full in caves', () => {
+    expect(landHaze(0, 0)).toBe(1);
+    expect(landHaze(1, 0)).toBeCloseTo(OUTDOOR_HAZE, 9);
+    expect(landHaze(1, 1)).toBe(1);
+    expect(landHaze(0.5, 0)).toBeGreaterThan(OUTDOOR_HAZE);
+    expect(landHaze(0.5, 0)).toBeLessThan(1);
+    expect(landHaze(1, 0.5)).toBeGreaterThan(OUTDOOR_HAZE);
   });
 
   it('underground (haze 1) is pure haze', () => {
-    expect(horizonHaze(120, 14, 36, 1, 0.92, 280)).toBe(1);
+    expect(horizonHaze(120, 14, 36, 1)).toBe(1);
+  });
+});
+
+describe('horizon cut-out', () => {
+  it('leaves out cells wholly inside the start radius and keeps the rest, in order', () => {
+    const f = new HorizonField(flat());
+    const base = new Uint16Array(f.cells * INDICES_PER_CELL);
+    fillIndices(f.cells, base);
+    const out = new Uint16Array(base.length);
+    expect(visibleIndices(f, base, out, 8, 8, 0)).toBe(base.length);
+    const n = visibleIndices(f, base, out, 0, 0, 6);
+    expect(n).toBe(base.length - INDICES_PER_CELL);
+    expect(out[0]).toBe(base[INDICES_PER_CELL]);
+    expect(visibleIndices(f, base, out, 0, 0, 1000)).toBe(0);
   });
 });

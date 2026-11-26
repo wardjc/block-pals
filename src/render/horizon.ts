@@ -214,16 +214,57 @@ export function fillIndices(cells: number, indices: Uint16Array | Uint32Array): 
   }
 }
 
+/** Outdoors the detailed land is hazed only this much at its fog end, so the horizon beyond it shows through. */
+export const OUTDOOR_HAZE = 0.7;
+/** The horizon's haze grows on from the land's toward this by HORIZON_HAZE_END blocks of view depth. */
+export const HORIZON_MAX_HAZE = 0.86;
+export const HORIZON_HAZE_END = 300;
+/** The horizon fades in over this long once it is first ready (the land's haze eases with it). */
+export const HORIZON_FADE_S = 1;
+
+const smooth = (a: number, b: number, x: number): number => {
+  const t = Math.max(0, Math.min(1, (x - a) / Math.max(1e-6, b - a)));
+  return t * t * (3 - 2 * t);
+};
+
 /**
- * The fog the horizon wears at distance d from the camera: the detailed land's own haze (smoothstep
- * between fogNear and fogFar, scaled by `haze`), growing on toward maxK by `end`. It matches the
- * detailed ring's edge at the seam and fades into the sky beyond it. 0 is clear, 1 is pure haze.
+ * The scale of the land's own fog (1 is the old full fog): OUTDOOR_HAZE once the horizon has faded in,
+ * 1 before it and in caves. The land's shader and the horizon's both read this one number.
  */
-export function horizonHaze(d: number, fogNear: number, fogFar: number, haze: number, maxK: number, end: number): number {
-  const smooth = (a: number, b: number, x: number): number => {
-    const t = Math.max(0, Math.min(1, (x - a) / Math.max(1e-6, b - a)));
-    return t * t * (3 - 2 * t);
-  };
+export function landHaze(fade: number, caveDepth: number): number {
+  const f = Math.max(0, Math.min(1, fade)), c = Math.max(0, Math.min(1, caveDepth));
+  const outdoor = 1 - (1 - OUTDOOR_HAZE) * f;
+  return outdoor + (1 - outdoor) * c;
+}
+
+/**
+ * The reference for the horizon's fog at VIEW DEPTH d (the same planar depth the land's fog uses, so the
+ * two match across the whole screen): the land's haze (smoothstep between fogNear and fogFar, scaled by
+ * `haze`), growing on toward HORIZON_MAX_HAZE by HORIZON_HAZE_END; `fade` 0 is pure haze (invisible).
+ * The shader in horizonMesh.ts is this same formula, built from the same constants.
+ */
+export function horizonHaze(d: number, fogNear: number, fogFar: number, haze: number, fade = 1): number {
   const base = haze * smooth(fogNear, fogFar, d);
-  return base + (Math.max(base, maxK) - base) * smooth(fogFar, end, d);
+  const k = base + (Math.max(base, HORIZON_MAX_HAZE) - base) * smooth(fogFar, HORIZON_HAZE_END, d);
+  return 1 + (k - 1) * Math.max(0, Math.min(1, fade));
+}
+
+/**
+ * The geometry cut-out: copies into `out` the indices of every cell that is not wholly inside `start`
+ * blocks of the eye (horizontally), and returns how many were written. The land covers that disc, so
+ * the horizon never draws (or shades) it; no discard in the shader.
+ */
+export function visibleIndices(field: HorizonField, base: ArrayLike<number>, out: Uint16Array | Uint32Array, eyeX: number, eyeZ: number, start: number): number {
+  const c = field.cell;
+  const s2 = start * start;
+  let n = 0;
+  for (let i = 0; i < field.cells; i++) {
+    const x0 = (i % field.cx) * c, z0 = Math.floor(i / field.cx) * c;
+    const fx = Math.max(Math.abs(x0 - eyeX), Math.abs(x0 + c - eyeX));
+    const fz = Math.max(Math.abs(z0 - eyeZ), Math.abs(z0 + c - eyeZ));
+    if (fx * fx + fz * fz < s2) continue;
+    const b = i * INDICES_PER_CELL;
+    for (let k = 0; k < INDICES_PER_CELL; k++) out[n++] = base[b + k];
+  }
+  return n;
 }
