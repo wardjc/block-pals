@@ -42,7 +42,7 @@ describe('budgets at the view distances 40, 64 and 96 (the plain deep world)', (
     const rows: string[] = [];
     let worst = { sections: 0, calls: 0, tris: 0 };
     const callsAt: Record<number, number> = {};
-    for (const fogEnd of [40, 64, 96]) {
+    for (const fogEnd of [40, 64, 96, 128]) {
       let w = { sections: 0, calls: 0, tris: 0 };
       for (const s of spots) {
         const x = Math.floor(s.x), z = Math.floor(s.z);
@@ -77,6 +77,7 @@ describe('budgets at the view distances 40, 64 and 96 (the plain deep world)', (
         w = { sections: Math.max(w.sections, sections), calls: Math.max(w.calls, calls), tris: Math.max(w.tris, tris) };
       }
       rows.push(`== ${fogEnd} worst: ${w.sections} sections, ${w.calls + ENTITY_DRAW_CALLS} draw calls, ${w.tris} triangles`);
+      if (fogEnd > 96) continue; // 128 is measured and recorded only: it is over every budget (the horizon covers the distance instead)
       worst = { sections: Math.max(worst.sections, w.sections), calls: Math.max(worst.calls, w.calls), tris: Math.max(worst.tris, w.tris) };
       callsAt[fogEnd] = w.calls + ENTITY_DRAW_CALLS;
     }

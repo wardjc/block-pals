@@ -94,7 +94,9 @@ test.describe('the caves', () => {
     expect(await ev(page, d => d.home().lead)).toBe('leading');
     // A keyboard/assistive click does not unlock audio via pointerdown.
     await page.locator('.home-btn').evaluate((button: HTMLButtonElement) => button.click());
-    expect(await ev(page, d => d.audioState().pending)).toBeNull();
+    // No cave line is waiting. (Pip's unrelated tower-light line may be queued by the next frame; whether a frame
+    // lands between the click and this read depends only on how long frames take.)
+    expect([null, 'seeTowerLight']).toContain(await ev(page, d => d.audioState().pending));
     expect(await ev(page, d => d.home().cavePending)).toEqual([]);
     await expect.poll(() => ev(page, d => d.home().fading)).toBe(false);
     expect(await ev(page, d => d.deep())).toBe(false);
