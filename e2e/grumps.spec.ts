@@ -60,7 +60,8 @@ test.describe('grumps and friendly weapons', () => {
   let errors: string[];
   test.beforeEach(async ({ page }) => {
     errors = [];
-    page.on('console', m => { if (m.type() === 'error') errors.push(m.text()); });
+    // A headless browser with no sound card reports an audio-device error: not ours.
+    page.on('console', m => { if (m.type() === 'error' && !m.text().includes('AudioContext encountered an error')) errors.push(m.text()); });
     page.on('pageerror', e => errors.push(String(e)));
     await ready(page);
   });
